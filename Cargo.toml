@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Trait contracts for LevitateOS distro family — zero-cost interfaces between crates"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/LevitateOS/distro-contract"
+keywords = ["linux", "distro", "traits", "contracts"]
+categories = ["development-tools::build-utils"]
 
 [dependencies]
 anyhow = "1.0"
