@@ -65,12 +65,22 @@ pub struct KernelGuard<'a> {
 
 impl<'a> KernelGuard<'a> {
     pub fn new(requested: bool, confirmed: bool, example_cmd: &'a str) -> Self {
-        Self { requested, confirmed, example_cmd }
+        Self {
+            requested,
+            confirmed,
+            example_cmd,
+        }
     }
 }
 
 impl KernelBuildGuard for KernelGuard<'_> {
-    fn kernel_requested(&self) -> bool { self.requested }
-    fn kernel_confirmed(&self) -> bool { self.confirmed }
-    fn kernel_example_cmd(&self) -> &str { self.example_cmd }
+    fn kernel_requested(&self) -> bool {
+        self.requested
+    }
+    fn kernel_confirmed(&self) -> bool {
+        self.confirmed
+    }
+    fn kernel_example_cmd(&self) -> &str {
+        self.example_cmd
+    }
 }
