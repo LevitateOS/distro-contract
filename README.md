@@ -11,7 +11,6 @@ without pulling in build infrastructure.
 | Trait | Module | Purpose |
 |-------|--------|---------|
 | `KernelInstallConfig` | `kernel` | Where/how to install kernel and modules |
-| `KernelBuildGuard` | `kernel` | Two-step kernel build confirmation |
 | `DistroConfig` | `context` | OS identity, boot modules, init system |
 | `BuildContext` | `context` | Source/staging/output paths |
 | `Installable` | `component` | Declarative component installation |

@@ -9,7 +9,6 @@
 //! | Trait | Purpose |
 //! |-------|---------|
 //! | [`KernelInstallConfig`] | Where/how to install kernel and modules |
-//! | [`KernelBuildGuard`] | Two-step kernel build confirmation |
 //! | [`DistroConfig`] | OS identity, boot, init system |
 //! | [`BuildContext`] | Source/staging/output paths |
 //! | [`Installable`] | Declarative component installation |
@@ -23,4 +22,4 @@ pub mod kernel;
 pub use component::{Installable, Op, Phase};
 pub use context::{BuildContext, DistroConfig, InitSystem, PackageManager};
 pub use disk::{DiskImageConfig, DiskUuids};
-pub use kernel::{KernelBuildGuard, KernelGuard, KernelInstallConfig};
+pub use kernel::KernelInstallConfig;
