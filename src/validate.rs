@@ -1,12 +1,12 @@
 //! Contract validation engine.
 //!
-//! Current phase: CP0-only enforcement.
-//! CP1-CP8 declarations may exist in the schema, but this validator only
-//! executes CP0 build-capability conformance checks.
+//! Current phase: Stage 00-only enforcement.
+//! Stage 01-Stage 08 declarations may exist in the schema, but this validator only
+//! executes Stage 00 build-capability conformance checks.
 
 use std::collections::HashSet;
 
-use crate::error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+use crate::error::{StageId, ConformanceError, ConformanceReport, Violation, ViolationCode};
 use crate::schema::{ConformanceContract, CONTRACT_SCHEMA_VERSION};
 
 const PLACEHOLDER_TOKENS: &[&str] = &[
@@ -21,7 +21,7 @@ const PLACEHOLDER_TOKENS: &[&str] = &[
     "unknown",
 ];
 
-const CP0_REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
+const STAGE_00_REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
     "recipe",
     "cargo",
     "make",
@@ -36,22 +36,22 @@ const CP0_REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
     "recchroot",
 ];
 
-const CP0_REQUIRED_RECIPE_KERNEL_SCRIPT: &str = "distro-builder/recipes/linux.rhai";
-const CP0_REQUIRED_RECIPE_INVOCATION: &str = "recipe install";
-const CP0_REQUIRED_KERNEL_RELEASE_PATH: &str = "kernel-build/include/config/kernel.release";
-const CP0_REQUIRED_KERNEL_IMAGE_PATH: &str = "staging/boot/vmlinuz";
-const CP0_REQUIRED_KERNEL_MODULES_PATH: &str = "staging/usr/lib/modules/<kernel.release>";
-const CP0_REQUIRED_MODULE_INSTALL_PATH: &str = "/usr/lib/modules";
+const STAGE_00_REQUIRED_RECIPE_KERNEL_SCRIPT: &str = "distro-builder/recipes/linux.rhai";
+const STAGE_00_REQUIRED_RECIPE_INVOCATION: &str = "recipe install";
+const STAGE_00_REQUIRED_KERNEL_RELEASE_PATH: &str = "kernel-build/include/config/kernel.release";
+const STAGE_00_REQUIRED_KERNEL_IMAGE_PATH: &str = "staging/boot/vmlinuz";
+const STAGE_00_REQUIRED_KERNEL_MODULES_PATH: &str = "staging/usr/lib/modules/<kernel.release>";
+const STAGE_00_REQUIRED_MODULE_INSTALL_PATH: &str = "/usr/lib/modules";
 
 fn push_violation(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    stage: Option<StageId>,
     field: impl Into<String>,
     code: ViolationCode,
     message: impl Into<String>,
 ) {
     violations.push(Violation {
-        checkpoint,
+        stage,
         field: field.into(),
         code,
         message: message.into(),
@@ -65,14 +65,14 @@ fn is_placeholder_token(value: &str) -> bool {
 
 fn validate_non_empty_trimmed(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    stage: Option<StageId>,
     field: &str,
     value: &str,
 ) -> bool {
     if value.trim().is_empty() {
         push_violation(
             violations,
-            checkpoint,
+            stage,
             field,
             ViolationCode::MissingValue,
             format!("{field} must be non-empty"),
@@ -82,7 +82,7 @@ fn validate_non_empty_trimmed(
     if value != value.trim() {
         push_violation(
             violations,
-            checkpoint,
+            stage,
             field,
             ViolationCode::WhitespaceValue,
             format!("{field} must not include leading/trailing whitespace"),
@@ -92,7 +92,7 @@ fn validate_non_empty_trimmed(
     if is_placeholder_token(value) {
         push_violation(
             violations,
-            checkpoint,
+            stage,
             field,
             ViolationCode::PlaceholderValue,
             format!("{field} must not be a placeholder token"),
@@ -105,14 +105,14 @@ fn validate_non_empty_trimmed(
 
 fn validate_unique_values(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    stage: Option<StageId>,
     field: &str,
     values: &[String],
 ) {
     if values.is_empty() {
         push_violation(
             violations,
-            checkpoint,
+            stage,
             field,
             ViolationCode::MissingValue,
             format!("{field} must be non-empty"),
@@ -122,11 +122,11 @@ fn validate_unique_values(
 
     let mut seen = HashSet::new();
     for value in values {
-        validate_non_empty_trimmed(violations, checkpoint, field, value);
+        validate_non_empty_trimmed(violations, stage, field, value);
         if !seen.insert(value) {
             push_violation(
                 violations,
-                checkpoint,
+                stage,
                 field,
                 ViolationCode::DuplicateEntry,
                 format!("{field} contains duplicate value '{value}'"),
@@ -143,17 +143,17 @@ fn is_command_token(value: &str) -> bool {
 
 fn validate_command_entries(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    stage: Option<StageId>,
     field: &str,
     values: &[String],
 ) {
-    validate_unique_values(violations, checkpoint, field, values);
+    validate_unique_values(violations, stage, field, values);
 
     for value in values {
         if !is_command_token(value) {
             push_violation(
                 violations,
-                checkpoint,
+                stage,
                 field,
                 ViolationCode::InvalidToken,
                 format!("{field} value '{value}' is not a valid command token"),
@@ -164,7 +164,7 @@ fn validate_command_entries(
 
 fn validate_evidence(
     violations: &mut Vec<Violation>,
-    checkpoint: CheckpointId,
+    stage: StageId,
     field_prefix: &str,
     script_path: &str,
     pass_marker: &str,
@@ -174,15 +174,15 @@ fn validate_evidence(
     let marker_field = format!("{field_prefix}.pass_marker");
 
     let script_ok =
-        validate_non_empty_trimmed(violations, Some(checkpoint), &script_field, script_path);
+        validate_non_empty_trimmed(violations, Some(stage), &script_field, script_path);
     let marker_ok =
-        validate_non_empty_trimmed(violations, Some(checkpoint), &marker_field, pass_marker);
+        validate_non_empty_trimmed(violations, Some(stage), &marker_field, pass_marker);
 
     if script_ok {
         if script_path.contains('/') || script_path.contains('\\') {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(stage),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!("{script_field} must be a script filename, not a path"),
@@ -191,7 +191,7 @@ fn validate_evidence(
         if !script_path.starts_with(expected_script_prefix) || !script_path.ends_with(".sh") {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(stage),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!(
@@ -203,13 +203,13 @@ fn validate_evidence(
 
     if marker_ok {
         let lowered = pass_marker.to_ascii_uppercase();
-        if !lowered.contains("CHECKPOINT") || !lowered.contains("PASS") {
+        if !lowered.contains("STAGE") || !lowered.contains("PASS") {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(stage),
                 &marker_field,
                 ViolationCode::InvalidEvidenceDeclaration,
-                format!("{marker_field} must contain CHECKPOINT and PASS tokens"),
+                format!("{marker_field} must contain STAGE and PASS tokens"),
             );
         }
     }
@@ -244,77 +244,77 @@ fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-fn validate_cp0_build(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
-    let cp0 = &contract.checkpoints.cp0_build;
+fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
+    let stage_00 = &contract.stages.stage_00_build;
 
     validate_command_entries(
         violations,
-        Some(CheckpointId::Cp0),
-        "cp0_build.required_build_tools",
-        &cp0.required_build_tools,
+        Some(StageId::Stage00),
+        "stage_00_build.required_build_tools",
+        &stage_00.required_build_tools,
     );
-    let cp0_tools: HashSet<&str> = cp0
+    let stage_00_tools: HashSet<&str> = stage_00
         .required_build_tools
         .iter()
         .map(String::as_str)
         .collect();
-    for tool in CP0_REQUIRED_BUILD_TOOLS_BASELINE {
-        if !cp0_tools.contains(tool) {
+    for tool in STAGE_00_REQUIRED_BUILD_TOOLS_BASELINE {
+        if !stage_00_tools.contains(tool) {
             push_violation(
                 violations,
-                Some(CheckpointId::Cp0),
-                "cp0_build.required_build_tools",
+                Some(StageId::Stage00),
+                "stage_00_build.required_build_tools",
                 ViolationCode::MissingRequiredBuildTool,
-                format!("cp0_build.required_build_tools must include '{tool}'"),
+                format!("stage_00_build.required_build_tools must include '{tool}'"),
             );
         }
     }
 
-    let kconfig_field = "cp0_build.kernel_kconfig_path";
+    let kconfig_field = "stage_00_build.kernel_kconfig_path";
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Cp0),
+        Some(StageId::Stage00),
         kconfig_field,
-        &cp0.kernel_kconfig_path,
-    ) && cp0.kernel_kconfig_path != "kconfig"
+        &stage_00.kernel_kconfig_path,
+    ) && stage_00.kernel_kconfig_path != "kconfig"
     {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
+            Some(StageId::Stage00),
             kconfig_field,
             ViolationCode::InvalidPathDeclaration,
-            "cp0_build.kernel_kconfig_path must be exactly 'kconfig'",
+            "stage_00_build.kernel_kconfig_path must be exactly 'kconfig'",
         );
     }
 
     for (field, value) in [
         (
-            "cp0_build.recipe_kernel_script",
-            cp0.recipe_kernel_script.as_str(),
+            "stage_00_build.recipe_kernel_script",
+            stage_00.recipe_kernel_script.as_str(),
         ),
         (
-            "cp0_build.recipe_kernel_invocation",
-            cp0.recipe_kernel_invocation.as_str(),
+            "stage_00_build.recipe_kernel_invocation",
+            stage_00.recipe_kernel_invocation.as_str(),
         ),
         (
-            "cp0_build.kernel_release_path",
-            cp0.kernel_release_path.as_str(),
+            "stage_00_build.kernel_release_path",
+            stage_00.kernel_release_path.as_str(),
         ),
         (
-            "cp0_build.kernel_image_path",
-            cp0.kernel_image_path.as_str(),
+            "stage_00_build.kernel_image_path",
+            stage_00.kernel_image_path.as_str(),
         ),
         (
-            "cp0_build.kernel_modules_path",
-            cp0.kernel_modules_path.as_str(),
+            "stage_00_build.kernel_modules_path",
+            stage_00.kernel_modules_path.as_str(),
         ),
     ] {
-        if validate_non_empty_trimmed(violations, Some(CheckpointId::Cp0), field, value)
+        if validate_non_empty_trimmed(violations, Some(StageId::Stage00), field, value)
             && !is_relative_contract_path(value)
         {
             push_violation(
                 violations,
-                Some(CheckpointId::Cp0),
+                Some(StageId::Stage00),
                 field,
                 ViolationCode::InvalidPathDeclaration,
                 format!("{field} must be a relative normalized path"),
@@ -322,121 +322,121 @@ fn validate_cp0_build(violations: &mut Vec<Violation>, contract: &ConformanceCon
         }
     }
 
-    if cp0.recipe_kernel_script != CP0_REQUIRED_RECIPE_KERNEL_SCRIPT {
+    if stage_00.recipe_kernel_script != STAGE_00_REQUIRED_RECIPE_KERNEL_SCRIPT {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.recipe_kernel_script",
+            Some(StageId::Stage00),
+            "stage_00_build.recipe_kernel_script",
             ViolationCode::RecipeKernelOrchestrationRequired,
             format!(
-                "cp0_build.recipe_kernel_script must be '{}'",
-                CP0_REQUIRED_RECIPE_KERNEL_SCRIPT
+                "stage_00_build.recipe_kernel_script must be '{}'",
+                STAGE_00_REQUIRED_RECIPE_KERNEL_SCRIPT
             ),
         );
     }
-    if cp0.recipe_kernel_invocation != CP0_REQUIRED_RECIPE_INVOCATION {
+    if stage_00.recipe_kernel_invocation != STAGE_00_REQUIRED_RECIPE_INVOCATION {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.recipe_kernel_invocation",
+            Some(StageId::Stage00),
+            "stage_00_build.recipe_kernel_invocation",
             ViolationCode::RecipeKernelOrchestrationRequired,
             format!(
-                "cp0_build.recipe_kernel_invocation must be '{}'",
-                CP0_REQUIRED_RECIPE_INVOCATION
+                "stage_00_build.recipe_kernel_invocation must be '{}'",
+                STAGE_00_REQUIRED_RECIPE_INVOCATION
             ),
         );
     }
 
-    if cp0.kernel_release_path != CP0_REQUIRED_KERNEL_RELEASE_PATH {
+    if stage_00.kernel_release_path != STAGE_00_REQUIRED_KERNEL_RELEASE_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.kernel_release_path",
+            Some(StageId::Stage00),
+            "stage_00_build.kernel_release_path",
             ViolationCode::MissingRequiredKernelOutput,
             format!(
-                "cp0_build.kernel_release_path must be '{}'",
-                CP0_REQUIRED_KERNEL_RELEASE_PATH
+                "stage_00_build.kernel_release_path must be '{}'",
+                STAGE_00_REQUIRED_KERNEL_RELEASE_PATH
             ),
         );
     }
-    if cp0.kernel_image_path != CP0_REQUIRED_KERNEL_IMAGE_PATH {
+    if stage_00.kernel_image_path != STAGE_00_REQUIRED_KERNEL_IMAGE_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.kernel_image_path",
+            Some(StageId::Stage00),
+            "stage_00_build.kernel_image_path",
             ViolationCode::MissingRequiredKernelOutput,
             format!(
-                "cp0_build.kernel_image_path must be '{}'",
-                CP0_REQUIRED_KERNEL_IMAGE_PATH
+                "stage_00_build.kernel_image_path must be '{}'",
+                STAGE_00_REQUIRED_KERNEL_IMAGE_PATH
             ),
         );
     }
-    if cp0.kernel_modules_path != CP0_REQUIRED_KERNEL_MODULES_PATH {
+    if stage_00.kernel_modules_path != STAGE_00_REQUIRED_KERNEL_MODULES_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.kernel_modules_path",
+            Some(StageId::Stage00),
+            "stage_00_build.kernel_modules_path",
             ViolationCode::MissingRequiredKernelOutput,
             format!(
-                "cp0_build.kernel_modules_path must be '{}'",
-                CP0_REQUIRED_KERNEL_MODULES_PATH
+                "stage_00_build.kernel_modules_path must be '{}'",
+                STAGE_00_REQUIRED_KERNEL_MODULES_PATH
             ),
         );
     }
 
-    if cp0.module_install_path != CP0_REQUIRED_MODULE_INSTALL_PATH {
+    if stage_00.module_install_path != STAGE_00_REQUIRED_MODULE_INSTALL_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.module_install_path",
+            Some(StageId::Stage00),
+            "stage_00_build.module_install_path",
             ViolationCode::UnsupportedModuleInstallPath,
             format!(
-                "cp0_build.module_install_path must be '{}' to enforce cross-distro consistency",
-                CP0_REQUIRED_MODULE_INSTALL_PATH
+                "stage_00_build.module_install_path must be '{}' to enforce cross-distro consistency",
+                STAGE_00_REQUIRED_MODULE_INSTALL_PATH
             ),
         );
     }
 
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Cp0),
-        "cp0_build.kernel_version",
-        &cp0.kernel_version,
-    ) && !is_kernel_version_token(&cp0.kernel_version)
+        Some(StageId::Stage00),
+        "stage_00_build.kernel_version",
+        &stage_00.kernel_version,
+    ) && !is_kernel_version_token(&stage_00.kernel_version)
     {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.kernel_version",
+            Some(StageId::Stage00),
+            "stage_00_build.kernel_version",
             ViolationCode::InvalidKernelProvenance,
-            "cp0_build.kernel_version must be digits/dot format (for example 6.12.71)",
+            "stage_00_build.kernel_version must be digits/dot format (for example 6.12.71)",
         );
     }
 
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Cp0),
-        "cp0_build.kernel_sha256",
-        &cp0.kernel_sha256,
-    ) && !is_sha256_hex(&cp0.kernel_sha256)
+        Some(StageId::Stage00),
+        "stage_00_build.kernel_sha256",
+        &stage_00.kernel_sha256,
+    ) && !is_sha256_hex(&stage_00.kernel_sha256)
     {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.kernel_sha256",
+            Some(StageId::Stage00),
+            "stage_00_build.kernel_sha256",
             ViolationCode::InvalidKernelProvenance,
-            "cp0_build.kernel_sha256 must be a 64-character hex SHA256",
+            "stage_00_build.kernel_sha256 must be a 64-character hex SHA256",
         );
     }
 
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Cp0),
-        "cp0_build.kernel_localversion",
-        &cp0.kernel_localversion,
-    ) && (cp0.kernel_localversion.len() < 2
-        || !cp0.kernel_localversion.starts_with('-')
-        || cp0
+        Some(StageId::Stage00),
+        "stage_00_build.kernel_localversion",
+        &stage_00.kernel_localversion,
+    ) && (stage_00.kernel_localversion.len() < 2
+        || !stage_00.kernel_localversion.starts_with('-')
+        || stage_00
             .kernel_localversion
             .chars()
             .skip(1)
@@ -444,30 +444,30 @@ fn validate_cp0_build(violations: &mut Vec<Violation>, contract: &ConformanceCon
     {
         push_violation(
             violations,
-            Some(CheckpointId::Cp0),
-            "cp0_build.kernel_localversion",
+            Some(StageId::Stage00),
+            "stage_00_build.kernel_localversion",
             ViolationCode::InvalidKernelProvenance,
-            "cp0_build.kernel_localversion must be '-' followed by lowercase alnum/underscore",
+            "stage_00_build.kernel_localversion must be '-' followed by lowercase alnum/underscore",
         );
     }
 
     validate_evidence(
         violations,
-        CheckpointId::Cp0,
-        "cp0_build.evidence",
-        &cp0.evidence.script_path,
-        &cp0.evidence.pass_marker,
-        "checkpoint-0-",
+        StageId::Stage00,
+        "stage_00_build.evidence",
+        &stage_00.evidence.script_path,
+        &stage_00.evidence.pass_marker,
+        "stage-00-",
     );
 }
 
 /// Validate a conformance contract and return a full report.
 ///
-/// CP0-only phase:
+/// Stage 00-only phase:
 /// - validates schema version
 /// - validates identity token shape
-/// - validates CP0 build-capability declaration
-/// - does not execute CP1-CP8 runtime checkpoint validation
+/// - validates Stage 00 build-capability declaration
+/// - does not execute Stage 01-Stage 08 runtime stage validation
 pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     let mut violations = Vec::new();
 
@@ -530,7 +530,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         );
     }
 
-    validate_cp0_build(&mut violations, contract);
+    validate_stage_00_build(&mut violations, contract);
 
     ConformanceReport {
         distro_id: contract.identity.os_id.clone(),
@@ -570,8 +570,8 @@ mod tests {
                 iso_filename: "exampleos.iso".to_string(),
                 initramfs_installed_output: Some("initramfs-installed.img".to_string()),
             },
-            checkpoints: CheckpointContract {
-                cp0_build: BuildCapabilityCheckpoint {
+            stages: StageContract {
+                stage_00_build: BuildCapabilityStage {
                     required_build_tools: vec![
                         "recipe".to_string(),
                         "cargo".to_string(),
@@ -599,64 +599,64 @@ mod tests {
                     kernel_localversion: "-exampleos".to_string(),
                     module_install_path: "/usr/lib/modules".to_string(),
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-0-build-capability.sh".to_string(),
-                        pass_marker: "CHECKPOINT 0 PASSED".to_string(),
+                        script_path: "stage-00-build-capability.sh".to_string(),
+                        pass_marker: "STAGE 00 PASSED".to_string(),
                     },
                 },
-                cp1_live_boot: BootCheckpoint {
-                    success_patterns: vec!["ignored-in-cp0-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-cp0-phase".to_string()],
+                stage_01_live_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-1-live-boot.sh".to_string(),
-                        pass_marker: "CHECKPOINT 1 PASSED".to_string(),
+                        script_path: "stage-01-live-boot.sh".to_string(),
+                        pass_marker: "STAGE 01 PASSED".to_string(),
                     },
                 },
-                cp2_live_tools: ToolsCheckpoint {
-                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
+                stage_02_live_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-2-live-tools.sh".to_string(),
-                        pass_marker: "CHECKPOINT 2 PASSED".to_string(),
+                        script_path: "stage-02-live-tools.sh".to_string(),
+                        pass_marker: "STAGE 02 PASSED".to_string(),
                     },
                 },
-                cp3_install: InstallCheckpoint {
-                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
-                    required_services: vec!["ignored-in-cp0-phase".to_string()],
+                stage_03_install: InstallStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-3-installation.sh".to_string(),
-                        pass_marker: "CHECKPOINT 3 PASSED".to_string(),
+                        script_path: "stage-03-installation.sh".to_string(),
+                        pass_marker: "STAGE 03 PASSED".to_string(),
                     },
                 },
-                cp4_installed_boot: BootCheckpoint {
-                    success_patterns: vec!["ignored-in-cp0-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-cp0-phase".to_string()],
+                stage_04_installed_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-4-installed-boot.sh".to_string(),
-                        pass_marker: "CHECKPOINT 4 PASSED".to_string(),
+                        script_path: "stage-04-installed-boot.sh".to_string(),
+                        pass_marker: "STAGE 04 PASSED".to_string(),
                     },
                 },
-                cp5_automated_login: AutomatedLoginCheckpoint {
+                stage_05_automated_login: AutomatedLoginStage {
                     auth_mode: AuthMode::DefaultPasswordLogin,
                     default_username: Some("ignored".to_string()),
                     default_password: Some("ignored".to_string()),
-                    login_prompt_pattern: "ignored-in-cp0-phase".to_string(),
+                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-5-automated-login.sh".to_string(),
-                        pass_marker: "CHECKPOINT 5 PASSED".to_string(),
+                        script_path: "stage-05-automated-login.sh".to_string(),
+                        pass_marker: "STAGE 05 PASSED".to_string(),
                     },
                 },
-                cp6_installed_tools: ToolsCheckpoint {
-                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
+                stage_06_installed_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-6-daily-driver.sh".to_string(),
-                        pass_marker: "CHECKPOINT 6 PASSED".to_string(),
+                        script_path: "stage-06-daily-driver.sh".to_string(),
+                        pass_marker: "STAGE 06 PASSED".to_string(),
                     },
                 },
-                cp7_runtime_policy: RuntimePolicyCheckpoint {
+                stage_07_runtime_policy: RuntimePolicyStage {
                     rootfs_mutability: RootfsMutability::Mutable,
                     mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],
                 },
-                cp8_release: ReleaseCheckpoint {
+                stage_08_release: ReleaseStage {
                     required_artifacts: vec![],
                     required_metadata: vec![],
                 },
@@ -671,9 +671,9 @@ mod tests {
     }
 
     #[test]
-    fn cp0_requires_recipe_rhai_kernel_orchestration() {
+    fn stage_00_requires_recipe_rhai_kernel_orchestration() {
         let mut contract = valid_contract();
-        contract.checkpoints.cp0_build.recipe_kernel_script = "linux.rhai".to_string();
+        contract.stages.stage_00_build.recipe_kernel_script = "linux.rhai".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -684,11 +684,11 @@ mod tests {
     }
 
     #[test]
-    fn cp0_requires_baseline_build_tools() {
+    fn stage_00_requires_baseline_build_tools() {
         let mut contract = valid_contract();
         contract
-            .checkpoints
-            .cp0_build
+            .stages
+            .stage_00_build
             .required_build_tools
             .retain(|tool| tool != "xorriso");
 
@@ -701,9 +701,9 @@ mod tests {
     }
 
     #[test]
-    fn cp0_requires_usrmerge_module_install_path() {
+    fn stage_00_requires_usrmerge_module_install_path() {
         let mut contract = valid_contract();
-        contract.checkpoints.cp0_build.module_install_path = "/lib/modules".to_string();
+        contract.stages.stage_00_build.module_install_path = "/lib/modules".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());

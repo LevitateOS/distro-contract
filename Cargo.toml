@@ -2,7 +2,7 @@
 name = "distro-contract"
 version = "0.1.0"
 edition = "2021"
-description = "Conformance schema and validator for LevitateOS distro checkpoint contracts"
+description = "Conformance schema and validator for LevitateOS distro stage contracts"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/LevitateOS/distro-contract"
 keywords = ["linux", "distro", "conformance", "validation"]

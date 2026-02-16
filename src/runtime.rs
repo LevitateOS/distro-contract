@@ -1,12 +1,12 @@
-//! Runtime CP0 provenance checks against real build outputs.
+//! Runtime Stage 00 provenance checks against real build outputs.
 //!
-//! Unlike declaration-only validation, this verifies that declared CP0
+//! Unlike declaration-only validation, this verifies that declared Stage 00
 //! invariants match on-disk artifacts (kconfig + kernel build outputs).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+use crate::error::{StageId, ConformanceError, ConformanceReport, Violation, ViolationCode};
 use crate::schema::ConformanceContract;
 
 fn push_violation(
@@ -16,7 +16,7 @@ fn push_violation(
     message: impl Into<String>,
 ) {
     violations.push(Violation {
-        checkpoint: Some(CheckpointId::Cp0),
+        stage: Some(StageId::Stage00),
         field: field.into(),
         code,
         message: message.into(),
@@ -58,20 +58,20 @@ fn is_real_directory(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Validate CP0 runtime/provenance invariants against on-disk files.
-pub fn validate_cp0_runtime(
+/// Validate Stage 00 runtime/provenance invariants against on-disk files.
+pub fn validate_stage_00_runtime(
     contract: &ConformanceContract,
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> ConformanceReport {
-    let cp0 = &contract.checkpoints.cp0_build;
+    let stage_00 = &contract.stages.stage_00_build;
     let mut violations = Vec::new();
 
-    let kconfig_path = variant_dir.join(&cp0.kernel_kconfig_path);
+    let kconfig_path = variant_dir.join(&stage_00.kernel_kconfig_path);
     if !kconfig_path.is_file() {
         push_violation(
             &mut violations,
-            "cp0_build.kernel_kconfig_path",
+            "stage_00_build.kernel_kconfig_path",
             ViolationCode::MissingRequiredKernelOutput,
             format!(
                 "declared kernel kconfig path does not exist: '{}'",
@@ -82,14 +82,14 @@ pub fn validate_cp0_runtime(
         match fs::read_to_string(&kconfig_path) {
             Ok(raw) => match parse_kconfig_localversion(&raw) {
                 Some(localversion) => {
-                    if localversion != cp0.kernel_localversion {
+                    if localversion != stage_00.kernel_localversion {
                         push_violation(
                             &mut violations,
-                            "cp0_build.kernel_localversion",
+                            "stage_00_build.kernel_localversion",
                             ViolationCode::InvalidKernelProvenance,
                             format!(
                                 "kconfig CONFIG_LOCALVERSION='{}' does not match declared '{}'",
-                                localversion, cp0.kernel_localversion
+                                localversion, stage_00.kernel_localversion
                             ),
                         );
                     }
@@ -97,7 +97,7 @@ pub fn validate_cp0_runtime(
                 None => {
                     push_violation(
                         &mut violations,
-                        "cp0_build.kernel_localversion",
+                        "stage_00_build.kernel_localversion",
                         ViolationCode::InvalidKernelProvenance,
                         format!(
                             "kconfig '{}' is missing CONFIG_LOCALVERSION",
@@ -109,7 +109,7 @@ pub fn validate_cp0_runtime(
             Err(err) => {
                 push_violation(
                     &mut violations,
-                    "cp0_build.kernel_kconfig_path",
+                    "stage_00_build.kernel_kconfig_path",
                     ViolationCode::MissingRequiredKernelOutput,
                     format!(
                         "failed reading kconfig '{}': {}",
@@ -121,28 +121,28 @@ pub fn validate_cp0_runtime(
         }
     }
 
-    let release_path = artifact_dir.join(&cp0.kernel_release_path);
+    let release_path = artifact_dir.join(&stage_00.kernel_release_path);
     let kernel_release = match read_trimmed(&release_path) {
         Some(value) => {
-            if !value.starts_with(&cp0.kernel_version) {
+            if !value.starts_with(&stage_00.kernel_version) {
                 push_violation(
                     &mut violations,
-                    "cp0_build.kernel_release_path",
+                    "stage_00_build.kernel_release_path",
                     ViolationCode::InvalidKernelProvenance,
                     format!(
                         "kernel.release '{}' does not start with declared kernel_version '{}'",
-                        value, cp0.kernel_version
+                        value, stage_00.kernel_version
                     ),
                 );
             }
-            if !value.ends_with(&cp0.kernel_localversion) {
+            if !value.ends_with(&stage_00.kernel_localversion) {
                 push_violation(
                     &mut violations,
-                    "cp0_build.kernel_release_path",
+                    "stage_00_build.kernel_release_path",
                     ViolationCode::InvalidKernelProvenance,
                     format!(
                         "kernel.release '{}' does not end with declared kernel_localversion '{}'",
-                        value, cp0.kernel_localversion
+                        value, stage_00.kernel_localversion
                     ),
                 );
             }
@@ -151,7 +151,7 @@ pub fn validate_cp0_runtime(
         None => {
             push_violation(
                 &mut violations,
-                "cp0_build.kernel_release_path",
+                "stage_00_build.kernel_release_path",
                 ViolationCode::MissingRequiredKernelOutput,
                 format!(
                     "missing or empty kernel.release output at '{}'",
@@ -162,11 +162,11 @@ pub fn validate_cp0_runtime(
         }
     };
 
-    let kernel_image_path = artifact_dir.join(&cp0.kernel_image_path);
+    let kernel_image_path = artifact_dir.join(&stage_00.kernel_image_path);
     if !kernel_image_path.is_file() {
         push_violation(
             &mut violations,
-            "cp0_build.kernel_image_path",
+            "stage_00_build.kernel_image_path",
             ViolationCode::MissingRequiredKernelOutput,
             format!(
                 "missing kernel image output at '{}'",
@@ -176,14 +176,14 @@ pub fn validate_cp0_runtime(
     }
 
     if let Some(kernel_release) = kernel_release {
-        let expanded_modules_rel = cp0
+        let expanded_modules_rel = stage_00
             .kernel_modules_path
             .replace("<kernel.release>", &kernel_release);
         let modules_path = artifact_dir.join(expanded_modules_rel);
         if !modules_path.is_dir() {
             push_violation(
                 &mut violations,
-                "cp0_build.kernel_modules_path",
+                "stage_00_build.kernel_modules_path",
                 ViolationCode::MissingRequiredKernelOutput,
                 format!(
                     "missing kernel modules output for release '{}' at '{}'",
@@ -199,7 +199,7 @@ pub fn validate_cp0_runtime(
     if is_real_directory(&legacy_root) && !usrmerge_root.is_dir() {
         push_violation(
             &mut violations,
-            "cp0_build.module_install_path",
+            "stage_00_build.module_install_path",
             ViolationCode::UnsupportedModuleInstallPath,
             format!(
                 "detected real modules directory at '{}' without usrmerge root '{}'",
@@ -216,13 +216,13 @@ pub fn validate_cp0_runtime(
     }
 }
 
-/// Require CP0 runtime checks to pass.
-pub fn require_valid_cp0_runtime(
+/// Require Stage 00 runtime checks to pass.
+pub fn require_valid_stage_00_runtime(
     contract: &ConformanceContract,
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> Result<(), ConformanceError> {
-    let report = validate_cp0_runtime(contract, variant_dir, artifact_dir);
+    let report = validate_stage_00_runtime(contract, variant_dir, artifact_dir);
     if report.passed() {
         Ok(())
     } else {
@@ -252,8 +252,8 @@ mod tests {
                 iso_filename: "levitateos-x86_64.iso".to_string(),
                 initramfs_installed_output: Some("initramfs-installed.img".to_string()),
             },
-            checkpoints: CheckpointContract {
-                cp0_build: BuildCapabilityCheckpoint {
+            stages: StageContract {
+                stage_00_build: BuildCapabilityStage {
                     required_build_tools: vec![
                         "recipe".to_string(),
                         "cargo".to_string(),
@@ -281,64 +281,64 @@ mod tests {
                     kernel_localversion: "-levitate".to_string(),
                     module_install_path: "/usr/lib/modules".to_string(),
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-0-build-capability.sh".to_string(),
-                        pass_marker: "CHECKPOINT 0 PASSED".to_string(),
+                        script_path: "stage-00-build-capability.sh".to_string(),
+                        pass_marker: "STAGE 00 PASSED".to_string(),
                     },
                 },
-                cp1_live_boot: BootCheckpoint {
-                    success_patterns: vec!["ignored-in-cp0-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-cp0-phase".to_string()],
+                stage_01_live_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-1-live-boot.sh".to_string(),
-                        pass_marker: "CHECKPOINT 1 PASSED".to_string(),
+                        script_path: "stage-01-live-boot.sh".to_string(),
+                        pass_marker: "STAGE 01 PASSED".to_string(),
                     },
                 },
-                cp2_live_tools: ToolsCheckpoint {
-                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
+                stage_02_live_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-2-live-tools.sh".to_string(),
-                        pass_marker: "CHECKPOINT 2 PASSED".to_string(),
+                        script_path: "stage-02-live-tools.sh".to_string(),
+                        pass_marker: "STAGE 02 PASSED".to_string(),
                     },
                 },
-                cp3_install: InstallCheckpoint {
-                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
-                    required_services: vec!["ignored-in-cp0-phase".to_string()],
+                stage_03_install: InstallStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-3-installation.sh".to_string(),
-                        pass_marker: "CHECKPOINT 3 PASSED".to_string(),
+                        script_path: "stage-03-installation.sh".to_string(),
+                        pass_marker: "STAGE 03 PASSED".to_string(),
                     },
                 },
-                cp4_installed_boot: BootCheckpoint {
-                    success_patterns: vec!["ignored-in-cp0-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-cp0-phase".to_string()],
+                stage_04_installed_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-4-installed-boot.sh".to_string(),
-                        pass_marker: "CHECKPOINT 4 PASSED".to_string(),
+                        script_path: "stage-04-installed-boot.sh".to_string(),
+                        pass_marker: "STAGE 04 PASSED".to_string(),
                     },
                 },
-                cp5_automated_login: AutomatedLoginCheckpoint {
+                stage_05_automated_login: AutomatedLoginStage {
                     auth_mode: AuthMode::DefaultPasswordLogin,
                     default_username: Some("ignored".to_string()),
                     default_password: Some("ignored".to_string()),
-                    login_prompt_pattern: "ignored-in-cp0-phase".to_string(),
+                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-5-automated-login.sh".to_string(),
-                        pass_marker: "CHECKPOINT 5 PASSED".to_string(),
+                        script_path: "stage-05-automated-login.sh".to_string(),
+                        pass_marker: "STAGE 05 PASSED".to_string(),
                     },
                 },
-                cp6_installed_tools: ToolsCheckpoint {
-                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
+                stage_06_installed_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "checkpoint-6-daily-driver.sh".to_string(),
-                        pass_marker: "CHECKPOINT 6 PASSED".to_string(),
+                        script_path: "stage-06-daily-driver.sh".to_string(),
+                        pass_marker: "STAGE 06 PASSED".to_string(),
                     },
                 },
-                cp7_runtime_policy: RuntimePolicyCheckpoint {
+                stage_07_runtime_policy: RuntimePolicyStage {
                     rootfs_mutability: RootfsMutability::Mutable,
                     mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],
                 },
-                cp8_release: ReleaseCheckpoint {
+                stage_08_release: ReleaseStage {
                     required_artifacts: vec![],
                     required_metadata: vec![],
                 },
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn cp0_runtime_passes_when_kconfig_and_outputs_match() {
+    fn stage_00_runtime_passes_when_kconfig_and_outputs_match() {
         let variant_dir = temp_dir("runtime-ok-variant");
         let artifact_dir = temp_dir("runtime-ok-artifacts");
         let contract = valid_contract();
@@ -384,7 +384,7 @@ mod tests {
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-levitate"))
             .expect("create modules dir");
 
-        let report = validate_cp0_runtime(&contract, &variant_dir, &artifact_dir);
+        let report = validate_stage_00_runtime(&contract, &variant_dir, &artifact_dir);
         assert!(report.passed(), "{:#?}", report.violations);
 
         fs::remove_dir_all(variant_dir).expect("cleanup variant");
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn cp0_runtime_fails_on_localversion_mismatch() {
+    fn stage_00_runtime_fails_on_localversion_mismatch() {
         let variant_dir = temp_dir("runtime-mismatch-variant");
         let artifact_dir = temp_dir("runtime-mismatch-artifacts");
         let contract = valid_contract();
@@ -409,7 +409,7 @@ mod tests {
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-other"))
             .expect("create modules dir");
 
-        let report = validate_cp0_runtime(&contract, &variant_dir, &artifact_dir);
+        let report = validate_stage_00_runtime(&contract, &variant_dir, &artifact_dir);
         assert!(!report.passed());
         assert!(report
             .violations

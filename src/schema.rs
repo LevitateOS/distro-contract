@@ -1,18 +1,18 @@
-//! Conformance contract schema for distro checkpoint declarations.
+//! Conformance contract schema for distro stage declarations.
 
 /// Contract schema version enforced by validators.
 pub const CONTRACT_SCHEMA_VERSION: u32 = 3;
 
-/// CP5 authentication policy.
+/// Stage 05 authentication policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthMode {
-    /// CP5 automation uses deterministic distro-provided credentials.
+    /// Stage 05 automation uses deterministic distro-provided credentials.
     DefaultPasswordLogin,
-    /// CP5 credentials are provisioned out-of-band.
+    /// Stage 05 credentials are provisioned out-of-band.
     ProvisionedCredentials,
 }
 
-/// CP7 rootfs model.
+/// Stage 07 rootfs model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RootfsMutability {
     /// Writable install model.
@@ -24,7 +24,7 @@ pub enum RootfsMutability {
 /// Shared script evidence declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptEvidence {
-    /// On-ISO checkpoint script filename (for example `checkpoint-2-live-tools.sh`).
+    /// On-ISO stage script filename (for example `stage-02-live-tools.sh`).
     pub script_path: String,
     /// Required PASS marker emitted by script output.
     pub pass_marker: String,
@@ -49,32 +49,32 @@ pub struct ArtifactIdentity {
     pub initramfs_installed_output: Option<String>,
 }
 
-/// CP1/CP4 boot declaration.
+/// Stage 01/Stage 04 boot declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BootCheckpoint {
+pub struct BootStage {
     pub success_patterns: Vec<String>,
     pub fatal_patterns: Vec<String>,
     pub evidence: ScriptEvidence,
 }
 
-/// CP2/CP6 tool declaration.
+/// Stage 02/Stage 06 tool declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolsCheckpoint {
+pub struct ToolsStage {
     pub required_tools: Vec<String>,
     pub evidence: ScriptEvidence,
 }
 
-/// CP3 install declaration.
+/// Stage 03 install declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstallCheckpoint {
+pub struct InstallStage {
     pub required_tools: Vec<String>,
     pub required_services: Vec<String>,
     pub evidence: ScriptEvidence,
 }
 
-/// CP5 automated login declaration.
+/// Stage 05 automated login declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AutomatedLoginCheckpoint {
+pub struct AutomatedLoginStage {
     pub auth_mode: AuthMode,
     pub default_username: Option<String>,
     pub default_password: Option<String>,
@@ -82,27 +82,27 @@ pub struct AutomatedLoginCheckpoint {
     pub evidence: ScriptEvidence,
 }
 
-/// CP7 runtime policy declaration.
+/// Stage 07 runtime policy declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimePolicyCheckpoint {
+pub struct RuntimePolicyStage {
     pub rootfs_mutability: RootfsMutability,
     pub mutable_required_rw_paths: Vec<String>,
     pub immutable_required_ro_paths: Vec<String>,
 }
 
-/// CP8 release declaration.
+/// Stage 08 release declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReleaseCheckpoint {
+pub struct ReleaseStage {
     pub required_artifacts: Vec<String>,
     pub required_metadata: Vec<String>,
 }
 
-/// CP0 build-capability declaration.
+/// Stage 00 build-capability declaration.
 ///
-/// CP0 is intentionally non-runtime: it validates build-system/kernel provenance
+/// Stage 00 is intentionally non-runtime: it validates build-system/kernel provenance
 /// invariants and required build tooling.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildCapabilityCheckpoint {
+pub struct BuildCapabilityStage {
     /// Build tooling that must exist in the declared build pipeline.
     pub required_build_tools: Vec<String>,
     /// Kernel config input path (relative to distro root).
@@ -125,22 +125,22 @@ pub struct BuildCapabilityCheckpoint {
     pub kernel_localversion: String,
     /// Declared kernel modules install root.
     pub module_install_path: String,
-    /// Evidence declaration for CP0 checks.
+    /// Evidence declaration for Stage 00 checks.
     pub evidence: ScriptEvidence,
 }
 
-/// CP0..CP8 aggregate declaration.
+/// Stage 00..Stage 08 aggregate declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckpointContract {
-    pub cp0_build: BuildCapabilityCheckpoint,
-    pub cp1_live_boot: BootCheckpoint,
-    pub cp2_live_tools: ToolsCheckpoint,
-    pub cp3_install: InstallCheckpoint,
-    pub cp4_installed_boot: BootCheckpoint,
-    pub cp5_automated_login: AutomatedLoginCheckpoint,
-    pub cp6_installed_tools: ToolsCheckpoint,
-    pub cp7_runtime_policy: RuntimePolicyCheckpoint,
-    pub cp8_release: ReleaseCheckpoint,
+pub struct StageContract {
+    pub stage_00_build: BuildCapabilityStage,
+    pub stage_01_live_boot: BootStage,
+    pub stage_02_live_tools: ToolsStage,
+    pub stage_03_install: InstallStage,
+    pub stage_04_installed_boot: BootStage,
+    pub stage_05_automated_login: AutomatedLoginStage,
+    pub stage_06_installed_tools: ToolsStage,
+    pub stage_07_runtime_policy: RuntimePolicyStage,
+    pub stage_08_release: ReleaseStage,
 }
 
 /// Complete distro conformance declaration.
@@ -149,5 +149,5 @@ pub struct ConformanceContract {
     pub schema_version: u32,
     pub identity: DistroIdentity,
     pub artifacts: ArtifactIdentity,
-    pub checkpoints: CheckpointContract,
+    pub stages: StageContract,
 }

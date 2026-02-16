@@ -2,18 +2,18 @@
 
 use std::fmt;
 
-/// Checkpoint identifiers for violation attribution.
+/// Stage identifiers for violation attribution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CheckpointId {
-    Cp0,
-    Cp1,
-    Cp2,
-    Cp3,
-    Cp4,
-    Cp5,
-    Cp6,
-    Cp7,
-    Cp8,
+pub enum StageId {
+    Stage00,
+    Stage01,
+    Stage02,
+    Stage03,
+    Stage04,
+    Stage05,
+    Stage06,
+    Stage07,
+    Stage08,
 }
 
 /// Stable violation codes for machine-readable error handling.
@@ -27,7 +27,7 @@ pub enum ViolationCode {
     DuplicateEntry,
     GenericSuccessPattern,
     PatternSetOverlap,
-    MissingCheckpointToolInLiveTools,
+    MissingStageToolInLiveTools,
     InvalidAuthDeclaration,
     LoginPromptNotInInstalledBootPatterns,
     InvalidPathDeclaration,
@@ -46,7 +46,7 @@ pub enum ViolationCode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
     pub code: ViolationCode,
-    pub checkpoint: Option<CheckpointId>,
+    pub stage: Option<StageId>,
     pub field: String,
     pub message: String,
 }
@@ -81,7 +81,7 @@ impl fmt::Display for ConformanceError {
         )?;
 
         for violation in &self.report.violations {
-            match violation.checkpoint {
+            match violation.stage {
                 Some(cp) => {
                     writeln!(
                         f,
