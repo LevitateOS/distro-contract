@@ -1,31 +1,25 @@
 # distro-contract
 
-Trait contracts for the LevitateOS distro family.
+Conformance schema + validation engine for LevitateOS distro checkpoint contracts.
 
-This crate defines the **interfaces** that distro builders implement. It has
-near-zero dependencies (just `anyhow`) so that any crate can depend on it
-without pulling in build infrastructure.
+## Purpose
 
-## Traits
+This crate is intentionally limited to declaration conformance:
 
-| Trait | Module | Purpose |
-|-------|--------|---------|
-| `KernelInstallConfig` | `kernel` | Where/how to install kernel and modules |
-| `DistroConfig` | `context` | OS identity, boot modules, init system |
-| `BuildContext` | `context` | Source/staging/output paths |
-| `Installable` | `component` | Declarative component installation |
-| `DiskImageConfig` | `disk` | Disk image building |
+- Define CP1..CP8 contract schema
+- Validate anti-gaming and consistency rules
+- Return deterministic violation reports
 
-## Usage
+It does **not** own runtime testing (QEMU/checkpoints) and does **not** own
+builder/component/disk interfaces.
 
-Implemented by:
-- **leviso** (LevitateOS)
-- **AcornOS**
-- **IuppiterOS**
+## Public API
 
-Re-exported by **distro-builder** so existing code doesn't need to change imports.
+- `ConformanceContract`: full declaration schema
+- `validate_contract(&ConformanceContract) -> ConformanceReport`
+- `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`
+- `run_preflight(&ConformanceContract) -> Result<ConformanceReport, ConformanceError>`
 
-## License
+## Schema Version
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
-[MIT License](LICENSE-MIT) at your option.
+Current contract schema version: `2` (`CONTRACT_SCHEMA_VERSION`).

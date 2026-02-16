@@ -2,11 +2,10 @@
 name = "distro-contract"
 version = "0.1.0"
 edition = "2021"
-description = "Trait contracts for LevitateOS distro family — zero-cost interfaces between crates"
+description = "Conformance schema and validator for LevitateOS distro checkpoint contracts"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/LevitateOS/distro-contract"
-keywords = ["linux", "distro", "traits", "contracts"]
-categories = ["development-tools::build-utils"]
+keywords = ["linux", "distro", "conformance", "validation"]
+categories = ["development-tools::testing"]
 
 [dependencies]
-anyhow = "1.0"

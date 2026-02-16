@@ -1,25 +1,31 @@
-//! Trait contracts for the LevitateOS distro family.
+//! Distro conformance contract schema and validators.
 //!
-//! This crate defines the **interfaces** that distro builders implement.
-//! It has near-zero dependencies (just `anyhow` for error types) so that
-//! any crate can depend on it without pulling in build infrastructure.
-//!
-//! # Traits
-//!
-//! | Trait | Purpose |
-//! |-------|---------|
-//! | [`KernelInstallConfig`] | Where/how to install kernel and modules |
-//! | [`DistroConfig`] | OS identity, boot, init system |
-//! | [`BuildContext`] | Source/staging/output paths |
-//! | [`Installable`] | Declarative component installation |
-//! | [`DiskImageConfig`] | Disk image building |
+//! This crate is intentionally **conformance-only**:
+//! - Defines CP1..CP8 declaration schema
+//! - Validates declaration integrity and anti-gaming rules
+//! - Produces deterministic violation reports
 
-pub mod component;
-pub mod context;
-pub mod disk;
-pub mod kernel;
+pub mod error;
+pub mod schema;
+pub mod validate;
 
-pub use component::{Installable, Op, Phase};
-pub use context::{BuildContext, DistroConfig, InitSystem, PackageManager};
-pub use disk::{DiskImageConfig, DiskUuids};
-pub use kernel::KernelInstallConfig;
+pub use error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+pub use schema::{
+    ArtifactIdentity, AuthMode, AutomatedLoginCheckpoint, BootCheckpoint,
+    BuildCapabilityCheckpoint, CheckpointContract, ConformanceContract, DistroIdentity,
+    InstallCheckpoint, ReleaseCheckpoint, RootfsMutability, RuntimePolicyCheckpoint,
+    ScriptEvidence, ToolsCheckpoint, CONTRACT_SCHEMA_VERSION,
+};
+pub use validate::{require_valid_contract, validate_contract};
+
+/// Alias used by external preflight integrations.
+pub fn run_preflight(
+    contract: &ConformanceContract,
+) -> Result<ConformanceReport, ConformanceError> {
+    let report = validate_contract(contract);
+    if report.passed() {
+        Ok(report)
+    } else {
+        Err(ConformanceError { report })
+    }
+}
