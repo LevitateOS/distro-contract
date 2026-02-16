@@ -1,9 +1,13 @@
 //! Contract validation engine.
+//!
+//! Current phase: CP0-only enforcement.
+//! CP1-CP8 declarations may exist in the schema, but this validator only
+//! executes CP0 build-capability conformance checks.
 
 use std::collections::HashSet;
 
 use crate::error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
-use crate::schema::{AuthMode, ConformanceContract, RootfsMutability, CONTRACT_SCHEMA_VERSION};
+use crate::schema::{ConformanceContract, CONTRACT_SCHEMA_VERSION};
 
 const PLACEHOLDER_TOKENS: &[&str] = &[
     "todo",
@@ -15,23 +19,6 @@ const PLACEHOLDER_TOKENS: &[&str] = &[
     "none",
     "n/a",
     "unknown",
-];
-
-const GENERIC_BOOT_SUCCESS_PATTERNS: &[&str] = &[
-    "login:",
-    "___prompt___",
-    "___shell_ready___",
-    "multi-user.target",
-    "[autologin]",
-    "welcome",
-];
-
-const CP8_REQUIRED_METADATA_BASELINE: &[&str] = &[
-    "kernel_source.version",
-    "kernel_source.sha256",
-    "kernel_source.localversion",
-    "artifact.rootfs_name",
-    "artifact.iso_filename",
 ];
 
 const CP0_REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
@@ -175,86 +162,6 @@ fn validate_command_entries(
     }
 }
 
-fn is_service_token(value: &str) -> bool {
-    value
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-' | '@'))
-}
-
-fn validate_service_entries(
-    violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
-    field: &str,
-    values: &[String],
-) {
-    validate_unique_values(violations, checkpoint, field, values);
-
-    for value in values {
-        if !is_service_token(value) {
-            push_violation(
-                violations,
-                checkpoint,
-                field,
-                ViolationCode::InvalidToken,
-                format!("{field} value '{value}' is not a valid service token"),
-            );
-        }
-    }
-}
-
-fn is_generic_success_pattern(value: &str) -> bool {
-    let lowered = value.trim().to_ascii_lowercase();
-    if GENERIC_BOOT_SUCCESS_PATTERNS.contains(&lowered.as_str()) {
-        return true;
-    }
-
-    lowered == "login" || lowered == "ready"
-}
-
-fn validate_boot_patterns(
-    violations: &mut Vec<Violation>,
-    checkpoint: CheckpointId,
-    success_field: &str,
-    success_patterns: &[String],
-    fatal_field: &str,
-    fatal_patterns: &[String],
-) {
-    validate_unique_values(
-        violations,
-        Some(checkpoint),
-        success_field,
-        success_patterns,
-    );
-    validate_unique_values(violations, Some(checkpoint), fatal_field, fatal_patterns);
-
-    for pattern in success_patterns {
-        if is_generic_success_pattern(pattern) {
-            push_violation(
-                violations,
-                Some(checkpoint),
-                success_field,
-                ViolationCode::GenericSuccessPattern,
-                format!(
-                    "{success_field} contains generic boot pass marker '{pattern}' (must be distro-specific)"
-                ),
-            );
-        }
-    }
-
-    let fatal_set: HashSet<&str> = fatal_patterns.iter().map(String::as_str).collect();
-    for pattern in success_patterns {
-        if fatal_set.contains(pattern.as_str()) {
-            push_violation(
-                violations,
-                Some(checkpoint),
-                success_field,
-                ViolationCode::PatternSetOverlap,
-                format!("{success_field} and {fatal_field} overlap at '{pattern}'"),
-            );
-        }
-    }
-}
-
 fn validate_evidence(
     violations: &mut Vec<Violation>,
     checkpoint: CheckpointId,
@@ -305,52 +212,6 @@ fn validate_evidence(
                 format!("{marker_field} must contain CHECKPOINT and PASS tokens"),
             );
         }
-    }
-}
-
-fn validate_absolute_paths(
-    violations: &mut Vec<Violation>,
-    checkpoint: CheckpointId,
-    field: &str,
-    paths: &[String],
-) {
-    validate_unique_values(violations, Some(checkpoint), field, paths);
-
-    for value in paths {
-        if !value.starts_with('/') {
-            push_violation(
-                violations,
-                Some(checkpoint),
-                field,
-                ViolationCode::InvalidPathDeclaration,
-                format!("{field} value '{value}' must be an absolute path"),
-            );
-        }
-        if value.contains("//") || value.contains("/../") || value.ends_with("/..") {
-            push_violation(
-                violations,
-                Some(checkpoint),
-                field,
-                ViolationCode::InvalidPathDeclaration,
-                format!("{field} value '{value}' contains invalid path traversal"),
-            );
-        }
-    }
-}
-
-fn validate_artifact_filename(violations: &mut Vec<Violation>, field: &str, value: &str) {
-    if !validate_non_empty_trimmed(violations, None, field, value) {
-        return;
-    }
-
-    if value.contains('/') || value.contains('\\') || value.contains("..") {
-        push_violation(
-            violations,
-            None,
-            field,
-            ViolationCode::InvalidToken,
-            format!("{field} must be a file name, got '{value}'"),
-        );
     }
 }
 
@@ -415,16 +276,15 @@ fn validate_cp0_build(violations: &mut Vec<Violation>, contract: &ConformanceCon
         Some(CheckpointId::Cp0),
         kconfig_field,
         &cp0.kernel_kconfig_path,
-    ) {
-        if cp0.kernel_kconfig_path != "kconfig" {
-            push_violation(
-                violations,
-                Some(CheckpointId::Cp0),
-                kconfig_field,
-                ViolationCode::InvalidPathDeclaration,
-                "cp0_build.kernel_kconfig_path must be exactly 'kconfig'",
-            );
-        }
+    ) && cp0.kernel_kconfig_path != "kconfig"
+    {
+        push_violation(
+            violations,
+            Some(CheckpointId::Cp0),
+            kconfig_field,
+            ViolationCode::InvalidPathDeclaration,
+            "cp0_build.kernel_kconfig_path must be exactly 'kconfig'",
+        );
     }
 
     for (field, value) in [
@@ -574,22 +434,21 @@ fn validate_cp0_build(violations: &mut Vec<Violation>, contract: &ConformanceCon
         Some(CheckpointId::Cp0),
         "cp0_build.kernel_localversion",
         &cp0.kernel_localversion,
-    ) {
-        if !cp0.kernel_localversion.starts_with('-')
-            || cp0
-                .kernel_localversion
-                .chars()
-                .skip(1)
-                .any(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_')
-        {
-            push_violation(
-                violations,
-                Some(CheckpointId::Cp0),
-                "cp0_build.kernel_localversion",
-                ViolationCode::InvalidKernelProvenance,
-                "cp0_build.kernel_localversion must be '-' followed by lowercase alnum/underscore",
-            );
-        }
+    ) && (cp0.kernel_localversion.len() < 2
+        || !cp0.kernel_localversion.starts_with('-')
+        || cp0
+            .kernel_localversion
+            .chars()
+            .skip(1)
+            .any(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_'))
+    {
+        push_violation(
+            violations,
+            Some(CheckpointId::Cp0),
+            "cp0_build.kernel_localversion",
+            ViolationCode::InvalidKernelProvenance,
+            "cp0_build.kernel_localversion must be '-' followed by lowercase alnum/underscore",
+        );
     }
 
     validate_evidence(
@@ -602,35 +461,13 @@ fn validate_cp0_build(violations: &mut Vec<Violation>, contract: &ConformanceCon
     );
 }
 
-fn validate_metadata_key(key: &str) -> bool {
-    let mut parts = key.split('.');
-    let Some(first) = parts.next() else {
-        return false;
-    };
-
-    if !matches!(
-        first,
-        "kernel_source" | "artifact" | "runtime" | "boot" | "qemu" | "tarball" | "checkpoint"
-    ) {
-        return false;
-    }
-
-    let mut saw_subkey = false;
-    for part in parts {
-        saw_subkey = true;
-        if part.is_empty()
-            || !part
-                .chars()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-        {
-            return false;
-        }
-    }
-
-    saw_subkey
-}
-
 /// Validate a conformance contract and return a full report.
+///
+/// CP0-only phase:
+/// - validates schema version
+/// - validates identity token shape
+/// - validates CP0 build-capability declaration
+/// - does not execute CP1-CP8 runtime checkpoint validation
 pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     let mut violations = Vec::new();
 
@@ -693,344 +530,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         );
     }
 
-    validate_artifact_filename(
-        &mut violations,
-        "artifacts.rootfs_name",
-        &contract.artifacts.rootfs_name,
-    );
-    validate_artifact_filename(
-        &mut violations,
-        "artifacts.initramfs_live_output",
-        &contract.artifacts.initramfs_live_output,
-    );
-    validate_artifact_filename(
-        &mut violations,
-        "artifacts.iso_filename",
-        &contract.artifacts.iso_filename,
-    );
-    if let Some(value) = &contract.artifacts.initramfs_installed_output {
-        validate_artifact_filename(
-            &mut violations,
-            "artifacts.initramfs_installed_output",
-            value,
-        );
-    }
-
     validate_cp0_build(&mut violations, contract);
-
-    let cp1 = &contract.checkpoints.cp1_live_boot;
-    validate_boot_patterns(
-        &mut violations,
-        CheckpointId::Cp1,
-        "cp1_live_boot.success_patterns",
-        &cp1.success_patterns,
-        "cp1_live_boot.fatal_patterns",
-        &cp1.fatal_patterns,
-    );
-    validate_evidence(
-        &mut violations,
-        CheckpointId::Cp1,
-        "cp1_live_boot.evidence",
-        &cp1.evidence.script_path,
-        &cp1.evidence.pass_marker,
-        "checkpoint-1-",
-    );
-
-    let cp2 = &contract.checkpoints.cp2_live_tools;
-    validate_command_entries(
-        &mut violations,
-        Some(CheckpointId::Cp2),
-        "cp2_live_tools.required_tools",
-        &cp2.required_tools,
-    );
-    validate_evidence(
-        &mut violations,
-        CheckpointId::Cp2,
-        "cp2_live_tools.evidence",
-        &cp2.evidence.script_path,
-        &cp2.evidence.pass_marker,
-        "checkpoint-2-",
-    );
-
-    let cp3 = &contract.checkpoints.cp3_install;
-    validate_command_entries(
-        &mut violations,
-        Some(CheckpointId::Cp3),
-        "cp3_install.required_tools",
-        &cp3.required_tools,
-    );
-    validate_service_entries(
-        &mut violations,
-        Some(CheckpointId::Cp3),
-        "cp3_install.required_services",
-        &cp3.required_services,
-    );
-    validate_evidence(
-        &mut violations,
-        CheckpointId::Cp3,
-        "cp3_install.evidence",
-        &cp3.evidence.script_path,
-        &cp3.evidence.pass_marker,
-        "checkpoint-3-",
-    );
-
-    let cp2_tool_set: HashSet<&str> = cp2.required_tools.iter().map(String::as_str).collect();
-    for tool in &cp3.required_tools {
-        if !cp2_tool_set.contains(tool.as_str()) {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp3),
-                "cp3_install.required_tools",
-                ViolationCode::MissingCheckpointToolInLiveTools,
-                format!(
-                    "cp3_install.required_tools includes '{tool}' which is not declared in cp2_live_tools.required_tools"
-                ),
-            );
-        }
-    }
-
-    let cp4 = &contract.checkpoints.cp4_installed_boot;
-    validate_boot_patterns(
-        &mut violations,
-        CheckpointId::Cp4,
-        "cp4_installed_boot.success_patterns",
-        &cp4.success_patterns,
-        "cp4_installed_boot.fatal_patterns",
-        &cp4.fatal_patterns,
-    );
-    validate_evidence(
-        &mut violations,
-        CheckpointId::Cp4,
-        "cp4_installed_boot.evidence",
-        &cp4.evidence.script_path,
-        &cp4.evidence.pass_marker,
-        "checkpoint-4-",
-    );
-
-    let cp5 = &contract.checkpoints.cp5_automated_login;
-    let login_prompt_ok = validate_non_empty_trimmed(
-        &mut violations,
-        Some(CheckpointId::Cp5),
-        "cp5_automated_login.login_prompt_pattern",
-        &cp5.login_prompt_pattern,
-    );
-
-    if login_prompt_ok {
-        let lowered = cp5.login_prompt_pattern.to_ascii_lowercase();
-        if lowered == "login:" || !lowered.contains("login") {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp5),
-                "cp5_automated_login.login_prompt_pattern",
-                ViolationCode::GenericSuccessPattern,
-                "cp5 login prompt must be distro-specific and include login marker",
-            );
-        }
-    }
-
-    match cp5.auth_mode {
-        AuthMode::DefaultPasswordLogin => {
-            let username_ok = cp5.default_username.as_ref().is_some_and(|v| {
-                validate_non_empty_trimmed(
-                    &mut violations,
-                    Some(CheckpointId::Cp5),
-                    "cp5_automated_login.default_username",
-                    v,
-                )
-            });
-            let password_ok = cp5.default_password.as_ref().is_some_and(|v| {
-                validate_non_empty_trimmed(
-                    &mut violations,
-                    Some(CheckpointId::Cp5),
-                    "cp5_automated_login.default_password",
-                    v,
-                )
-            });
-
-            if !username_ok || !password_ok {
-                push_violation(
-                    &mut violations,
-                    Some(CheckpointId::Cp5),
-                    "cp5_automated_login.auth_mode",
-                    ViolationCode::InvalidAuthDeclaration,
-                    "DefaultPasswordLogin mode requires non-empty default_username and default_password",
-                );
-            }
-        }
-        AuthMode::ProvisionedCredentials => {
-            if cp5.default_username.is_some() || cp5.default_password.is_some() {
-                push_violation(
-                    &mut violations,
-                    Some(CheckpointId::Cp5),
-                    "cp5_automated_login.auth_mode",
-                    ViolationCode::InvalidAuthDeclaration,
-                    "ProvisionedCredentials mode must not expose default_username/default_password",
-                );
-            }
-        }
-    }
-
-    if !cp4
-        .success_patterns
-        .iter()
-        .any(|value| value == &cp5.login_prompt_pattern)
-    {
-        push_violation(
-            &mut violations,
-            Some(CheckpointId::Cp5),
-            "cp5_automated_login.login_prompt_pattern",
-            ViolationCode::LoginPromptNotInInstalledBootPatterns,
-            "cp5 login prompt must be included in cp4 installed boot success patterns",
-        );
-    }
-
-    validate_evidence(
-        &mut violations,
-        CheckpointId::Cp5,
-        "cp5_automated_login.evidence",
-        &cp5.evidence.script_path,
-        &cp5.evidence.pass_marker,
-        "checkpoint-5-",
-    );
-
-    let cp6 = &contract.checkpoints.cp6_installed_tools;
-    validate_command_entries(
-        &mut violations,
-        Some(CheckpointId::Cp6),
-        "cp6_installed_tools.required_tools",
-        &cp6.required_tools,
-    );
-    validate_evidence(
-        &mut violations,
-        CheckpointId::Cp6,
-        "cp6_installed_tools.evidence",
-        &cp6.evidence.script_path,
-        &cp6.evidence.pass_marker,
-        "checkpoint-6-",
-    );
-
-    let cp7 = &contract.checkpoints.cp7_runtime_policy;
-    match cp7.rootfs_mutability {
-        RootfsMutability::Mutable => {
-            if !cp7.immutable_required_ro_paths.is_empty() {
-                push_violation(
-                    &mut violations,
-                    Some(CheckpointId::Cp7),
-                    "cp7_runtime_policy.immutable_required_ro_paths",
-                    ViolationCode::InvalidPathDeclaration,
-                    "mutable rootfs contracts must not define immutable_required_ro_paths",
-                );
-            }
-            validate_absolute_paths(
-                &mut violations,
-                CheckpointId::Cp7,
-                "cp7_runtime_policy.mutable_required_rw_paths",
-                &cp7.mutable_required_rw_paths,
-            );
-        }
-        RootfsMutability::Immutable => {
-            if !cp7.mutable_required_rw_paths.is_empty() {
-                push_violation(
-                    &mut violations,
-                    Some(CheckpointId::Cp7),
-                    "cp7_runtime_policy.mutable_required_rw_paths",
-                    ViolationCode::InvalidPathDeclaration,
-                    "immutable rootfs contracts must not define mutable_required_rw_paths",
-                );
-            }
-            validate_absolute_paths(
-                &mut violations,
-                CheckpointId::Cp7,
-                "cp7_runtime_policy.immutable_required_ro_paths",
-                &cp7.immutable_required_ro_paths,
-            );
-        }
-    }
-
-    let cp8 = &contract.checkpoints.cp8_release;
-    validate_unique_values(
-        &mut violations,
-        Some(CheckpointId::Cp8),
-        "cp8_release.required_artifacts",
-        &cp8.required_artifacts,
-    );
-    for artifact in &cp8.required_artifacts {
-        if artifact.contains('\\')
-            || artifact.contains("..")
-            || artifact.trim() != artifact
-            || artifact.trim().is_empty()
-        {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp8),
-                "cp8_release.required_artifacts",
-                ViolationCode::InvalidToken,
-                format!(
-                    "cp8_release.required_artifacts value '{artifact}' is not a stable artifact id"
-                ),
-            );
-        }
-    }
-
-    let cp8_artifacts: HashSet<&str> = cp8.required_artifacts.iter().map(String::as_str).collect();
-    for required in [
-        contract.artifacts.rootfs_name.as_str(),
-        contract.artifacts.initramfs_live_output.as_str(),
-        contract.artifacts.iso_filename.as_str(),
-    ] {
-        if !cp8_artifacts.contains(required) {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp8),
-                "cp8_release.required_artifacts",
-                ViolationCode::MissingBaselineArtifact,
-                format!("cp8_release.required_artifacts must include '{required}'"),
-            );
-        }
-    }
-    if let Some(value) = &contract.artifacts.initramfs_installed_output {
-        if !cp8_artifacts.contains(value.as_str()) {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp8),
-                "cp8_release.required_artifacts",
-                ViolationCode::MissingBaselineArtifact,
-                format!("cp8_release.required_artifacts must include '{value}'"),
-            );
-        }
-    }
-
-    validate_unique_values(
-        &mut violations,
-        Some(CheckpointId::Cp8),
-        "cp8_release.required_metadata",
-        &cp8.required_metadata,
-    );
-    let cp8_metadata: HashSet<&str> = cp8.required_metadata.iter().map(String::as_str).collect();
-
-    for key in &cp8.required_metadata {
-        if !validate_metadata_key(key) {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp8),
-                "cp8_release.required_metadata",
-                ViolationCode::InvalidMetadataKey,
-                format!("cp8_release.required_metadata key '{key}' is invalid"),
-            );
-        }
-    }
-
-    for key in CP8_REQUIRED_METADATA_BASELINE {
-        if !cp8_metadata.contains(key) {
-            push_violation(
-                &mut violations,
-                Some(CheckpointId::Cp8),
-                "cp8_release.required_metadata",
-                ViolationCode::MissingBaselineMetadata,
-                format!("cp8_release.required_metadata must include '{key}'"),
-            );
-        }
-    }
 
     ConformanceReport {
         distro_id: contract.identity.os_id.clone(),
@@ -1104,31 +604,31 @@ mod tests {
                     },
                 },
                 cp1_live_boot: BootCheckpoint {
-                    success_patterns: vec!["ExampleOS Live Ready".to_string()],
-                    fatal_patterns: vec!["Kernel panic".to_string()],
+                    success_patterns: vec!["ignored-in-cp0-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-cp0-phase".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "checkpoint-1-live-boot.sh".to_string(),
                         pass_marker: "CHECKPOINT 1 PASSED".to_string(),
                     },
                 },
                 cp2_live_tools: ToolsCheckpoint {
-                    required_tools: vec!["recstrap".to_string(), "mount".to_string()],
+                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "checkpoint-2-live-tools.sh".to_string(),
                         pass_marker: "CHECKPOINT 2 PASSED".to_string(),
                     },
                 },
                 cp3_install: InstallCheckpoint {
-                    required_tools: vec!["recstrap".to_string(), "mount".to_string()],
-                    required_services: vec!["networking".to_string()],
+                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
+                    required_services: vec!["ignored-in-cp0-phase".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "checkpoint-3-installation.sh".to_string(),
                         pass_marker: "CHECKPOINT 3 PASSED".to_string(),
                     },
                 },
                 cp4_installed_boot: BootCheckpoint {
-                    success_patterns: vec!["exampleos login:".to_string()],
-                    fatal_patterns: vec!["VFS: Cannot open root device".to_string()],
+                    success_patterns: vec!["ignored-in-cp0-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-cp0-phase".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "checkpoint-4-installed-boot.sh".to_string(),
                         pass_marker: "CHECKPOINT 4 PASSED".to_string(),
@@ -1136,16 +636,16 @@ mod tests {
                 },
                 cp5_automated_login: AutomatedLoginCheckpoint {
                     auth_mode: AuthMode::DefaultPasswordLogin,
-                    default_username: Some("example".to_string()),
-                    default_password: Some("example".to_string()),
-                    login_prompt_pattern: "exampleos login:".to_string(),
+                    default_username: Some("ignored".to_string()),
+                    default_password: Some("ignored".to_string()),
+                    login_prompt_pattern: "ignored-in-cp0-phase".to_string(),
                     evidence: ScriptEvidence {
                         script_path: "checkpoint-5-automated-login.sh".to_string(),
                         pass_marker: "CHECKPOINT 5 PASSED".to_string(),
                     },
                 },
                 cp6_installed_tools: ToolsCheckpoint {
-                    required_tools: vec!["sudo".to_string(), "ip".to_string()],
+                    required_tools: vec!["ignored-in-cp0-phase".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "checkpoint-6-daily-driver.sh".to_string(),
                         pass_marker: "CHECKPOINT 6 PASSED".to_string(),
@@ -1153,23 +653,12 @@ mod tests {
                 },
                 cp7_runtime_policy: RuntimePolicyCheckpoint {
                     rootfs_mutability: RootfsMutability::Mutable,
-                    mutable_required_rw_paths: vec!["/etc".to_string(), "/var".to_string()],
+                    mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],
                 },
                 cp8_release: ReleaseCheckpoint {
-                    required_artifacts: vec![
-                        "exampleos.erofs".to_string(),
-                        "initramfs-live.cpio.gz".to_string(),
-                        "initramfs-installed.img".to_string(),
-                        "exampleos.iso".to_string(),
-                    ],
-                    required_metadata: vec![
-                        "kernel_source.version".to_string(),
-                        "kernel_source.sha256".to_string(),
-                        "kernel_source.localversion".to_string(),
-                        "artifact.rootfs_name".to_string(),
-                        "artifact.iso_filename".to_string(),
-                    ],
+                    required_artifacts: vec![],
+                    required_metadata: vec![],
                 },
             },
         }
@@ -1179,92 +668,6 @@ mod tests {
     fn valid_contract_passes() {
         let report = validate_contract(&valid_contract());
         assert!(report.passed(), "violations: {:#?}", report.violations);
-    }
-
-    #[test]
-    fn generic_boot_pattern_fails() {
-        let mut contract = valid_contract();
-        contract.checkpoints.cp1_live_boot.success_patterns = vec!["login:".to_string()];
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::GenericSuccessPattern));
-    }
-
-    #[test]
-    fn cp3_tools_must_exist_in_cp2() {
-        let mut contract = valid_contract();
-        contract
-            .checkpoints
-            .cp3_install
-            .required_tools
-            .push("recchroot".to_string());
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::MissingCheckpointToolInLiveTools));
-    }
-
-    #[test]
-    fn cp5_login_prompt_must_match_cp4_patterns() {
-        let mut contract = valid_contract();
-        contract
-            .checkpoints
-            .cp5_automated_login
-            .login_prompt_pattern = "example login:".to_string();
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::LoginPromptNotInInstalledBootPatterns));
-    }
-
-    #[test]
-    fn evidence_script_must_be_filename_with_checkpoint_prefix() {
-        let mut contract = valid_contract();
-        contract.checkpoints.cp2_live_tools.evidence.script_path =
-            "scripts/checkpoint-2-live-tools.sh".to_string();
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::InvalidEvidenceDeclaration));
-    }
-
-    #[test]
-    fn cp8_requires_baseline_metadata_and_artifacts() {
-        let mut contract = valid_contract();
-        contract
-            .checkpoints
-            .cp8_release
-            .required_metadata
-            .retain(|key| key != "kernel_source.sha256");
-        contract
-            .checkpoints
-            .cp8_release
-            .required_artifacts
-            .retain(|artifact| artifact != "exampleos.erofs");
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::MissingBaselineMetadata));
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::MissingBaselineArtifact));
     }
 
     #[test]
