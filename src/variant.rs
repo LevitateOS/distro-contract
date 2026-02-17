@@ -1,7 +1,7 @@
 //! Variant-local Stage 00 contract loader.
 //!
-//! This module defines the authoritative on-disk Stage 00 contract format at:
-//! `distro-variants/<variant>/stage-00.toml`.
+//! This module defines the authoritative on-disk 00Build contract format at:
+//! `distro-variants/<variant>/00Build.toml`.
 
 use std::fmt;
 use std::fs;
@@ -9,17 +9,19 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::error::{StageId, ViolationCode};
+use crate::fs_layout::{validate_layout, LayoutRequirement};
+use crate::s00_build::{
+    LEGACY_MANIFEST_FILENAME, MANIFEST_FILENAME, REQUIRED_VARIANT_KCONFIG,
+    REQUIRED_VARIANT_RECIPE_DECL,
+};
 use crate::schema::{
-    ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage,
-    BuildCapabilityStage, StageContract, ConformanceContract, DistroIdentity,
-    InstallStage, ReleaseStage, RootfsMutability, RuntimePolicyStage,
-    ScriptEvidence, ToolsStage,
+    ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage, BuildCapabilityStage,
+    ConformanceContract, DistroIdentity, InstallStage, ReleaseStage, RootfsMutability,
+    RuntimePolicyStage, ScriptEvidence, Stage00NonKernelInputs, StageContract, ToolsStage,
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
-const STAGE_00_MANIFEST_FILENAME: &str = "stage-00.toml";
-const REQUIRED_VARIANT_KCONFIG: &str = "kconfig";
-const REQUIRED_VARIANT_RECIPE_DECL: &str = "recipes/kernel.rhai";
 
 /// Loaded variant contract bundle with resolved filesystem paths.
 #[derive(Debug, Clone)]
@@ -82,8 +84,9 @@ impl fmt::Display for VariantContractLoadError {
             ),
             Self::MissingManifestFile { path } => write!(
                 f,
-                "missing Stage 00 contract manifest: expected '{}'",
-                path.display()
+                "missing 00Build contract manifest: expected '{}' (legacy fallback: '{}')",
+                path.display(),
+                LEGACY_MANIFEST_FILENAME
             ),
             Self::ReadManifestFailed { path, source } => write!(
                 f,
@@ -181,12 +184,17 @@ fn load_stage_00_contract_bundle_for_distro_at_root(
         });
     }
 
-    let manifest_path = variant_dir.join(STAGE_00_MANIFEST_FILENAME);
-    if !manifest_path.is_file() {
+    let manifest_primary = variant_dir.join(MANIFEST_FILENAME);
+    let manifest_legacy = variant_dir.join(LEGACY_MANIFEST_FILENAME);
+    let manifest_path = if manifest_primary.is_file() {
+        manifest_primary
+    } else if manifest_legacy.is_file() {
+        manifest_legacy
+    } else {
         return Err(VariantContractLoadError::MissingManifestFile {
-            path: manifest_path,
+            path: manifest_primary,
         });
-    }
+    };
 
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         VariantContractLoadError::ReadManifestFailed {
@@ -201,22 +209,54 @@ fn load_stage_00_contract_bundle_for_distro_at_root(
         }
     })?;
 
-    ensure_file_exists(
-        &variant_dir.join(REQUIRED_VARIANT_KCONFIG),
-        "variant kernel kconfig",
-    )?;
-    ensure_file_exists(
-        &variant_dir.join(REQUIRED_VARIANT_RECIPE_DECL),
-        "variant Stage 00 recipe declaration",
-    )?;
-    ensure_file_exists(
-        &variant_dir.join(&manifest.stage_00.evidence.script_path),
-        "Stage 00 evidence script",
-    )?;
-    ensure_file_exists(
-        &repo_root.join(&manifest.stage_00.recipe_kernel_script),
-        "declared recipe_kernel_script target",
-    )?;
+    let variant_layout = validate_layout(
+        Some(StageId::Stage00),
+        &variant_dir,
+        &[
+            LayoutRequirement::file(
+                "stage_00_build.kernel_kconfig_path",
+                REQUIRED_VARIANT_KCONFIG,
+                ViolationCode::InvalidPathDeclaration,
+                "variant kernel kconfig",
+            ),
+            LayoutRequirement::file(
+                "stage_00_build.recipe_kernel_declaration",
+                REQUIRED_VARIANT_RECIPE_DECL,
+                ViolationCode::InvalidPathDeclaration,
+                "variant Stage 00 recipe declaration",
+            ),
+            LayoutRequirement::file(
+                "stage_00_build.evidence.script_path",
+                &manifest.stage_00.evidence.script_path,
+                ViolationCode::InvalidEvidenceDeclaration,
+                "Stage 00 evidence script",
+            ),
+        ],
+    );
+    if let Some(first) = variant_layout.failures.first() {
+        return Err(VariantContractLoadError::MissingRequiredFile {
+            path: first.path.clone(),
+            description: first.description,
+        });
+    }
+
+    let repo_layout = validate_layout(
+        Some(StageId::Stage00),
+        repo_root,
+        &[LayoutRequirement::file(
+            "stage_00_build.recipe_kernel_script",
+            &manifest.stage_00.recipe_kernel_script,
+            ViolationCode::RecipeKernelOrchestrationRequired,
+            "declared recipe_kernel_script target",
+        )],
+    );
+    if let Some(first) = repo_layout.failures.first() {
+        return Err(VariantContractLoadError::MissingRequiredFile {
+            path: first.path.clone(),
+            description: first.description,
+        });
+    }
+
     validate_recipe_declaration_content(
         &variant_dir.join(REQUIRED_VARIANT_RECIPE_DECL),
         &manifest.stage_00.recipe_kernel_script,
@@ -262,20 +302,6 @@ fn validate_recipe_declaration_content(
     Ok(())
 }
 
-fn ensure_file_exists(
-    path: &Path,
-    description: &'static str,
-) -> Result<(), VariantContractLoadError> {
-    if path.is_file() {
-        Ok(())
-    } else {
-        Err(VariantContractLoadError::MissingRequiredFile {
-            path: path.to_path_buf(),
-            description,
-        })
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantStage00Manifest {
@@ -315,6 +341,18 @@ impl VariantStage00Manifest {
                     kernel_sha256: self.stage_00.kernel_sha256,
                     kernel_localversion: self.stage_00.kernel_localversion,
                     module_install_path: self.stage_00.module_install_path,
+                    non_kernel_inputs: Stage00NonKernelInputs {
+                        required_for_00build: self.stage_00.non_kernel_inputs.required_for_00build,
+                        deferred_to_01boot: self.stage_00.non_kernel_inputs.deferred_to_01boot,
+                        deferred_to_02livetools: self
+                            .stage_00
+                            .non_kernel_inputs
+                            .deferred_to_02livetools,
+                        deferred_to_03install_plus: self
+                            .stage_00
+                            .non_kernel_inputs
+                            .deferred_to_03install_plus,
+                    },
                     evidence: ScriptEvidence {
                         script_path: self.stage_00.evidence.script_path,
                         pass_marker: self.stage_00.evidence.pass_marker,
@@ -415,7 +453,17 @@ struct VariantStage00Build {
     kernel_sha256: String,
     kernel_localversion: String,
     module_install_path: String,
+    non_kernel_inputs: VariantStage00NonKernelInputs,
     evidence: VariantEvidence,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantStage00NonKernelInputs {
+    required_for_00build: Vec<String>,
+    deferred_to_01boot: Vec<String>,
+    deferred_to_02livetools: Vec<String>,
+    deferred_to_03install_plus: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -431,7 +479,7 @@ mod tests {
 
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const VALID_MANIFEST: &str = r#"schema_version = 3
+    const VALID_MANIFEST: &str = r#"schema_version = 4
 
 [identity]
 os_name = "LevitateOS"
@@ -459,8 +507,14 @@ kernel_sha256 = "143e8bc76cc41f831b51aa5e75819bed55bed41f299d35922820f1d2d2b0260
 kernel_localversion = "-levitate"
 module_install_path = "/usr/lib/modules"
 
+[stage_00.non_kernel_inputs]
+required_for_00build = ["filesystem.erofs", "initramfs-live.cpio.gz", "overlayfs.erofs"]
+deferred_to_01boot = []
+deferred_to_02livetools = []
+deferred_to_03install_plus = ["initramfs-installed.img"]
+
 [stage_00.evidence]
-script_path = "stage-00-build-capability.sh"
+script_path = "00Build-build-capability.sh"
 pass_marker = "STAGE 00 PASSED"
 "#;
 
@@ -502,17 +556,19 @@ pass_marker = "STAGE 00 PASSED"
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &repo_root.join("distro-variants/levitate/stage-00-build-capability.sh"),
+            &repo_root.join("distro-variants/levitate/00Build-build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_file(
-            &repo_root.join("distro-variants/levitate/stage-00.toml"),
+            &repo_root.join("distro-variants/levitate/00Build.toml"),
             VALID_MANIFEST,
         );
 
-        let contract =
-            load_stage_00_contract_for_distro_from(&repo_root.join(".artifacts/out/leviso"), "levitate")
-                .expect("load levitate contract");
+        let contract = load_stage_00_contract_for_distro_from(
+            &repo_root.join(".artifacts/out/levitate"),
+            "levitate",
+        )
+        .expect("load levitate contract");
 
         assert_eq!(contract.identity.os_name, "LevitateOS");
         assert_eq!(contract.identity.os_id, "levitateos");
@@ -564,11 +620,11 @@ pass_marker = "STAGE 00 PASSED"
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n",
         );
         write_file(
-            &repo_root.join("distro-variants/levitate/stage-00-build-capability.sh"),
+            &repo_root.join("distro-variants/levitate/00Build-build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_file(
-            &repo_root.join("distro-variants/levitate/stage-00.toml"),
+            &repo_root.join("distro-variants/levitate/00Build.toml"),
             VALID_MANIFEST,
         );
 
@@ -591,7 +647,9 @@ pass_marker = "STAGE 00 PASSED"
 
         for distro_id in ["levitate", "acorn", "iuppiter", "ralph"] {
             let loaded = load_stage_00_contract_bundle_for_distro_from(&repo_root, distro_id)
-                .unwrap_or_else(|err| panic!("failed to load {} Stage 00 manifest: {}", distro_id, err));
+                .unwrap_or_else(|err| {
+                    panic!("failed to load {} Stage 00 manifest: {}", distro_id, err)
+                });
 
             assert_eq!(
                 loaded.contract.stages.stage_00_build.kernel_kconfig_path,

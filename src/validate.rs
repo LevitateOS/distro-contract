@@ -4,9 +4,15 @@
 //! Stage 01-Stage 08 declarations may exist in the schema, but this validator only
 //! executes Stage 00 build-capability conformance checks.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::error::{StageId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
+use crate::s00_build::{
+    EVIDENCE_SCRIPT_PREFIX, LEGACY_EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE,
+    REQUIRED_KERNEL_IMAGE_PATH, REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH,
+    REQUIRED_MODULE_INSTALL_PATH, REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE,
+    REQUIRED_RECIPE_INVOCATION, REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
+};
 use crate::schema::{ConformanceContract, CONTRACT_SCHEMA_VERSION};
 
 const PLACEHOLDER_TOKENS: &[&str] = &[
@@ -20,28 +26,6 @@ const PLACEHOLDER_TOKENS: &[&str] = &[
     "n/a",
     "unknown",
 ];
-
-const STAGE_00_REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
-    "recipe",
-    "cargo",
-    "make",
-    "recuki",
-    "ukify",
-    "mkfs.erofs",
-    "xorriso",
-    "reciso",
-    "recinit",
-    "recstrap",
-    "recfstab",
-    "recchroot",
-];
-
-const STAGE_00_REQUIRED_RECIPE_KERNEL_SCRIPT: &str = "distro-builder/recipes/linux.rhai";
-const STAGE_00_REQUIRED_RECIPE_INVOCATION: &str = "recipe install";
-const STAGE_00_REQUIRED_KERNEL_RELEASE_PATH: &str = "kernel-build/include/config/kernel.release";
-const STAGE_00_REQUIRED_KERNEL_IMAGE_PATH: &str = "staging/boot/vmlinuz";
-const STAGE_00_REQUIRED_KERNEL_MODULES_PATH: &str = "staging/usr/lib/modules/<kernel.release>";
-const STAGE_00_REQUIRED_MODULE_INSTALL_PATH: &str = "/usr/lib/modules";
 
 fn push_violation(
     violations: &mut Vec<Violation>,
@@ -173,10 +157,8 @@ fn validate_evidence(
     let script_field = format!("{field_prefix}.script_path");
     let marker_field = format!("{field_prefix}.pass_marker");
 
-    let script_ok =
-        validate_non_empty_trimmed(violations, Some(stage), &script_field, script_path);
-    let marker_ok =
-        validate_non_empty_trimmed(violations, Some(stage), &marker_field, pass_marker);
+    let script_ok = validate_non_empty_trimmed(violations, Some(stage), &script_field, script_path);
+    let marker_ok = validate_non_empty_trimmed(violations, Some(stage), &marker_field, pass_marker);
 
     if script_ok {
         if script_path.contains('/') || script_path.contains('\\') {
@@ -188,14 +170,17 @@ fn validate_evidence(
                 format!("{script_field} must be a script filename, not a path"),
             );
         }
-        if !script_path.starts_with(expected_script_prefix) || !script_path.ends_with(".sh") {
+        let legacy_stage_00_prefix = LEGACY_EVIDENCE_SCRIPT_PREFIX;
+        let valid_prefix = script_path.starts_with(expected_script_prefix)
+            || script_path.starts_with(legacy_stage_00_prefix);
+        if !valid_prefix || !script_path.ends_with(".sh") {
             push_violation(
                 violations,
                 Some(stage),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!(
-                    "{script_field} must start with '{expected_script_prefix}' and end with '.sh'"
+                    "{script_field} must start with '{expected_script_prefix}' (or legacy '{legacy_stage_00_prefix}') and end with '.sh'"
                 ),
             );
         }
@@ -244,6 +229,173 @@ fn is_sha256_hex(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+fn validate_relative_paths_allow_empty(
+    violations: &mut Vec<Violation>,
+    field: &str,
+    values: &[String],
+) {
+    let mut seen = HashSet::new();
+    for value in values {
+        let ok = validate_non_empty_trimmed(violations, Some(StageId::Stage00), field, value);
+        if !ok {
+            continue;
+        }
+
+        if !seen.insert(value) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                field,
+                ViolationCode::DuplicateEntry,
+                format!("{field} contains duplicate value '{value}'"),
+            );
+        }
+
+        if !is_relative_contract_path(value) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                field,
+                ViolationCode::InvalidPathDeclaration,
+                format!("{field} value '{value}' must be a relative normalized path"),
+            );
+        }
+    }
+}
+
+fn validate_stage_00_non_kernel_inputs(
+    violations: &mut Vec<Violation>,
+    contract: &ConformanceContract,
+) {
+    let stage_00 = &contract.stages.stage_00_build;
+    let groups = &stage_00.non_kernel_inputs;
+
+    let required_field = "stage_00_build.non_kernel_inputs.required_for_00build";
+    let stage01_field = "stage_00_build.non_kernel_inputs.deferred_to_01boot";
+    let stage02_field = "stage_00_build.non_kernel_inputs.deferred_to_02livetools";
+    let stage03_field = "stage_00_build.non_kernel_inputs.deferred_to_03install_plus";
+
+    if groups.required_for_00build.is_empty() {
+        push_violation(
+            violations,
+            Some(StageId::Stage00),
+            required_field,
+            ViolationCode::MissingValue,
+            format!("{required_field} must be non-empty"),
+        );
+    }
+
+    validate_relative_paths_allow_empty(violations, required_field, &groups.required_for_00build);
+    validate_relative_paths_allow_empty(violations, stage01_field, &groups.deferred_to_01boot);
+    validate_relative_paths_allow_empty(violations, stage02_field, &groups.deferred_to_02livetools);
+    validate_relative_paths_allow_empty(
+        violations,
+        stage03_field,
+        &groups.deferred_to_03install_plus,
+    );
+
+    let mut required = HashSet::new();
+    for item in &groups.required_for_00build {
+        required.insert(item.as_str());
+    }
+
+    let mut baseline_required = vec![
+        contract.artifacts.rootfs_name.as_str(),
+        contract.artifacts.initramfs_live_output.as_str(),
+    ];
+    baseline_required.extend(REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE.iter().copied());
+    let expected_required: HashSet<&str> = baseline_required.iter().copied().collect();
+    for required_item in baseline_required {
+        if !required.contains(required_item) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                required_field,
+                ViolationCode::MissingBaselineArtifact,
+                format!("{required_field} must include '{required_item}'"),
+            );
+        }
+    }
+    for item in &groups.required_for_00build {
+        if !expected_required.contains(item.as_str()) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                required_field,
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "{required_field} contains unexpected Stage 00 input '{item}'; only canonical minimal Stage 00 inputs are allowed"
+                ),
+            );
+        }
+    }
+
+    for (field, values) in [
+        (stage01_field, groups.deferred_to_01boot.as_slice()),
+        (stage02_field, groups.deferred_to_02livetools.as_slice()),
+        (stage03_field, groups.deferred_to_03install_plus.as_slice()),
+    ] {
+        if !values.is_empty() {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                field,
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "{field} must be empty for minimal Stage 00; move these artifacts to their runtime stage manifests"
+                ),
+            );
+        }
+    }
+
+    let mut owners: HashMap<&str, &str> = HashMap::new();
+    let all_groups = [
+        (required_field, groups.required_for_00build.as_slice()),
+        (stage01_field, groups.deferred_to_01boot.as_slice()),
+        (stage02_field, groups.deferred_to_02livetools.as_slice()),
+        (stage03_field, groups.deferred_to_03install_plus.as_slice()),
+    ];
+    for (field, values) in all_groups {
+        for value in values {
+            let key = value.as_str();
+            if let Some(prev) = owners.insert(key, field) {
+                if prev != field {
+                    push_violation(
+                        violations,
+                        Some(StageId::Stage00),
+                        field,
+                        ViolationCode::DuplicateEntry,
+                        format!(
+                            "'{key}' is declared in both '{prev}' and '{field}'; each non-kernel input must belong to exactly one stage bucket"
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    let kernel_paths = [
+        stage_00.kernel_release_path.as_str(),
+        stage_00.kernel_image_path.as_str(),
+        stage_00.kernel_modules_path.as_str(),
+    ];
+    for (field, values) in all_groups {
+        for value in values {
+            if kernel_paths.contains(&value.as_str()) {
+                push_violation(
+                    violations,
+                    Some(StageId::Stage00),
+                    field,
+                    ViolationCode::InvalidPathDeclaration,
+                    format!(
+                        "'{value}' is a kernel artifact path and must not be declared in stage_00 non-kernel input buckets"
+                    ),
+                );
+            }
+        }
+    }
+}
+
 fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let stage_00 = &contract.stages.stage_00_build;
 
@@ -258,7 +410,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         .iter()
         .map(String::as_str)
         .collect();
-    for tool in STAGE_00_REQUIRED_BUILD_TOOLS_BASELINE {
+    for tool in REQUIRED_BUILD_TOOLS_BASELINE {
         if !stage_00_tools.contains(tool) {
             push_violation(
                 violations,
@@ -276,14 +428,17 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         Some(StageId::Stage00),
         kconfig_field,
         &stage_00.kernel_kconfig_path,
-    ) && stage_00.kernel_kconfig_path != "kconfig"
+    ) && stage_00.kernel_kconfig_path != REQUIRED_VARIANT_KCONFIG
     {
         push_violation(
             violations,
             Some(StageId::Stage00),
             kconfig_field,
             ViolationCode::InvalidPathDeclaration,
-            "stage_00_build.kernel_kconfig_path must be exactly 'kconfig'",
+            format!(
+                "stage_00_build.kernel_kconfig_path must be exactly '{}'",
+                REQUIRED_VARIANT_KCONFIG
+            ),
         );
     }
 
@@ -322,7 +477,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         }
     }
 
-    if stage_00.recipe_kernel_script != STAGE_00_REQUIRED_RECIPE_KERNEL_SCRIPT {
+    if stage_00.recipe_kernel_script != REQUIRED_RECIPE_KERNEL_SCRIPT {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -330,11 +485,11 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ViolationCode::RecipeKernelOrchestrationRequired,
             format!(
                 "stage_00_build.recipe_kernel_script must be '{}'",
-                STAGE_00_REQUIRED_RECIPE_KERNEL_SCRIPT
+                REQUIRED_RECIPE_KERNEL_SCRIPT
             ),
         );
     }
-    if stage_00.recipe_kernel_invocation != STAGE_00_REQUIRED_RECIPE_INVOCATION {
+    if stage_00.recipe_kernel_invocation != REQUIRED_RECIPE_INVOCATION {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -342,12 +497,12 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ViolationCode::RecipeKernelOrchestrationRequired,
             format!(
                 "stage_00_build.recipe_kernel_invocation must be '{}'",
-                STAGE_00_REQUIRED_RECIPE_INVOCATION
+                REQUIRED_RECIPE_INVOCATION
             ),
         );
     }
 
-    if stage_00.kernel_release_path != STAGE_00_REQUIRED_KERNEL_RELEASE_PATH {
+    if stage_00.kernel_release_path != REQUIRED_KERNEL_RELEASE_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -355,11 +510,11 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ViolationCode::MissingRequiredKernelOutput,
             format!(
                 "stage_00_build.kernel_release_path must be '{}'",
-                STAGE_00_REQUIRED_KERNEL_RELEASE_PATH
+                REQUIRED_KERNEL_RELEASE_PATH
             ),
         );
     }
-    if stage_00.kernel_image_path != STAGE_00_REQUIRED_KERNEL_IMAGE_PATH {
+    if stage_00.kernel_image_path != REQUIRED_KERNEL_IMAGE_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -367,11 +522,11 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ViolationCode::MissingRequiredKernelOutput,
             format!(
                 "stage_00_build.kernel_image_path must be '{}'",
-                STAGE_00_REQUIRED_KERNEL_IMAGE_PATH
+                REQUIRED_KERNEL_IMAGE_PATH
             ),
         );
     }
-    if stage_00.kernel_modules_path != STAGE_00_REQUIRED_KERNEL_MODULES_PATH {
+    if stage_00.kernel_modules_path != REQUIRED_KERNEL_MODULES_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -379,12 +534,12 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ViolationCode::MissingRequiredKernelOutput,
             format!(
                 "stage_00_build.kernel_modules_path must be '{}'",
-                STAGE_00_REQUIRED_KERNEL_MODULES_PATH
+                REQUIRED_KERNEL_MODULES_PATH
             ),
         );
     }
 
-    if stage_00.module_install_path != STAGE_00_REQUIRED_MODULE_INSTALL_PATH {
+    if stage_00.module_install_path != REQUIRED_MODULE_INSTALL_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -392,7 +547,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ViolationCode::UnsupportedModuleInstallPath,
             format!(
                 "stage_00_build.module_install_path must be '{}' to enforce cross-distro consistency",
-                STAGE_00_REQUIRED_MODULE_INSTALL_PATH
+                REQUIRED_MODULE_INSTALL_PATH
             ),
         );
     }
@@ -457,8 +612,10 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         "stage_00_build.evidence",
         &stage_00.evidence.script_path,
         &stage_00.evidence.pass_marker,
-        "stage-00-",
+        EVIDENCE_SCRIPT_PREFIX,
     );
+
+    validate_stage_00_non_kernel_inputs(violations, contract);
 }
 
 /// Validate a conformance contract and return a full report.
@@ -598,8 +755,18 @@ mod tests {
                             .to_string(),
                     kernel_localversion: "-exampleos".to_string(),
                     module_install_path: "/usr/lib/modules".to_string(),
+                    non_kernel_inputs: Stage00NonKernelInputs {
+                        required_for_00build: vec![
+                            "exampleos.erofs".to_string(),
+                            "initramfs-live.cpio.gz".to_string(),
+                            "overlayfs.erofs".to_string(),
+                        ],
+                        deferred_to_01boot: vec![],
+                        deferred_to_02livetools: vec![],
+                        deferred_to_03install_plus: vec![],
+                    },
                     evidence: ScriptEvidence {
-                        script_path: "stage-00-build-capability.sh".to_string(),
+                        script_path: "00Build-build-capability.sh".to_string(),
                         pass_marker: "STAGE 00 PASSED".to_string(),
                     },
                 },
@@ -711,5 +878,77 @@ mod tests {
             .violations
             .iter()
             .any(|v| v.code == ViolationCode::UnsupportedModuleInstallPath));
+    }
+
+    #[test]
+    fn stage_00_requires_minimal_non_kernel_input_baseline() {
+        let mut contract = valid_contract();
+        contract
+            .stages
+            .stage_00_build
+            .non_kernel_inputs
+            .required_for_00build
+            .retain(|v| v != "overlayfs.erofs");
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingBaselineArtifact));
+    }
+
+    #[test]
+    fn stage_00_non_kernel_inputs_must_be_partitioned_without_overlap() {
+        let mut contract = valid_contract();
+        contract
+            .stages
+            .stage_00_build
+            .non_kernel_inputs
+            .deferred_to_01boot
+            .push("overlayfs.erofs".to_string());
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::DuplicateEntry));
+    }
+
+    #[test]
+    fn stage_00_non_kernel_inputs_reject_unexpected_required_entries() {
+        let mut contract = valid_contract();
+        contract
+            .stages
+            .stage_00_build
+            .non_kernel_inputs
+            .required_for_00build
+            .push("initramfs-installed.img".to_string());
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.field == "stage_00_build.non_kernel_inputs.required_for_00build"));
+    }
+
+    #[test]
+    fn stage_00_non_kernel_inputs_require_empty_deferred_buckets() {
+        let mut contract = valid_contract();
+        contract
+            .stages
+            .stage_00_build
+            .non_kernel_inputs
+            .deferred_to_03install_plus
+            .push("initramfs-installed.img".to_string());
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.field == "stage_00_build.non_kernel_inputs.deferred_to_03install_plus"));
     }
 }

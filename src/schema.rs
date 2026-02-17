@@ -1,7 +1,7 @@
 //! Conformance contract schema for distro stage declarations.
 
 /// Contract schema version enforced by validators.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 3;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 4;
 
 /// Stage 05 authentication policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -97,6 +97,20 @@ pub struct ReleaseStage {
     pub required_metadata: Vec<String>,
 }
 
+/// Stage-scoped non-kernel input partition for 00Build.
+///
+/// All entries are relative paths under `.artifacts/out/<distro>/`.
+/// Stage 00 validators require a minimal bootable subset in
+/// `required_for_00build`, while deferred buckets are declared ownership for
+/// later runtime stages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stage00NonKernelInputs {
+    pub required_for_00build: Vec<String>,
+    pub deferred_to_01boot: Vec<String>,
+    pub deferred_to_02livetools: Vec<String>,
+    pub deferred_to_03install_plus: Vec<String>,
+}
+
 /// Stage 00 build-capability declaration.
 ///
 /// Stage 00 is intentionally non-runtime: it validates build-system/kernel provenance
@@ -125,6 +139,8 @@ pub struct BuildCapabilityStage {
     pub kernel_localversion: String,
     /// Declared kernel modules install root.
     pub module_install_path: String,
+    /// Stage-scoped non-kernel artifact input partition.
+    pub non_kernel_inputs: Stage00NonKernelInputs,
     /// Evidence declaration for Stage 00 checks.
     pub evidence: ScriptEvidence,
 }

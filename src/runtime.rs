@@ -6,7 +6,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::error::{StageId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
+use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::ConformanceContract;
 
 fn push_violation(
@@ -67,18 +68,60 @@ pub fn validate_stage_00_runtime(
     let stage_00 = &contract.stages.stage_00_build;
     let mut violations = Vec::new();
 
-    let kconfig_path = variant_dir.join(&stage_00.kernel_kconfig_path);
-    if !kconfig_path.is_file() {
-        push_violation(
-            &mut violations,
+    let variant_layout = validate_layout(
+        Some(StageId::Stage00),
+        variant_dir,
+        &[LayoutRequirement::file(
             "stage_00_build.kernel_kconfig_path",
+            &stage_00.kernel_kconfig_path,
             ViolationCode::MissingRequiredKernelOutput,
-            format!(
-                "declared kernel kconfig path does not exist: '{}'",
-                kconfig_path.display()
+            "declared kernel kconfig path",
+        )],
+    );
+    let kconfig_missing = variant_layout.has_field_violation("stage_00_build.kernel_kconfig_path");
+    violations.extend(variant_layout.violations);
+
+    let artifact_layout = validate_layout(
+        Some(StageId::Stage00),
+        artifact_dir,
+        &[
+            LayoutRequirement::file(
+                "stage_00_build.kernel_release_path",
+                &stage_00.kernel_release_path,
+                ViolationCode::MissingRequiredKernelOutput,
+                "kernel.release output",
             ),
+            LayoutRequirement::file(
+                "stage_00_build.kernel_image_path",
+                &stage_00.kernel_image_path,
+                ViolationCode::MissingRequiredKernelOutput,
+                "kernel image output",
+            ),
+        ],
+    );
+    let release_missing = artifact_layout.has_field_violation("stage_00_build.kernel_release_path");
+    violations.extend(artifact_layout.violations);
+
+    let mut non_kernel_requirements = Vec::new();
+    for input in &stage_00.non_kernel_inputs.required_for_00build {
+        non_kernel_requirements.push(LayoutRequirement::file(
+            "stage_00_build.non_kernel_inputs.required_for_00build",
+            input,
+            ViolationCode::MissingBaselineArtifact,
+            "required Stage 00 non-kernel input",
+        ));
+    }
+    if !non_kernel_requirements.is_empty() {
+        let non_kernel_layout = validate_layout(
+            Some(StageId::Stage00),
+            artifact_dir,
+            &non_kernel_requirements,
         );
-    } else {
+        violations.extend(non_kernel_layout.violations);
+    }
+
+    let kconfig_path = variant_dir.join(&stage_00.kernel_kconfig_path);
+    if !kconfig_missing {
         match fs::read_to_string(&kconfig_path) {
             Ok(raw) => match parse_kconfig_localversion(&raw) {
                 Some(localversion) => {
@@ -122,7 +165,11 @@ pub fn validate_stage_00_runtime(
     }
 
     let release_path = artifact_dir.join(&stage_00.kernel_release_path);
-    let kernel_release = match read_trimmed(&release_path) {
+    let kernel_release = match if release_missing {
+        None
+    } else {
+        read_trimmed(&release_path)
+    } {
         Some(value) => {
             if !value.starts_with(&stage_00.kernel_version) {
                 push_violation(
@@ -149,49 +196,36 @@ pub fn validate_stage_00_runtime(
             Some(value)
         }
         None => {
-            push_violation(
-                &mut violations,
-                "stage_00_build.kernel_release_path",
-                ViolationCode::MissingRequiredKernelOutput,
-                format!(
-                    "missing or empty kernel.release output at '{}'",
-                    release_path.display()
-                ),
-            );
+            if !release_missing {
+                push_violation(
+                    &mut violations,
+                    "stage_00_build.kernel_release_path",
+                    ViolationCode::MissingRequiredKernelOutput,
+                    format!(
+                        "missing or empty kernel.release output at '{}'",
+                        release_path.display()
+                    ),
+                );
+            }
             None
         }
     };
-
-    let kernel_image_path = artifact_dir.join(&stage_00.kernel_image_path);
-    if !kernel_image_path.is_file() {
-        push_violation(
-            &mut violations,
-            "stage_00_build.kernel_image_path",
-            ViolationCode::MissingRequiredKernelOutput,
-            format!(
-                "missing kernel image output at '{}'",
-                kernel_image_path.display()
-            ),
-        );
-    }
 
     if let Some(kernel_release) = kernel_release {
         let expanded_modules_rel = stage_00
             .kernel_modules_path
             .replace("<kernel.release>", &kernel_release);
-        let modules_path = artifact_dir.join(expanded_modules_rel);
-        if !modules_path.is_dir() {
-            push_violation(
-                &mut violations,
+        let modules_layout = validate_layout(
+            Some(StageId::Stage00),
+            artifact_dir,
+            &[LayoutRequirement::directory(
                 "stage_00_build.kernel_modules_path",
+                expanded_modules_rel,
                 ViolationCode::MissingRequiredKernelOutput,
-                format!(
-                    "missing kernel modules output for release '{}' at '{}'",
-                    kernel_release,
-                    modules_path.display()
-                ),
-            );
-        }
+                "kernel modules output",
+            )],
+        );
+        violations.extend(modules_layout.violations);
     }
 
     let usrmerge_root = artifact_dir.join(PathBuf::from("staging/usr/lib/modules"));
@@ -280,8 +314,18 @@ mod tests {
                             .to_string(),
                     kernel_localversion: "-levitate".to_string(),
                     module_install_path: "/usr/lib/modules".to_string(),
+                    non_kernel_inputs: Stage00NonKernelInputs {
+                        required_for_00build: vec![
+                            "filesystem.erofs".to_string(),
+                            "initramfs-live.cpio.gz".to_string(),
+                            "overlayfs.erofs".to_string(),
+                        ],
+                        deferred_to_01boot: vec![],
+                        deferred_to_02livetools: vec![],
+                        deferred_to_03install_plus: vec!["initramfs-installed.img".to_string()],
+                    },
                     evidence: ScriptEvidence {
-                        script_path: "stage-00-build-capability.sh".to_string(),
+                        script_path: "00Build-build-capability.sh".to_string(),
                         pass_marker: "STAGE 00 PASSED".to_string(),
                     },
                 },
@@ -381,6 +425,12 @@ mod tests {
             "6.12.71-levitate\n",
         );
         write_file(&artifact_dir.join("staging/boot/vmlinuz"), "kernel");
+        write_file(&artifact_dir.join("filesystem.erofs"), "rootfs");
+        write_file(
+            &artifact_dir.join("initramfs-live.cpio.gz"),
+            "initramfs-live",
+        );
+        write_file(&artifact_dir.join("overlayfs.erofs"), "overlay");
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-levitate"))
             .expect("create modules dir");
 
@@ -406,6 +456,12 @@ mod tests {
             "6.12.71-other\n",
         );
         write_file(&artifact_dir.join("staging/boot/vmlinuz"), "kernel");
+        write_file(&artifact_dir.join("filesystem.erofs"), "rootfs");
+        write_file(
+            &artifact_dir.join("initramfs-live.cpio.gz"),
+            "initramfs-live",
+        );
+        write_file(&artifact_dir.join("overlayfs.erofs"), "overlay");
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-other"))
             .expect("create modules dir");
 

@@ -7,7 +7,7 @@ Conformance schema + validation engine for LevitateOS distro stage contracts.
 This crate enforces Stage 00 declaration + Stage 00 runtime provenance:
 
 - Define Stage 00..Stage 08 contract schema
-- Load Stage 00 contracts from `distro-variants/*/stage-00.toml`
+- Load Stage 00 contracts from `distro-variants/*/00Build.toml`
 - Validate anti-gaming and consistency rules
 - Validate Stage 00 runtime provenance against real outputs (`kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
@@ -26,4 +26,4 @@ builder/component/disk interfaces.
 
 ## Schema Version
 
-Current contract schema version: `3` (`CONTRACT_SCHEMA_VERSION`).
+Current contract schema version: `4` (`CONTRACT_SCHEMA_VERSION`).
