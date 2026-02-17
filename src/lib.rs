@@ -15,7 +15,10 @@ pub mod validate;
 pub mod variant;
 
 pub use error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
-pub use runtime::{require_valid_stage_00_runtime, validate_stage_00_runtime};
+pub use runtime::{
+    require_valid_stage_00_runtime, require_valid_stage_00_runtime_with_stage_dirs,
+    validate_stage_00_runtime, validate_stage_00_runtime_with_stage_dirs,
+};
 pub use schema::{
     ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage, BuildCapabilityStage,
     ConformanceContract, DistroIdentity, InstallStage, ReleaseStage, RootfsMutability,

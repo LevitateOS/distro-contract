@@ -479,7 +479,7 @@ mod tests {
 
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const VALID_MANIFEST: &str = r#"schema_version = 4
+    const VALID_MANIFEST: &str = r#"schema_version = 5
 
 [identity]
 os_name = "LevitateOS"
@@ -489,8 +489,8 @@ os_version = "1.0"
 default_hostname = "levitateos"
 
 [artifacts]
-rootfs_name = "filesystem.erofs"
-initramfs_live_output = "initramfs-live.cpio.gz"
+rootfs_name = "s00-filesystem.erofs"
+initramfs_live_output = "s00-initramfs-live.cpio.gz"
 iso_filename = "levitateos-x86_64.iso"
 initramfs_installed_output = "initramfs-installed.img"
 
@@ -508,7 +508,7 @@ kernel_localversion = "-levitate"
 module_install_path = "/usr/lib/modules"
 
 [stage_00.non_kernel_inputs]
-required_for_00build = ["filesystem.erofs", "initramfs-live.cpio.gz", "overlayfs.erofs"]
+required_for_00build = ["s00-filesystem.erofs", "s00-initramfs-live.cpio.gz", "s00-overlayfs.erofs"]
 deferred_to_01boot = []
 deferred_to_02livetools = []
 deferred_to_03install_plus = ["initramfs-installed.img"]

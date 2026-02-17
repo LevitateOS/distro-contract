@@ -12,6 +12,13 @@ This crate enforces Stage 00 declaration + Stage 00 runtime provenance:
 - Validate Stage 00 runtime provenance against real outputs (`kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
 
+This crate is also the policy authority for stage-envelope conformance:
+
+- Stage artifacts must satisfy "nothing more, nothing less" for their stage boundary.
+- Missing required payload is a failure.
+- Extra payload that belongs to later stages is a failure.
+- Filesystem layout checks (required/forbidden paths per stage) are first-class conformance rules.
+
 It does **not** own runtime testing (QEMU/stages) and does **not** own
 builder/component/disk interfaces.
 

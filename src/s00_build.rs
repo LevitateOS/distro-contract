@@ -60,4 +60,4 @@ pub const REQUIRED_MODULE_INSTALL_PATH: &str = "/usr/lib/modules";
 /// Mandatory minimal non-kernel Stage 00 inputs for ISO synthesis.
 ///
 /// These are declared relative to `.artifacts/out/<DistroDir>/`.
-pub const REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE: &[&str] = &["overlayfs.erofs"];
+pub const REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE: &[&str] = &["s00-overlayfs.erofs"];

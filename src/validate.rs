@@ -759,7 +759,7 @@ mod tests {
                         required_for_00build: vec![
                             "exampleos.erofs".to_string(),
                             "initramfs-live.cpio.gz".to_string(),
-                            "overlayfs.erofs".to_string(),
+                            "s00-overlayfs.erofs".to_string(),
                         ],
                         deferred_to_01boot: vec![],
                         deferred_to_02livetools: vec![],
@@ -888,7 +888,7 @@ mod tests {
             .stage_00_build
             .non_kernel_inputs
             .required_for_00build
-            .retain(|v| v != "overlayfs.erofs");
+            .retain(|v| v != "s00-overlayfs.erofs");
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -906,7 +906,7 @@ mod tests {
             .stage_00_build
             .non_kernel_inputs
             .deferred_to_01boot
-            .push("overlayfs.erofs".to_string());
+            .push("s00-overlayfs.erofs".to_string());
 
         let report = validate_contract(&contract);
         assert!(!report.passed());

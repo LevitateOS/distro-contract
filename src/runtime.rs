@@ -65,6 +65,19 @@ pub fn validate_stage_00_runtime(
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> ConformanceReport {
+    validate_stage_00_runtime_with_stage_dirs(contract, variant_dir, artifact_dir, artifact_dir)
+}
+
+/// Validate Stage 00 runtime/provenance with split kernel + stage artifact roots.
+///
+/// Use `kernel_artifact_dir` for kernel provenance outputs and
+/// `stage_artifact_dir` for stage-scoped non-kernel artifacts.
+pub fn validate_stage_00_runtime_with_stage_dirs(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    stage_artifact_dir: &Path,
+) -> ConformanceReport {
     let stage_00 = &contract.stages.stage_00_build;
     let mut violations = Vec::new();
 
@@ -83,7 +96,7 @@ pub fn validate_stage_00_runtime(
 
     let artifact_layout = validate_layout(
         Some(StageId::Stage00),
-        artifact_dir,
+        kernel_artifact_dir,
         &[
             LayoutRequirement::file(
                 "stage_00_build.kernel_release_path",
@@ -114,7 +127,7 @@ pub fn validate_stage_00_runtime(
     if !non_kernel_requirements.is_empty() {
         let non_kernel_layout = validate_layout(
             Some(StageId::Stage00),
-            artifact_dir,
+            stage_artifact_dir,
             &non_kernel_requirements,
         );
         violations.extend(non_kernel_layout.violations);
@@ -164,7 +177,7 @@ pub fn validate_stage_00_runtime(
         }
     }
 
-    let release_path = artifact_dir.join(&stage_00.kernel_release_path);
+    let release_path = kernel_artifact_dir.join(&stage_00.kernel_release_path);
     let kernel_release = match if release_missing {
         None
     } else {
@@ -217,7 +230,7 @@ pub fn validate_stage_00_runtime(
             .replace("<kernel.release>", &kernel_release);
         let modules_layout = validate_layout(
             Some(StageId::Stage00),
-            artifact_dir,
+            kernel_artifact_dir,
             &[LayoutRequirement::directory(
                 "stage_00_build.kernel_modules_path",
                 expanded_modules_rel,
@@ -228,8 +241,8 @@ pub fn validate_stage_00_runtime(
         violations.extend(modules_layout.violations);
     }
 
-    let usrmerge_root = artifact_dir.join(PathBuf::from("staging/usr/lib/modules"));
-    let legacy_root = artifact_dir.join(PathBuf::from("staging/lib/modules"));
+    let usrmerge_root = kernel_artifact_dir.join(PathBuf::from("staging/usr/lib/modules"));
+    let legacy_root = kernel_artifact_dir.join(PathBuf::from("staging/lib/modules"));
     if is_real_directory(&legacy_root) && !usrmerge_root.is_dir() {
         push_violation(
             &mut violations,
@@ -256,7 +269,32 @@ pub fn require_valid_stage_00_runtime(
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> Result<(), ConformanceError> {
-    let report = validate_stage_00_runtime(contract, variant_dir, artifact_dir);
+    let report = validate_stage_00_runtime_with_stage_dirs(
+        contract,
+        variant_dir,
+        artifact_dir,
+        artifact_dir,
+    );
+    if report.passed() {
+        Ok(())
+    } else {
+        Err(ConformanceError { report })
+    }
+}
+
+/// Require Stage 00 runtime checks to pass with split kernel + stage roots.
+pub fn require_valid_stage_00_runtime_with_stage_dirs(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    stage_artifact_dir: &Path,
+) -> Result<(), ConformanceError> {
+    let report = validate_stage_00_runtime_with_stage_dirs(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        stage_artifact_dir,
+    );
     if report.passed() {
         Ok(())
     } else {
@@ -281,8 +319,8 @@ mod tests {
                 default_hostname: "levitateos".to_string(),
             },
             artifacts: ArtifactIdentity {
-                rootfs_name: "filesystem.erofs".to_string(),
-                initramfs_live_output: "initramfs-live.cpio.gz".to_string(),
+                rootfs_name: "s00-filesystem.erofs".to_string(),
+                initramfs_live_output: "s00-initramfs-live.cpio.gz".to_string(),
                 iso_filename: "levitateos-x86_64.iso".to_string(),
                 initramfs_installed_output: Some("initramfs-installed.img".to_string()),
             },
@@ -316,9 +354,9 @@ mod tests {
                     module_install_path: "/usr/lib/modules".to_string(),
                     non_kernel_inputs: Stage00NonKernelInputs {
                         required_for_00build: vec![
-                            "filesystem.erofs".to_string(),
-                            "initramfs-live.cpio.gz".to_string(),
-                            "overlayfs.erofs".to_string(),
+                            "s00-filesystem.erofs".to_string(),
+                            "s00-initramfs-live.cpio.gz".to_string(),
+                            "s00-overlayfs.erofs".to_string(),
                         ],
                         deferred_to_01boot: vec![],
                         deferred_to_02livetools: vec![],
@@ -425,12 +463,12 @@ mod tests {
             "6.12.71-levitate\n",
         );
         write_file(&artifact_dir.join("staging/boot/vmlinuz"), "kernel");
-        write_file(&artifact_dir.join("filesystem.erofs"), "rootfs");
+        write_file(&artifact_dir.join("s00-filesystem.erofs"), "rootfs");
         write_file(
-            &artifact_dir.join("initramfs-live.cpio.gz"),
+            &artifact_dir.join("s00-initramfs-live.cpio.gz"),
             "initramfs-live",
         );
-        write_file(&artifact_dir.join("overlayfs.erofs"), "overlay");
+        write_file(&artifact_dir.join("s00-overlayfs.erofs"), "overlay");
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-levitate"))
             .expect("create modules dir");
 
@@ -456,12 +494,12 @@ mod tests {
             "6.12.71-other\n",
         );
         write_file(&artifact_dir.join("staging/boot/vmlinuz"), "kernel");
-        write_file(&artifact_dir.join("filesystem.erofs"), "rootfs");
+        write_file(&artifact_dir.join("s00-filesystem.erofs"), "rootfs");
         write_file(
-            &artifact_dir.join("initramfs-live.cpio.gz"),
+            &artifact_dir.join("s00-initramfs-live.cpio.gz"),
             "initramfs-live",
         );
-        write_file(&artifact_dir.join("overlayfs.erofs"), "overlay");
+        write_file(&artifact_dir.join("s00-overlayfs.erofs"), "overlay");
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-other"))
             .expect("create modules dir");
 

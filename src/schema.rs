@@ -1,7 +1,7 @@
 //! Conformance contract schema for distro stage declarations.
 
 /// Contract schema version enforced by validators.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 4;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 5;
 
 /// Stage 05 authentication policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
