@@ -18,7 +18,8 @@ use crate::s00_build::{
 use crate::schema::{
     ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage, BuildCapabilityStage,
     ConformanceContract, DistroIdentity, InstallStage, ReleaseStage, RootfsMutability,
-    RuntimePolicyStage, ScriptEvidence, Stage00NonKernelInputs, StageContract, ToolsStage,
+    RuntimePolicyStage, ScriptEvidence, Stage00IsoAssembly, Stage00NonKernelInputs, StageContract,
+    ToolsStage, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
@@ -309,10 +310,14 @@ struct VariantStage00Manifest {
     identity: VariantIdentity,
     artifacts: VariantArtifacts,
     stage_00: VariantStage00Build,
+    stage_01: Option<VariantStage01Boot>,
 }
 
 impl VariantStage00Manifest {
     fn into_contract(self) -> ConformanceContract {
+        let (required_kernel_cmdline, required_live_services) =
+            stage01_defaults_with_manifest(self.stage_01.as_ref());
+
         ConformanceContract {
             schema_version: self.schema_version,
             identity: DistroIdentity {
@@ -353,6 +358,12 @@ impl VariantStage00Manifest {
                             .non_kernel_inputs
                             .deferred_to_03install_plus,
                     },
+                    iso_assembly: Stage00IsoAssembly {
+                        live_uki_filename: self.stage_00.iso_assembly.live_uki_filename,
+                        emergency_uki_filename: self.stage_00.iso_assembly.emergency_uki_filename,
+                        debug_uki_filename: self.stage_00.iso_assembly.debug_uki_filename,
+                        live_cmdline: self.stage_00.iso_assembly.live_cmdline,
+                    },
                     evidence: ScriptEvidence {
                         script_path: self.stage_00.evidence.script_path,
                         pass_marker: self.stage_00.evidence.pass_marker,
@@ -361,6 +372,8 @@ impl VariantStage00Manifest {
                 stage_01_live_boot: BootStage {
                     success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline,
+                    required_live_services,
                     evidence: ScriptEvidence {
                         script_path: "stage-01-live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
@@ -384,6 +397,8 @@ impl VariantStage00Manifest {
                 stage_04_installed_boot: BootStage {
                     success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec![],
+                    required_live_services: vec![],
                     evidence: ScriptEvidence {
                         script_path: "stage-04-installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
@@ -417,6 +432,37 @@ impl VariantStage00Manifest {
                 },
             },
         }
+    }
+}
+
+fn stage01_defaults_with_manifest(
+    stage: Option<&VariantStage01Boot>,
+) -> (Vec<String>, Vec<String>) {
+    let mut required_kernel_cmdline = stage
+        .map(|s| s.required_kernel_cmdline.clone())
+        .unwrap_or_default();
+    let mut required_live_services = stage
+        .map(|s| s.required_live_services.clone())
+        .unwrap_or_default();
+
+    merge_required_strings(
+        &mut required_kernel_cmdline,
+        STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
+    );
+    merge_required_strings(
+        &mut required_live_services,
+        STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    );
+
+    (required_kernel_cmdline, required_live_services)
+}
+
+fn merge_required_strings(values: &mut Vec<String>, required: &[&str]) {
+    for required_item in required {
+        if values.iter().any(|existing| existing == required_item) {
+            continue;
+        }
+        values.push((*required_item).to_string());
     }
 }
 
@@ -454,7 +500,15 @@ struct VariantStage00Build {
     kernel_localversion: String,
     module_install_path: String,
     non_kernel_inputs: VariantStage00NonKernelInputs,
+    iso_assembly: VariantStage00IsoAssembly,
     evidence: VariantEvidence,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantStage01Boot {
+    required_kernel_cmdline: Vec<String>,
+    required_live_services: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -464,6 +518,15 @@ struct VariantStage00NonKernelInputs {
     deferred_to_01boot: Vec<String>,
     deferred_to_02livetools: Vec<String>,
     deferred_to_03install_plus: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantStage00IsoAssembly {
+    live_uki_filename: String,
+    emergency_uki_filename: String,
+    debug_uki_filename: String,
+    live_cmdline: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -479,7 +542,7 @@ mod tests {
 
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const VALID_MANIFEST: &str = r#"schema_version = 5
+    const VALID_MANIFEST: &str = r#"schema_version = 6
 
 [identity]
 os_name = "LevitateOS"
@@ -492,7 +555,7 @@ default_hostname = "levitateos"
 rootfs_name = "s00-filesystem.erofs"
 initramfs_live_output = "s00-initramfs-live.cpio.gz"
 iso_filename = "levitateos-x86_64.iso"
-initramfs_installed_output = "initramfs-installed.img"
+initramfs_installed_output = "s00-initramfs-installed.img"
 
 [stage_00]
 required_build_tools = ["recipe", "cargo", "make", "recuki", "ukify", "mkfs.erofs", "xorriso", "reciso", "recinit", "recstrap", "recfstab", "recchroot"]
@@ -511,11 +574,21 @@ module_install_path = "/usr/lib/modules"
 required_for_00build = ["s00-filesystem.erofs", "s00-initramfs-live.cpio.gz", "s00-overlayfs.erofs"]
 deferred_to_01boot = []
 deferred_to_02livetools = []
-deferred_to_03install_plus = ["initramfs-installed.img"]
+deferred_to_03install_plus = ["s00-initramfs-installed.img"]
+
+[stage_00.iso_assembly]
+live_uki_filename = "levitateos-live.efi"
+emergency_uki_filename = "levitateos-emergency.efi"
+debug_uki_filename = "levitateos-debug.efi"
+live_cmdline = "video=1920x1080"
 
 [stage_00.evidence]
 script_path = "00Build-build-capability.sh"
 pass_marker = "STAGE 00 PASSED"
+
+[stage_01]
+required_kernel_cmdline = ["audit=1"]
+required_live_services = ["sshd"]
 "#;
 
     fn temp_repo_root(test_name: &str) -> PathBuf {
@@ -583,6 +656,14 @@ pass_marker = "STAGE 00 PASSED"
         assert_eq!(
             contract.stages.stage_00_build.recipe_kernel_script,
             "distro-builder/recipes/linux.rhai"
+        );
+        assert_eq!(
+            contract.stages.stage_01_live_boot.required_kernel_cmdline,
+            vec!["audit=1".to_string(), "inst.sshd=0".to_string()]
+        );
+        assert_eq!(
+            contract.stages.stage_01_live_boot.required_live_services,
+            vec!["sshd".to_string()]
         );
 
         fs::remove_dir_all(repo_root).expect("cleanup temp root");

@@ -1,7 +1,13 @@
 //! Conformance contract schema for distro stage declarations.
 
 /// Contract schema version enforced by validators.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 5;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 6;
+
+/// Shared Stage 01 kernel cmdline invariants required for deterministic live boot.
+pub const STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE: &[&str] = &["audit=1", "inst.sshd=0"];
+
+/// Shared Stage 01 live services that must be present across all distros.
+pub const STAGE_01_REQUIRED_LIVE_SERVICES_BASE: &[&str] = &["sshd"];
 
 /// Stage 05 authentication policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -54,6 +60,10 @@ pub struct ArtifactIdentity {
 pub struct BootStage {
     pub success_patterns: Vec<String>,
     pub fatal_patterns: Vec<String>,
+    /// Required kernel cmdline tokens for booting this stage.
+    pub required_kernel_cmdline: Vec<String>,
+    /// Required live services that must be available at this stage.
+    pub required_live_services: Vec<String>,
     pub evidence: ScriptEvidence,
 }
 
@@ -111,6 +121,19 @@ pub struct Stage00NonKernelInputs {
     pub deferred_to_03install_plus: Vec<String>,
 }
 
+/// Stage 00 ISO assembly parameters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stage00IsoAssembly {
+    /// UKI filename used for normal live boot.
+    pub live_uki_filename: String,
+    /// UKI filename used for emergency mode.
+    pub emergency_uki_filename: String,
+    /// UKI filename used for debug mode.
+    pub debug_uki_filename: String,
+    /// Additional live UKI cmdline tokens (may be empty).
+    pub live_cmdline: String,
+}
+
 /// Stage 00 build-capability declaration.
 ///
 /// Stage 00 is intentionally non-runtime: it validates build-system/kernel provenance
@@ -141,6 +164,8 @@ pub struct BuildCapabilityStage {
     pub module_install_path: String,
     /// Stage-scoped non-kernel artifact input partition.
     pub non_kernel_inputs: Stage00NonKernelInputs,
+    /// Stage 00 ISO assembly parameters.
+    pub iso_assembly: Stage00IsoAssembly,
     /// Evidence declaration for Stage 00 checks.
     pub evidence: ScriptEvidence,
 }

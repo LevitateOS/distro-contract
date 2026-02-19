@@ -13,7 +13,10 @@ use crate::s00_build::{
     REQUIRED_MODULE_INSTALL_PATH, REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE,
     REQUIRED_RECIPE_INVOCATION, REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
 };
-use crate::schema::{ConformanceContract, CONTRACT_SCHEMA_VERSION};
+use crate::schema::{
+    ConformanceContract, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
+    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+};
 
 const PLACEHOLDER_TOKENS: &[&str] = &[
     "todo",
@@ -146,6 +149,39 @@ fn validate_command_entries(
     }
 }
 
+fn validate_kernel_cmdline_tokens(
+    violations: &mut Vec<Violation>,
+    stage: StageId,
+    field: &str,
+    values: &[String],
+) {
+    let mut seen = HashSet::new();
+    for value in values {
+        if !validate_non_empty_trimmed(violations, Some(stage), field, value) {
+            continue;
+        }
+
+        if value.contains(char::is_whitespace) {
+            push_violation(
+                violations,
+                Some(stage),
+                field,
+                ViolationCode::InvalidToken,
+                format!("{field} value '{value}' must be a single cmdline token"),
+            );
+        }
+        if !seen.insert(value) {
+            push_violation(
+                violations,
+                Some(stage),
+                field,
+                ViolationCode::DuplicateEntry,
+                format!("{field} contains duplicate value '{value}'"),
+            );
+        }
+    }
+}
+
 fn validate_evidence(
     violations: &mut Vec<Violation>,
     stage: StageId,
@@ -209,6 +245,10 @@ fn is_relative_contract_path(value: &str) -> bool {
         && !value.contains("/../")
         && !value.starts_with("../")
         && !value.ends_with("/..")
+}
+
+fn is_safe_filename(value: &str) -> bool {
+    !value.contains('/') && !value.contains('\\')
 }
 
 fn is_kernel_version_token(value: &str) -> bool {
@@ -615,6 +655,53 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         EVIDENCE_SCRIPT_PREFIX,
     );
 
+    for (field, value) in [
+        (
+            "stage_00_build.iso_assembly.live_uki_filename",
+            stage_00.iso_assembly.live_uki_filename.as_str(),
+        ),
+        (
+            "stage_00_build.iso_assembly.emergency_uki_filename",
+            stage_00.iso_assembly.emergency_uki_filename.as_str(),
+        ),
+        (
+            "stage_00_build.iso_assembly.debug_uki_filename",
+            stage_00.iso_assembly.debug_uki_filename.as_str(),
+        ),
+    ] {
+        if !validate_non_empty_trimmed(violations, Some(StageId::Stage00), field, value) {
+            continue;
+        }
+        if !value.ends_with(".efi") {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                field,
+                ViolationCode::InvalidPathDeclaration,
+                format!("{field} must end with '.efi'"),
+            );
+        }
+        if !is_safe_filename(value) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                field,
+                ViolationCode::InvalidPathDeclaration,
+                format!("{field} must be a filename without path separators"),
+            );
+        }
+    }
+    let live_cmdline = &stage_00.iso_assembly.live_cmdline;
+    if live_cmdline != live_cmdline.trim() {
+        push_violation(
+            violations,
+            Some(StageId::Stage00),
+            "stage_00_build.iso_assembly.live_cmdline",
+            ViolationCode::WhitespaceValue,
+            "stage_00_build.iso_assembly.live_cmdline must not include leading/trailing whitespace",
+        );
+    }
+
     validate_stage_00_non_kernel_inputs(violations, contract);
 }
 
@@ -688,6 +775,58 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     }
 
     validate_stage_00_build(&mut violations, contract);
+    validate_kernel_cmdline_tokens(
+        &mut violations,
+        StageId::Stage01,
+        "stage_01_live_boot.required_kernel_cmdline",
+        &contract.stages.stage_01_live_boot.required_kernel_cmdline,
+    );
+    validate_command_entries(
+        &mut violations,
+        Some(StageId::Stage01),
+        "stage_01_live_boot.required_live_services",
+        &contract.stages.stage_01_live_boot.required_live_services,
+    );
+    for token in STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE {
+        if !contract
+            .stages
+            .stage_01_live_boot
+            .required_kernel_cmdline
+            .iter()
+            .any(|candidate| candidate == token)
+        {
+            push_violation(
+                &mut violations,
+                Some(StageId::Stage01),
+                "stage_01_live_boot.required_kernel_cmdline",
+                ViolationCode::MissingValue,
+                format!(
+                    "stage_01_live_boot.required_kernel_cmdline must include '{}'",
+                    token
+                ),
+            );
+        }
+    }
+    for service in STAGE_01_REQUIRED_LIVE_SERVICES_BASE {
+        if !contract
+            .stages
+            .stage_01_live_boot
+            .required_live_services
+            .iter()
+            .any(|candidate| candidate == service)
+        {
+            push_violation(
+                &mut violations,
+                Some(StageId::Stage01),
+                "stage_01_live_boot.required_live_services",
+                ViolationCode::MissingValue,
+                format!(
+                    "stage_01_live_boot.required_live_services must include '{}'",
+                    service
+                ),
+            );
+        }
+    }
 
     ConformanceReport {
         distro_id: contract.identity.os_id.clone(),
@@ -725,7 +864,7 @@ mod tests {
                 rootfs_name: "exampleos.erofs".to_string(),
                 initramfs_live_output: "initramfs-live.cpio.gz".to_string(),
                 iso_filename: "exampleos.iso".to_string(),
-                initramfs_installed_output: Some("initramfs-installed.img".to_string()),
+                initramfs_installed_output: Some("s00-initramfs-installed.img".to_string()),
             },
             stages: StageContract {
                 stage_00_build: BuildCapabilityStage {
@@ -765,6 +904,12 @@ mod tests {
                         deferred_to_02livetools: vec![],
                         deferred_to_03install_plus: vec![],
                     },
+                    iso_assembly: Stage00IsoAssembly {
+                        live_uki_filename: "exampleos-live.efi".to_string(),
+                        emergency_uki_filename: "exampleos-emergency.efi".to_string(),
+                        debug_uki_filename: "exampleos-debug.efi".to_string(),
+                        live_cmdline: "video=1920x1080".to_string(),
+                    },
                     evidence: ScriptEvidence {
                         script_path: "00Build-build-capability.sh".to_string(),
                         pass_marker: "STAGE 00 PASSED".to_string(),
@@ -773,6 +918,8 @@ mod tests {
                 stage_01_live_boot: BootStage {
                     success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
+                    required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-01-live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
@@ -796,6 +943,8 @@ mod tests {
                 stage_04_installed_boot: BootStage {
                     success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
                     fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec![],
+                    required_live_services: vec![],
                     evidence: ScriptEvidence {
                         script_path: "stage-04-installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
@@ -924,7 +1073,7 @@ mod tests {
             .stage_00_build
             .non_kernel_inputs
             .required_for_00build
-            .push("initramfs-installed.img".to_string());
+            .push("s00-initramfs-installed.img".to_string());
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -942,7 +1091,7 @@ mod tests {
             .stage_00_build
             .non_kernel_inputs
             .deferred_to_03install_plus
-            .push("initramfs-installed.img".to_string());
+            .push("s00-initramfs-installed.img".to_string());
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -950,5 +1099,28 @@ mod tests {
             .violations
             .iter()
             .any(|v| v.field == "stage_00_build.non_kernel_inputs.deferred_to_03install_plus"));
+    }
+
+    #[test]
+    fn stage_00_iso_assembly_rejects_non_filename_paths() {
+        let mut contract = valid_contract();
+        contract.stages.stage_00_build.iso_assembly.live_uki_filename =
+            "efi/live.efi".to_string();
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report.violations.iter().any(|v| {
+            v.field == "stage_00_build.iso_assembly.live_uki_filename"
+                && v.code == ViolationCode::InvalidPathDeclaration
+        }));
+    }
+
+    #[test]
+    fn stage_00_iso_assembly_allows_empty_live_cmdline() {
+        let mut contract = valid_contract();
+        contract.stages.stage_00_build.iso_assembly.live_cmdline = String::new();
+
+        let report = validate_contract(&contract);
+        assert!(report.passed(), "violations: {:#?}", report.violations);
     }
 }

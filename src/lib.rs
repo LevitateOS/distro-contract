@@ -17,13 +17,15 @@ pub mod variant;
 pub use error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
 pub use runtime::{
     require_valid_stage_00_runtime, require_valid_stage_00_runtime_with_stage_dirs,
-    validate_stage_00_runtime, validate_stage_00_runtime_with_stage_dirs,
+    require_valid_stage_01_runtime, validate_stage_00_runtime,
+    validate_stage_00_runtime_with_stage_dirs, validate_stage_01_runtime,
 };
 pub use schema::{
     ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage, BuildCapabilityStage,
     ConformanceContract, DistroIdentity, InstallStage, ReleaseStage, RootfsMutability,
-    RuntimePolicyStage, ScriptEvidence, Stage00NonKernelInputs, StageContract, ToolsStage,
-    CONTRACT_SCHEMA_VERSION,
+    RuntimePolicyStage, ScriptEvidence, Stage00IsoAssembly, Stage00NonKernelInputs, StageContract,
+    ToolsStage, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
+    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 pub use validate::{require_valid_contract, validate_contract};
 pub use variant::{
