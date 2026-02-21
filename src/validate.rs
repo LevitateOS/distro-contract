@@ -1104,8 +1104,11 @@ mod tests {
     #[test]
     fn stage_00_iso_assembly_rejects_non_filename_paths() {
         let mut contract = valid_contract();
-        contract.stages.stage_00_build.iso_assembly.live_uki_filename =
-            "efi/live.efi".to_string();
+        contract
+            .stages
+            .stage_00_build
+            .iso_assembly
+            .live_uki_filename = "efi/live.efi".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());

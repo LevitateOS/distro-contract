@@ -348,6 +348,12 @@ fn has_symlink(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn symlink_target_equals(path: &Path, expected: &str) -> bool {
+    fs::read_link(path)
+        .map(|target| target == PathBuf::from(expected))
+        .unwrap_or(false)
+}
+
 fn resolve_stage_rootfs_source_dir(
     stage_artifact_dir: &Path,
     stage_artifact_tag: &str,
@@ -485,6 +491,7 @@ fn validate_stage01_systemd_ssh(
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
 ) {
+    validate_stage01_usrmerge_symlinks(rootfs_dir, violations);
     validate_stage01_locale_completeness(rootfs_dir, violations);
     validate_stage01_required_ssh_artifacts(rootfs_dir, violations);
 
@@ -574,6 +581,45 @@ fn validate_stage01_systemd_ssh(
     }
 
     validate_stage01_forbidden_tool_leaks(rootfs_dir, violations);
+}
+
+fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+    for (rel, expected_target) in [
+        ("bin", "usr/bin"),
+        ("sbin", "usr/sbin"),
+        ("lib", "usr/lib"),
+        ("lib64", "usr/lib64"),
+    ] {
+        let path = rootfs_dir.join(rel);
+        if !has_symlink(&path) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.envelope",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "missing required Stage 01 merged-usr symlink '{}'; expected '{}' -> '{}'",
+                    path.display(),
+                    rel,
+                    expected_target
+                ),
+            );
+            continue;
+        }
+        if !symlink_target_equals(&path, expected_target) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.envelope",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "invalid Stage 01 merged-usr symlink '{}'; expected target '{}'",
+                    path.display(),
+                    expected_target
+                ),
+            );
+        }
+    }
 }
 
 fn validate_stage01_openrc_ssh(
@@ -1004,6 +1050,10 @@ mod tests {
             &stage_dir.join(".s01-live-rootfs-source.path"),
             &format!("{}\n", rootfs_source.display()),
         );
+        symlink("usr/bin", rootfs_source.join("bin")).expect("create bin symlink");
+        symlink("usr/sbin", rootfs_source.join("sbin")).expect("create sbin symlink");
+        symlink("usr/lib", rootfs_source.join("lib")).expect("create lib symlink");
+        symlink("usr/lib64", rootfs_source.join("lib64")).expect("create lib64 symlink");
 
         write_file(&rootfs_source.join("usr/sbin/sshd"), "binary");
         write_file(
@@ -1026,7 +1076,10 @@ mod tests {
         fs::create_dir_all(rootfs_source.join("usr/share/empty.sshd"))
             .expect("create empty.sshd dir");
         write_file(&rootfs_source.join("etc/locale.conf"), "LANG=C.UTF-8\n");
-        write_file(&rootfs_source.join("lib/locale/C.utf8/LC_CTYPE"), "locale");
+        write_file(
+            &rootfs_source.join("usr/lib/locale/C.utf8/LC_CTYPE"),
+            "locale",
+        );
         fs::create_dir_all(rootfs_source.join("var/empty/sshd")).expect("create privsep dir");
 
         if include_anaconda_sshd {
@@ -1218,7 +1271,7 @@ mod tests {
         let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
             .map(PathBuf::from)
             .expect("rootfs source path");
-        fs::remove_file(rootfs_source.join("lib/locale/C.utf8/LC_CTYPE"))
+        fs::remove_file(rootfs_source.join("usr/lib/locale/C.utf8/LC_CTYPE"))
             .expect("remove locale payload");
 
         let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
@@ -1269,6 +1322,28 @@ mod tests {
             .violations
             .iter()
             .any(|v| v.field == "stage_01_live_boot.required_live_services"));
+
+        fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
+    }
+
+    #[test]
+    fn stage_01_runtime_fails_when_usrmerge_symlink_missing() {
+        let stage_dir = temp_dir("stage01-runtime-missing-usrmerge-symlink");
+        let contract = valid_contract();
+        write_stage01_systemd_artifacts(&stage_dir, false);
+
+        let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
+            .map(PathBuf::from)
+            .expect("rootfs source path");
+        fs::remove_file(rootfs_source.join("lib64")).expect("remove lib64 symlink");
+        fs::create_dir_all(rootfs_source.join("lib64")).expect("create wrong lib64 directory");
+
+        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.field == "stage_01_live_boot.envelope"));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
