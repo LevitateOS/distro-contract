@@ -29,6 +29,7 @@ const PLACEHOLDER_TOKENS: &[&str] = &[
     "n/a",
     "unknown",
 ];
+const FORBIDDEN_STAGE00_ROOTFS_TOKEN: &str = "squashfs";
 
 fn push_violation(
     violations: &mut Vec<Violation>,
@@ -88,6 +89,12 @@ fn validate_non_empty_trimmed(
     }
 
     true
+}
+
+fn contains_forbidden_stage00_rootfs_token(value: &str) -> bool {
+    value
+        .to_ascii_lowercase()
+        .contains(FORBIDDEN_STAGE00_ROOTFS_TOKEN)
 }
 
 fn validate_unique_values(
@@ -705,6 +712,76 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
     validate_stage_00_non_kernel_inputs(violations, contract);
 }
 
+fn validate_stage_00_erofs_boundary(
+    violations: &mut Vec<Violation>,
+    contract: &ConformanceContract,
+) {
+    let rootfs_field = "artifacts.rootfs_name";
+    if validate_non_empty_trimmed(
+        violations,
+        None,
+        rootfs_field,
+        &contract.artifacts.rootfs_name,
+    ) {
+        let rootfs_name = contract.artifacts.rootfs_name.as_str();
+        if contains_forbidden_stage00_rootfs_token(rootfs_name) {
+            push_violation(
+                violations,
+                None,
+                rootfs_field,
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "{rootfs_field} must declare an EROFS artifact; squashfs naming is forbidden ({rootfs_name})"
+                ),
+            );
+        }
+        if !rootfs_name.ends_with(".erofs") {
+            push_violation(
+                violations,
+                None,
+                rootfs_field,
+                ViolationCode::InvalidPathDeclaration,
+                format!("{rootfs_field} must end with '.erofs'"),
+            );
+        }
+    }
+
+    let required_inputs_field = "stage_00_build.non_kernel_inputs.required_for_00build";
+    for item in &contract
+        .stages
+        .stage_00_build
+        .non_kernel_inputs
+        .required_for_00build
+    {
+        if contains_forbidden_stage00_rootfs_token(item) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                required_inputs_field,
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "{required_inputs_field} contains forbidden squashfs artifact '{item}'; Stage 00 payloads must be EROFS"
+                ),
+            );
+        }
+    }
+
+    let required_tools_field = "stage_00_build.required_build_tools";
+    for tool in &contract.stages.stage_00_build.required_build_tools {
+        if contains_forbidden_stage00_rootfs_token(tool) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                required_tools_field,
+                ViolationCode::InvalidToken,
+                format!(
+                    "{required_tools_field} contains forbidden squashfs tool '{tool}'; Stage 00 uses EROFS tooling"
+                ),
+            );
+        }
+    }
+}
+
 /// Validate a conformance contract and return a full report.
 ///
 /// Stage 00-only phase:
@@ -774,6 +851,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         );
     }
 
+    validate_stage_00_erofs_boundary(&mut violations, contract);
     validate_stage_00_build(&mut violations, contract);
     validate_kernel_cmdline_tokens(
         &mut violations,
@@ -1014,6 +1092,40 @@ mod tests {
             .violations
             .iter()
             .any(|v| v.code == ViolationCode::MissingRequiredBuildTool));
+    }
+
+    #[test]
+    fn stage_00_rejects_squashfs_rootfs_name() {
+        let mut contract = valid_contract();
+        contract.artifacts.rootfs_name = "exampleos.squashfs".to_string();
+        contract
+            .stages
+            .stage_00_build
+            .non_kernel_inputs
+            .required_for_00build[0] = "exampleos.squashfs".to_string();
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report.violations.iter().any(|v| {
+            v.field == "artifacts.rootfs_name" && v.code == ViolationCode::InvalidPathDeclaration
+        }));
+    }
+
+    #[test]
+    fn stage_00_rejects_squashfs_tools() {
+        let mut contract = valid_contract();
+        contract
+            .stages
+            .stage_00_build
+            .required_build_tools
+            .push("mksquashfs".to_string());
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report.violations.iter().any(|v| {
+            v.field == "stage_00_build.required_build_tools"
+                && v.code == ViolationCode::InvalidToken
+        }));
     }
 
     #[test]
