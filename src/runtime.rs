@@ -623,11 +623,12 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
 }
 
 fn validate_stage01_openrc_ssh(
+    contract: &ConformanceContract,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
 ) {
-    validate_stage01_locale_completeness(rootfs_dir, violations);
+    validate_stage01_openrc_locale_completeness(rootfs_dir, violations);
     validate_stage01_required_ssh_artifacts(rootfs_dir, violations);
 
     let rootfs_layout = validate_layout(
@@ -664,7 +665,167 @@ fn validate_stage01_openrc_ssh(
         );
     }
 
+    if contract
+        .stages
+        .stage_01_live_boot
+        .required_live_services
+        .iter()
+        .any(|service| service == "networking")
+    {
+        let networking_script = rootfs_dir.join("etc/init.d/networking");
+        if !has_file(&networking_script) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.required_live_services",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "missing OpenRC networking service script '{}'",
+                    networking_script.display()
+                ),
+            );
+        }
+
+        let interfaces_path = rootfs_dir.join("etc/network/interfaces");
+        if !has_file(&interfaces_path) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.required_live_services",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "missing OpenRC network interfaces config '{}'",
+                    interfaces_path.display()
+                ),
+            );
+        }
+
+        let networking_boot_link = live_overlay_dir.join("etc/runlevels/boot/networking");
+        if !has_symlink(&networking_boot_link) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.required_live_services",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "missing OpenRC Stage 01 networking runlevel symlink '{}'",
+                    networking_boot_link.display()
+                ),
+            );
+        }
+    }
+
+    if contract
+        .stages
+        .stage_01_live_boot
+        .required_live_services
+        .iter()
+        .any(|service| service == "dhcpcd")
+    {
+        let dhcpcd_script = rootfs_dir.join("etc/init.d/dhcpcd");
+        if !has_file(&dhcpcd_script) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.required_live_services",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "missing OpenRC dhcpcd service script '{}'",
+                    dhcpcd_script.display()
+                ),
+            );
+        }
+
+        let dhcpcd_link = live_overlay_dir.join("etc/runlevels/default/dhcpcd");
+        if !has_symlink(&dhcpcd_link) {
+            push_stage_violation(
+                violations,
+                StageId::Stage01,
+                "stage_01_live_boot.required_live_services",
+                ViolationCode::MissingBaselineArtifact,
+                format!(
+                    "missing OpenRC Stage 01 dhcpcd runlevel symlink '{}'",
+                    dhcpcd_link.display()
+                ),
+            );
+        }
+    }
+
     validate_stage01_forbidden_tool_leaks(rootfs_dir, violations);
+}
+
+fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+    let locale_conf = rootfs_dir.join("etc/locale.conf");
+    if !has_file(&locale_conf) {
+        push_stage_violation(
+            violations,
+            StageId::Stage01,
+            "stage_01_live_boot.locale",
+            ViolationCode::MissingBaselineArtifact,
+            format!(
+                "missing Stage 01 locale config '{}'; expected canonical LANG=C.UTF-8",
+                locale_conf.display()
+            ),
+        );
+    } else {
+        match fs::read_to_string(&locale_conf) {
+            Ok(content) => {
+                let has_c_utf8 = content
+                    .lines()
+                    .map(str::trim)
+                    .any(|line| line == "LANG=C.UTF-8");
+                if !has_c_utf8 {
+                    push_stage_violation(
+                        violations,
+                        StageId::Stage01,
+                        "stage_01_live_boot.locale",
+                        ViolationCode::MissingValue,
+                        format!(
+                            "invalid Stage 01 locale config '{}': expected line 'LANG=C.UTF-8'",
+                            locale_conf.display()
+                        ),
+                    );
+                }
+            }
+            Err(err) => {
+                push_stage_violation(
+                    violations,
+                    StageId::Stage01,
+                    "stage_01_live_boot.locale",
+                    ViolationCode::MissingBaselineArtifact,
+                    format!(
+                        "failed reading Stage 01 locale config '{}': {}",
+                        locale_conf.display(),
+                        err
+                    ),
+                );
+            }
+        }
+    }
+
+    let glibc_locale_payload_candidates = [
+        "lib/locale/C.utf8/LC_CTYPE",
+        "usr/lib/locale/C.utf8/LC_CTYPE",
+        "lib64/locale/C.utf8/LC_CTYPE",
+        "usr/lib64/locale/C.utf8/LC_CTYPE",
+    ];
+    let has_glibc_payload = glibc_locale_payload_candidates
+        .iter()
+        .any(|rel| has_file(&rootfs_dir.join(rel)));
+    let has_musl_payload = has_file(&rootfs_dir.join("usr/share/i18n/locales/musl/en_US.UTF-8"));
+    if !has_glibc_payload && !has_musl_payload {
+        push_stage_violation(
+            violations,
+            StageId::Stage01,
+            "stage_01_live_boot.locale",
+            ViolationCode::MissingBaselineArtifact,
+            format!(
+                "missing Stage 01 locale payload under '{}'; expected one of glibc paths [{}] or musl path 'usr/share/i18n/locales/musl/en_US.UTF-8'",
+                rootfs_dir.display(),
+                glibc_locale_payload_candidates.join(", ")
+            ),
+        );
+    }
 }
 
 fn validate_stage01_forbidden_tool_leaks(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
@@ -846,7 +1007,12 @@ pub fn validate_stage_01_runtime(
             &mut violations,
         );
     } else if has_openrc_script {
-        validate_stage01_openrc_ssh(&rootfs_source_dir, &live_overlay_dir, &mut violations);
+        validate_stage01_openrc_ssh(
+            contract,
+            &rootfs_source_dir,
+            &live_overlay_dir,
+            &mut violations,
+        );
     } else {
         push_stage_violation(
             &mut violations,
