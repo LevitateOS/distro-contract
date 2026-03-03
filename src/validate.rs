@@ -8,10 +8,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
 use crate::s00_build::{
-    EVIDENCE_SCRIPT_PREFIX, LEGACY_EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE,
-    REQUIRED_KERNEL_IMAGE_PATH, REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH,
-    REQUIRED_MODULE_INSTALL_PATH, REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE,
-    REQUIRED_RECIPE_INVOCATION, REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
+    EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE, REQUIRED_KERNEL_IMAGE_PATH,
+    REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH, REQUIRED_MODULE_INSTALL_PATH,
+    REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE, REQUIRED_RECIPE_INVOCATION,
+    REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
 };
 use crate::schema::{
     ConformanceContract, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
@@ -213,9 +213,7 @@ fn validate_evidence(
                 format!("{script_field} must be a script filename, not a path"),
             );
         }
-        let legacy_stage_00_prefix = LEGACY_EVIDENCE_SCRIPT_PREFIX;
-        let valid_prefix = script_path.starts_with(expected_script_prefix)
-            || script_path.starts_with(legacy_stage_00_prefix);
+        let valid_prefix = script_path.starts_with(expected_script_prefix);
         if !valid_prefix || !script_path.ends_with(".sh") {
             push_violation(
                 violations,
@@ -223,7 +221,7 @@ fn validate_evidence(
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!(
-                    "{script_field} must start with '{expected_script_prefix}' (or legacy '{legacy_stage_00_prefix}') and end with '.sh'"
+                    "{script_field} must start with '{expected_script_prefix}' and end with '.sh'"
                 ),
             );
         }

@@ -6,14 +6,8 @@
 /// Stage 00 manifest filename used by `distro-variants/<distro>/`.
 pub const MANIFEST_FILENAME: &str = "00Build.toml";
 
-/// Legacy Stage 00 manifest filename accepted for compatibility.
-pub const LEGACY_MANIFEST_FILENAME: &str = "stage-00.toml";
-
 /// Stage 00 evidence script required filename prefix.
 pub const EVIDENCE_SCRIPT_PREFIX: &str = "00Build-";
-
-/// Legacy Stage 00 evidence script accepted filename prefix.
-pub const LEGACY_EVIDENCE_SCRIPT_PREFIX: &str = "stage-00-";
 
 /// Required variant-local kconfig path for Stage 00.
 pub const REQUIRED_VARIANT_KCONFIG: &str = "kconfig";

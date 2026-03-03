@@ -11,10 +11,7 @@ use serde::Deserialize;
 
 use crate::error::{StageId, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
-use crate::s00_build::{
-    LEGACY_MANIFEST_FILENAME, MANIFEST_FILENAME, REQUIRED_VARIANT_KCONFIG,
-    REQUIRED_VARIANT_RECIPE_DECL,
-};
+use crate::s00_build::{MANIFEST_FILENAME, REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE_DECL};
 use crate::schema::{
     ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage, BuildCapabilityStage,
     ConformanceContract, DistroIdentity, InstallStage, ReleaseStage, RootfsMutability,
@@ -85,9 +82,8 @@ impl fmt::Display for VariantContractLoadError {
             ),
             Self::MissingManifestFile { path } => write!(
                 f,
-                "missing 00Build contract manifest: expected '{}' (legacy fallback: '{}')",
-                path.display(),
-                LEGACY_MANIFEST_FILENAME
+                "missing 00Build contract manifest: expected '{}'",
+                path.display()
             ),
             Self::ReadManifestFailed { path, source } => write!(
                 f,
@@ -185,17 +181,12 @@ fn load_stage_00_contract_bundle_for_distro_at_root(
         });
     }
 
-    let manifest_primary = variant_dir.join(MANIFEST_FILENAME);
-    let manifest_legacy = variant_dir.join(LEGACY_MANIFEST_FILENAME);
-    let manifest_path = if manifest_primary.is_file() {
-        manifest_primary
-    } else if manifest_legacy.is_file() {
-        manifest_legacy
-    } else {
+    let manifest_path = variant_dir.join(MANIFEST_FILENAME);
+    if !manifest_path.is_file() {
         return Err(VariantContractLoadError::MissingManifestFile {
-            path: manifest_primary,
+            path: manifest_path,
         });
-    };
+    }
 
     let manifest_raw = fs::read_to_string(&manifest_path).map_err(|source| {
         VariantContractLoadError::ReadManifestFailed {
