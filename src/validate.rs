@@ -10,7 +10,7 @@ use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, Viol
 use crate::s00_build::{
     EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE, REQUIRED_KERNEL_IMAGE_PATH,
     REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH, REQUIRED_MODULE_INSTALL_PATH,
-    REQUIRED_RECIPE_INVOCATION, REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
+    REQUIRED_RECIPE_INVOCATION, REQUIRED_VARIANT_KCONFIG,
 };
 use crate::schema::{
     ConformanceContract, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
@@ -805,18 +805,6 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         }
     }
 
-    if stage_00.recipe_kernel_script != REQUIRED_RECIPE_KERNEL_SCRIPT {
-        push_violation(
-            violations,
-            Some(StageId::Stage00),
-            "stage_00_build.recipe_kernel_script",
-            ViolationCode::RecipeKernelOrchestrationRequired,
-            format!(
-                "stage_00_build.recipe_kernel_script must be '{}'",
-                REQUIRED_RECIPE_KERNEL_SCRIPT
-            ),
-        );
-    }
     if stage_00.recipe_kernel_invocation != REQUIRED_RECIPE_INVOCATION {
         push_violation(
             violations,
@@ -1565,9 +1553,9 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_requires_recipe_rhai_kernel_orchestration() {
+    fn stage_00_requires_recipe_lifecycle_invocation() {
         let mut contract = valid_contract();
-        contract.stages.stage_00_build.recipe_kernel_script = "linux.rhai".to_string();
+        contract.stages.stage_00_build.recipe_kernel_invocation = "recipe run".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());

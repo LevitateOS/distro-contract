@@ -32,9 +32,6 @@ pub const REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
     "recchroot",
 ];
 
-/// Required shared kernel recipe script declaration.
-pub const REQUIRED_RECIPE_KERNEL_SCRIPT: &str = "distro-builder/recipes/linux.rhai";
-
 /// Required recipe lifecycle invocation declaration.
 /// human: I don't uderstand this one either.. I think this is overengineered..
 pub const REQUIRED_RECIPE_INVOCATION: &str = "recipe install";

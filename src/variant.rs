@@ -613,27 +613,27 @@ fn stage_contract_from_model(
         stage_01_live_boot: scenarios
             .live_boot
             .clone()
-            .unwrap_or_else(compat_placeholder_live_boot_stage),
+            .unwrap_or_else(compat_default_live_boot_stage),
         stage_02_live_tools: scenarios
             .live_tools
             .clone()
-            .unwrap_or_else(compat_placeholder_live_tools_stage),
+            .unwrap_or_else(compat_default_live_tools_stage),
         stage_03_install: scenarios
             .install
             .clone()
-            .unwrap_or_else(compat_placeholder_install_stage),
+            .unwrap_or_else(compat_default_install_stage),
         stage_04_installed_boot: scenarios
             .installed_boot
             .clone()
-            .unwrap_or_else(compat_placeholder_installed_boot_stage),
+            .unwrap_or_else(compat_default_installed_boot_stage),
         stage_05_automated_login: scenarios
             .automated_login
             .clone()
-            .unwrap_or_else(compat_placeholder_automated_login_stage),
+            .unwrap_or_else(compat_default_automated_login_stage),
         stage_06_installed_tools: scenarios
             .installed_tools
             .clone()
-            .unwrap_or_else(compat_placeholder_installed_tools_stage),
+            .unwrap_or_else(compat_default_installed_tools_stage),
         stage_07_runtime_policy: scenarios
             .runtime_policy
             .clone()
@@ -655,7 +655,7 @@ fn stage_contract_from_model(
     }
 }
 
-fn compat_placeholder_live_boot_stage() -> BootStage {
+fn compat_default_live_boot_stage() -> BootStage {
     BootStage {
         success_patterns: vec![],
         fatal_patterns: vec![],
@@ -668,7 +668,7 @@ fn compat_placeholder_live_boot_stage() -> BootStage {
     }
 }
 
-fn compat_placeholder_live_tools_stage() -> ToolsStage {
+fn compat_default_live_tools_stage() -> ToolsStage {
     ToolsStage {
         required_tools: vec![],
         evidence: ScriptEvidence {
@@ -678,7 +678,7 @@ fn compat_placeholder_live_tools_stage() -> ToolsStage {
     }
 }
 
-fn compat_placeholder_install_stage() -> InstallStage {
+fn compat_default_install_stage() -> InstallStage {
     InstallStage {
         required_tools: vec![],
         required_services: vec![],
@@ -689,7 +689,7 @@ fn compat_placeholder_install_stage() -> InstallStage {
     }
 }
 
-fn compat_placeholder_installed_boot_stage() -> BootStage {
+fn compat_default_installed_boot_stage() -> BootStage {
     BootStage {
         success_patterns: vec![],
         fatal_patterns: vec![],
@@ -702,7 +702,7 @@ fn compat_placeholder_installed_boot_stage() -> BootStage {
     }
 }
 
-fn compat_placeholder_automated_login_stage() -> AutomatedLoginStage {
+fn compat_default_automated_login_stage() -> AutomatedLoginStage {
     AutomatedLoginStage {
         auth_mode: AuthMode::DefaultPasswordLogin,
         default_username: None,
@@ -715,7 +715,7 @@ fn compat_placeholder_automated_login_stage() -> AutomatedLoginStage {
     }
 }
 
-fn compat_placeholder_installed_tools_stage() -> ToolsStage {
+fn compat_default_installed_tools_stage() -> ToolsStage {
     ToolsStage {
         required_tools: vec![],
         evidence: ScriptEvidence {
@@ -1193,5 +1193,126 @@ required_live_services = ["sshd"]
                 other => panic!("unexpected distro {}", other),
             }
         }
+    }
+
+    #[test]
+    fn scenario_contract_from_missing_manifest_is_explicitly_partial() {
+        let scenarios = scenario_contract_from_manifest(None);
+        assert!(scenarios.live_boot.is_none());
+        assert!(scenarios.live_tools.is_none());
+        assert!(scenarios.install.is_none());
+        assert!(scenarios.installed_boot.is_none());
+        assert!(scenarios.automated_login.is_none());
+        assert!(scenarios.installed_tools.is_none());
+        assert!(scenarios.runtime_policy.is_none());
+    }
+
+    #[test]
+    fn legacy_stage_view_uses_compat_defaults_only_for_absent_scenarios() {
+        let build = BuildContract {
+            required_build_tools: vec![],
+            kernel: KernelBuildContract {
+                kconfig_path: "kconfig".to_string(),
+                recipe_script: "kernel.rhai".to_string(),
+                recipe_invocation: "recipe install kernel.rhai".to_string(),
+                release_path: "kernel.release".to_string(),
+                image_path: "vmlinuz".to_string(),
+                modules_path: "modules".to_string(),
+                version: "1.0.0".to_string(),
+                sha256: "deadbeef".to_string(),
+                localversion: "-test".to_string(),
+                module_install_path: "usr/lib/modules".to_string(),
+            },
+            evidence: ScriptEvidence {
+                script_path: "stage-00.sh".to_string(),
+                pass_marker: "STAGE 00 PASSED".to_string(),
+            },
+        };
+        let transforms = TransformContract {
+            rootfs_image: ArtifactTransform {
+                logical_name: "artifact.rootfs.erofs".to_string(),
+                dependencies: vec!["product.rootfs.base".to_string()],
+                output_names: vec!["filesystem.erofs".to_string()],
+                format: "erofs".to_string(),
+                extra_cmdline: None,
+            },
+            overlay_image: ArtifactTransform {
+                logical_name: "artifact.overlay.erofs".to_string(),
+                dependencies: vec!["product.payload.live_overlay".to_string()],
+                output_names: vec!["overlayfs.erofs".to_string()],
+                format: "erofs".to_string(),
+                extra_cmdline: None,
+            },
+            initramfs_live: ArtifactTransform {
+                logical_name: "artifact.initramfs.live".to_string(),
+                dependencies: vec!["product.payload.boot.live".to_string()],
+                output_names: vec!["initramfs-live.cpio.gz".to_string()],
+                format: "cpio.gz".to_string(),
+                extra_cmdline: None,
+            },
+            initramfs_installed: None,
+            live_uki: ArtifactTransform {
+                logical_name: "artifact.uki.live".to_string(),
+                dependencies: vec![
+                    "product.payload.boot.live".to_string(),
+                    "product.kernel.staging".to_string(),
+                ],
+                output_names: vec![
+                    "live.efi".to_string(),
+                    "live-emergency.efi".to_string(),
+                    "live-debug.efi".to_string(),
+                ],
+                format: "uki".to_string(),
+                extra_cmdline: None,
+            },
+            installed_uki: None,
+            iso: ArtifactTransform {
+                logical_name: "artifact.iso".to_string(),
+                dependencies: vec![
+                    "artifact.rootfs.erofs".to_string(),
+                    "artifact.overlay.erofs".to_string(),
+                    "artifact.initramfs.live".to_string(),
+                    "artifact.uki.live".to_string(),
+                ],
+                output_names: vec!["example.iso".to_string()],
+                format: "iso".to_string(),
+                extra_cmdline: None,
+            },
+            disk_image: None,
+        };
+        let scenarios = ScenarioContract {
+            live_boot: Some(BootStage {
+                success_patterns: vec!["boot complete".to_string()],
+                fatal_patterns: vec![],
+                required_kernel_cmdline: vec![],
+                required_live_services: vec![],
+                evidence: ScriptEvidence {
+                    script_path: "stage-01-live-boot.sh".to_string(),
+                    pass_marker: "STAGE 01 PASSED".to_string(),
+                },
+            }),
+            live_tools: None,
+            install: None,
+            installed_boot: None,
+            automated_login: None,
+            installed_tools: None,
+            runtime_policy: None,
+        };
+        let release = ReleaseContract {
+            primary_outputs: vec!["example.iso".to_string()],
+            supporting_artifacts: vec![],
+            metadata_outputs: vec![],
+            metadata_facts: vec![],
+        };
+
+        let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
+        assert_eq!(
+            stages.stage_01_live_boot.evidence.script_path,
+            "stage-01-live-boot.sh"
+        );
+        assert_eq!(
+            stages.stage_02_live_tools.evidence.script_path,
+            "stage-02-live-tools.sh"
+        );
     }
 }
