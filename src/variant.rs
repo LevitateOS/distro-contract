@@ -13,10 +13,12 @@ use crate::error::{StageId, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::s00_build::{MANIFEST_FILENAME, REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE_DECL};
 use crate::schema::{
-    ArtifactIdentity, AuthMode, AutomatedLoginStage, BootStage, BuildCapabilityStage,
-    ConformanceContract, DistroIdentity, InstallStage, ReleaseStage, RootfsMutability,
-    RuntimePolicyStage, ScriptEvidence, Stage00IsoAssembly, Stage00NonKernelInputs, StageContract,
-    ToolsStage, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage,
+    BuildCapabilityStage, BuildContract, ConformanceContract, DistroIdentity, InstallStage,
+    KernelBuildContract, ProductContract, ProductDecl, ReleaseContract, ReleaseStage,
+    RootfsMutability, RuntimePolicyStage, ScenarioContract, ScriptEvidence, Stage00IsoAssembly,
+    Stage00NonKernelInputs, StageContract, ToolsStage, TransformContract,
+    STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
@@ -306,8 +308,13 @@ struct VariantStage00Manifest {
 
 impl VariantStage00Manifest {
     fn into_contract(self) -> ConformanceContract {
-        let (required_kernel_cmdline, required_live_services) =
-            stage01_defaults_with_manifest(self.stage_01.as_ref());
+        let build = build_contract_from_manifest(&self.stage_00);
+        let products = product_contract_from_manifest(&self.artifacts);
+        let transforms = transform_contract_from_manifest(&self.artifacts, &self.stage_00);
+        let scenarios = scenario_contract_from_manifest(self.stage_01.as_ref());
+        let release = release_contract_from_manifest(&self.artifacts);
+        let artifacts = artifact_identity_from_transforms(&transforms);
+        let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
 
         ConformanceContract {
             schema_version: self.schema_version,
@@ -318,112 +325,289 @@ impl VariantStage00Manifest {
                 os_version: self.identity.os_version,
                 default_hostname: self.identity.default_hostname,
             },
-            artifacts: ArtifactIdentity {
-                rootfs_name: self.artifacts.rootfs_name,
-                initramfs_live_output: self.artifacts.initramfs_live_output,
-                iso_filename: self.artifacts.iso_filename,
-                initramfs_installed_output: self.artifacts.initramfs_installed_output,
-            },
-            stages: StageContract {
-                stage_00_build: BuildCapabilityStage {
-                    required_build_tools: self.stage_00.required_build_tools,
-                    kernel_kconfig_path: self.stage_00.kernel_kconfig_path,
-                    recipe_kernel_script: self.stage_00.recipe_kernel_script,
-                    recipe_kernel_invocation: self.stage_00.recipe_kernel_invocation,
-                    kernel_release_path: self.stage_00.kernel_release_path,
-                    kernel_image_path: self.stage_00.kernel_image_path,
-                    kernel_modules_path: self.stage_00.kernel_modules_path,
-                    kernel_version: self.stage_00.kernel_version,
-                    kernel_sha256: self.stage_00.kernel_sha256,
-                    kernel_localversion: self.stage_00.kernel_localversion,
-                    module_install_path: self.stage_00.module_install_path,
-                    non_kernel_inputs: Stage00NonKernelInputs {
-                        required_for_00build: self.stage_00.non_kernel_inputs.required_for_00build,
-                        deferred_to_01boot: self.stage_00.non_kernel_inputs.deferred_to_01boot,
-                        deferred_to_02livetools: self
-                            .stage_00
-                            .non_kernel_inputs
-                            .deferred_to_02livetools,
-                        deferred_to_03install_plus: self
-                            .stage_00
-                            .non_kernel_inputs
-                            .deferred_to_03install_plus,
-                    },
-                    iso_assembly: Stage00IsoAssembly {
-                        live_uki_filename: self.stage_00.iso_assembly.live_uki_filename,
-                        emergency_uki_filename: self.stage_00.iso_assembly.emergency_uki_filename,
-                        debug_uki_filename: self.stage_00.iso_assembly.debug_uki_filename,
-                        live_cmdline: self.stage_00.iso_assembly.live_cmdline,
-                    },
-                    evidence: ScriptEvidence {
-                        script_path: self.stage_00.evidence.script_path,
-                        pass_marker: self.stage_00.evidence.pass_marker,
-                    },
-                },
-                stage_01_live_boot: BootStage {
-                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    required_kernel_cmdline,
-                    required_live_services,
-                    evidence: ScriptEvidence {
-                        script_path: "stage-01-live-boot.sh".to_string(),
-                        pass_marker: "STAGE 01 PASSED".to_string(),
-                    },
-                },
-                stage_02_live_tools: ToolsStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
-                    evidence: ScriptEvidence {
-                        script_path: "stage-02-live-tools.sh".to_string(),
-                        pass_marker: "STAGE 02 PASSED".to_string(),
-                    },
-                },
-                stage_03_install: InstallStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
-                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
-                    evidence: ScriptEvidence {
-                        script_path: "stage-03-installation.sh".to_string(),
-                        pass_marker: "STAGE 03 PASSED".to_string(),
-                    },
-                },
-                stage_04_installed_boot: BootStage {
-                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    required_kernel_cmdline: vec![],
-                    required_live_services: vec![],
-                    evidence: ScriptEvidence {
-                        script_path: "stage-04-installed-boot.sh".to_string(),
-                        pass_marker: "STAGE 04 PASSED".to_string(),
-                    },
-                },
-                stage_05_automated_login: AutomatedLoginStage {
-                    auth_mode: AuthMode::DefaultPasswordLogin,
-                    default_username: Some("ignored-in-stage_00-phase".to_string()),
-                    default_password: Some("ignored-in-stage_00-phase".to_string()),
-                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
-                    evidence: ScriptEvidence {
-                        script_path: "stage-05-automated-login.sh".to_string(),
-                        pass_marker: "STAGE 05 PASSED".to_string(),
-                    },
-                },
-                stage_06_installed_tools: ToolsStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
-                    evidence: ScriptEvidence {
-                        script_path: "stage-06-daily-driver.sh".to_string(),
-                        pass_marker: "STAGE 06 PASSED".to_string(),
-                    },
-                },
-                stage_07_runtime_policy: RuntimePolicyStage {
-                    rootfs_mutability: RootfsMutability::Mutable,
-                    mutable_required_rw_paths: vec![],
-                    immutable_required_ro_paths: vec![],
-                },
-                stage_08_release: ReleaseStage {
-                    required_artifacts: vec![],
-                    required_metadata: vec![],
-                },
-            },
+            build,
+            products,
+            transforms,
+            scenarios,
+            release,
+            artifacts,
+            stages,
         }
     }
+}
+
+fn build_contract_from_manifest(stage_00: &VariantStage00Build) -> BuildContract {
+    BuildContract {
+        required_build_tools: stage_00.required_build_tools.clone(),
+        kernel: KernelBuildContract {
+            kconfig_path: stage_00.kernel_kconfig_path.clone(),
+            recipe_script: stage_00.recipe_kernel_script.clone(),
+            recipe_invocation: stage_00.recipe_kernel_invocation.clone(),
+            release_path: stage_00.kernel_release_path.clone(),
+            image_path: stage_00.kernel_image_path.clone(),
+            modules_path: stage_00.kernel_modules_path.clone(),
+            version: stage_00.kernel_version.clone(),
+            sha256: stage_00.kernel_sha256.clone(),
+            localversion: stage_00.kernel_localversion.clone(),
+            module_install_path: stage_00.module_install_path.clone(),
+        },
+        evidence: ScriptEvidence {
+            script_path: stage_00.evidence.script_path.clone(),
+            pass_marker: stage_00.evidence.pass_marker.clone(),
+        },
+    }
+}
+
+fn product_contract_from_manifest(artifacts: &VariantArtifacts) -> ProductContract {
+    ProductContract {
+        rootfs_base: ProductDecl {
+            logical_name: "product.rootfs.base".to_string(),
+            description: "Canonical base root filesystem tree".to_string(),
+        },
+        live_overlay: ProductDecl {
+            logical_name: "product.payload.live_overlay".to_string(),
+            description: "Read-only live overlay payload tree".to_string(),
+        },
+        boot_live: ProductDecl {
+            logical_name: "product.payload.boot.live".to_string(),
+            description: "Live boot payload inputs".to_string(),
+        },
+        boot_installed: artifacts
+            .initramfs_installed_output
+            .as_ref()
+            .map(|_| ProductDecl {
+                logical_name: "product.payload.boot.installed".to_string(),
+                description: "Installed-system boot payload inputs".to_string(),
+            }),
+        kernel_staging: ProductDecl {
+            logical_name: "product.kernel.staging".to_string(),
+            description: "Kernel image and modules staging product".to_string(),
+        },
+    }
+}
+
+fn transform_contract_from_manifest(
+    artifacts: &VariantArtifacts,
+    stage_00: &VariantStage00Build,
+) -> TransformContract {
+    let overlay_output = overlay_output_name(&artifacts.rootfs_name);
+
+    TransformContract {
+        rootfs_image: ArtifactTransform {
+            logical_name: "artifact.rootfs.erofs".to_string(),
+            input_products: vec!["product.rootfs.base".to_string()],
+            output_names: vec![artifacts.rootfs_name.clone()],
+            format: "erofs".to_string(),
+            extra_cmdline: None,
+        },
+        overlay_image: ArtifactTransform {
+            logical_name: "artifact.overlay.erofs".to_string(),
+            input_products: vec!["product.payload.live_overlay".to_string()],
+            output_names: vec![overlay_output],
+            format: "erofs".to_string(),
+            extra_cmdline: None,
+        },
+        initramfs_live: ArtifactTransform {
+            logical_name: "artifact.initramfs.live".to_string(),
+            input_products: vec![
+                "product.payload.boot.live".to_string(),
+                "product.kernel.staging".to_string(),
+            ],
+            output_names: vec![artifacts.initramfs_live_output.clone()],
+            format: "cpio.gz".to_string(),
+            extra_cmdline: None,
+        },
+        initramfs_installed: artifacts.initramfs_installed_output.as_ref().map(|output| {
+            ArtifactTransform {
+                logical_name: "artifact.initramfs.installed".to_string(),
+                input_products: vec![
+                    "product.payload.boot.installed".to_string(),
+                    "product.kernel.staging".to_string(),
+                ],
+                output_names: vec![output.clone()],
+                format: "img".to_string(),
+                extra_cmdline: None,
+            }
+        }),
+        live_uki: ArtifactTransform {
+            logical_name: "artifact.uki.live".to_string(),
+            input_products: vec![
+                "product.payload.boot.live".to_string(),
+                "product.kernel.staging".to_string(),
+            ],
+            output_names: vec![
+                stage_00.iso_assembly.live_uki_filename.clone(),
+                stage_00.iso_assembly.emergency_uki_filename.clone(),
+                stage_00.iso_assembly.debug_uki_filename.clone(),
+            ],
+            format: "uki".to_string(),
+            extra_cmdline: Some(stage_00.iso_assembly.live_cmdline.clone()),
+        },
+        iso: ArtifactTransform {
+            logical_name: "artifact.iso".to_string(),
+            input_products: vec![
+                "artifact.rootfs.erofs".to_string(),
+                "artifact.overlay.erofs".to_string(),
+                "artifact.initramfs.live".to_string(),
+                "artifact.uki.live".to_string(),
+            ],
+            output_names: vec![artifacts.iso_filename.clone()],
+            format: "iso".to_string(),
+            extra_cmdline: None,
+        },
+    }
+}
+
+fn artifact_identity_from_transforms(transforms: &TransformContract) -> ArtifactIdentity {
+    ArtifactIdentity {
+        rootfs_name: transforms.rootfs_image.output_names[0].clone(),
+        initramfs_live_output: transforms.initramfs_live.output_names[0].clone(),
+        iso_filename: transforms.iso.output_names[0].clone(),
+        initramfs_installed_output: transforms
+            .initramfs_installed
+            .as_ref()
+            .map(|transform| transform.output_names[0].clone()),
+    }
+}
+
+fn scenario_contract_from_manifest(stage: Option<&VariantStage01Boot>) -> ScenarioContract {
+    let (required_kernel_cmdline, required_live_services) = stage01_defaults_with_manifest(stage);
+
+    ScenarioContract {
+        live_boot: BootStage {
+            success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+            fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+            required_kernel_cmdline,
+            required_live_services,
+            evidence: ScriptEvidence {
+                script_path: "stage-01-live-boot.sh".to_string(),
+                pass_marker: "STAGE 01 PASSED".to_string(),
+            },
+        },
+        live_tools: ToolsStage {
+            required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+            evidence: ScriptEvidence {
+                script_path: "stage-02-live-tools.sh".to_string(),
+                pass_marker: "STAGE 02 PASSED".to_string(),
+            },
+        },
+        install: InstallStage {
+            required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+            required_services: vec!["ignored-in-stage_00-phase".to_string()],
+            evidence: ScriptEvidence {
+                script_path: "stage-03-installation.sh".to_string(),
+                pass_marker: "STAGE 03 PASSED".to_string(),
+            },
+        },
+        installed_boot: BootStage {
+            success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+            fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+            required_kernel_cmdline: vec![],
+            required_live_services: vec![],
+            evidence: ScriptEvidence {
+                script_path: "stage-04-installed-boot.sh".to_string(),
+                pass_marker: "STAGE 04 PASSED".to_string(),
+            },
+        },
+        automated_login: AutomatedLoginStage {
+            auth_mode: AuthMode::DefaultPasswordLogin,
+            default_username: Some("ignored-in-stage_00-phase".to_string()),
+            default_password: Some("ignored-in-stage_00-phase".to_string()),
+            login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
+            evidence: ScriptEvidence {
+                script_path: "stage-05-automated-login.sh".to_string(),
+                pass_marker: "STAGE 05 PASSED".to_string(),
+            },
+        },
+        installed_tools: ToolsStage {
+            required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+            evidence: ScriptEvidence {
+                script_path: "stage-06-daily-driver.sh".to_string(),
+                pass_marker: "STAGE 06 PASSED".to_string(),
+            },
+        },
+        runtime_policy: RuntimePolicyStage {
+            rootfs_mutability: RootfsMutability::Mutable,
+            mutable_required_rw_paths: vec![],
+            immutable_required_ro_paths: vec![],
+        },
+    }
+}
+
+fn release_contract_from_manifest(artifacts: &VariantArtifacts) -> ReleaseContract {
+    let checksum_name = if let Some(stem) = artifacts.iso_filename.strip_suffix(".iso") {
+        format!("{stem}.sha512")
+    } else {
+        format!("{}.sha512", artifacts.iso_filename)
+    };
+
+    ReleaseContract {
+        primary_outputs: vec![artifacts.iso_filename.clone()],
+        required_metadata: vec![checksum_name],
+    }
+}
+
+fn stage_contract_from_model(
+    build: &BuildContract,
+    transforms: &TransformContract,
+    scenarios: &ScenarioContract,
+    release: &ReleaseContract,
+) -> StageContract {
+    StageContract {
+        stage_00_build: BuildCapabilityStage {
+            required_build_tools: build.required_build_tools.clone(),
+            kernel_kconfig_path: build.kernel.kconfig_path.clone(),
+            recipe_kernel_script: build.kernel.recipe_script.clone(),
+            recipe_kernel_invocation: build.kernel.recipe_invocation.clone(),
+            kernel_release_path: build.kernel.release_path.clone(),
+            kernel_image_path: build.kernel.image_path.clone(),
+            kernel_modules_path: build.kernel.modules_path.clone(),
+            kernel_version: build.kernel.version.clone(),
+            kernel_sha256: build.kernel.sha256.clone(),
+            kernel_localversion: build.kernel.localversion.clone(),
+            module_install_path: build.kernel.module_install_path.clone(),
+            non_kernel_inputs: Stage00NonKernelInputs {
+                required_for_00build: vec![
+                    transforms.rootfs_image.output_names[0].clone(),
+                    transforms.initramfs_live.output_names[0].clone(),
+                    transforms.overlay_image.output_names[0].clone(),
+                ],
+                deferred_to_01boot: vec![],
+                deferred_to_02livetools: vec![],
+                deferred_to_03install_plus: vec![],
+            },
+            iso_assembly: Stage00IsoAssembly {
+                live_uki_filename: transforms.live_uki.output_names[0].clone(),
+                emergency_uki_filename: transforms.live_uki.output_names[1].clone(),
+                debug_uki_filename: transforms.live_uki.output_names[2].clone(),
+                live_cmdline: transforms
+                    .live_uki
+                    .extra_cmdline
+                    .clone()
+                    .unwrap_or_default(),
+            },
+            evidence: build.evidence.clone(),
+        },
+        stage_01_live_boot: scenarios.live_boot.clone(),
+        stage_02_live_tools: scenarios.live_tools.clone(),
+        stage_03_install: scenarios.install.clone(),
+        stage_04_installed_boot: scenarios.installed_boot.clone(),
+        stage_05_automated_login: scenarios.automated_login.clone(),
+        stage_06_installed_tools: scenarios.installed_tools.clone(),
+        stage_07_runtime_policy: scenarios.runtime_policy.clone(),
+        stage_08_release: ReleaseStage {
+            required_artifacts: release.primary_outputs.clone(),
+            required_metadata: release.required_metadata.clone(),
+        },
+    }
+}
+
+fn overlay_output_name(rootfs_name: &str) -> String {
+    let replaced = rootfs_name.replacen("filesystem.erofs", "overlayfs.erofs", 1);
+    if replaced != rootfs_name {
+        return replaced;
+    }
+    "overlayfs.erofs".to_string()
 }
 
 fn stage01_defaults_with_manifest(
@@ -478,6 +662,7 @@ struct VariantArtifacts {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(dead_code)]
 struct VariantStage00Build {
     required_build_tools: Vec<String>,
     kernel_kconfig_path: String,
@@ -504,6 +689,7 @@ struct VariantStage01Boot {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(dead_code)]
 struct VariantStage00NonKernelInputs {
     required_for_00build: Vec<String>,
     deferred_to_01boot: Vec<String>,
@@ -637,6 +823,14 @@ required_live_services = ["sshd"]
         assert_eq!(contract.identity.os_name, "LevitateOS");
         assert_eq!(contract.identity.os_id, "levitateos");
         assert_eq!(
+            contract.products.rootfs_base.logical_name,
+            "product.rootfs.base"
+        );
+        assert_eq!(
+            contract.transforms.iso.output_names,
+            vec!["levitateos-x86_64.iso".to_string()]
+        );
+        assert_eq!(
             contract.stages.stage_00_build.kernel_localversion,
             "-levitate"
         );
@@ -723,13 +917,19 @@ required_live_services = ["sshd"]
                     panic!("failed to load {} Stage 00 manifest: {}", distro_id, err)
                 });
 
+            let expected_kernel_recipe = if distro_id == "levitate" {
+                "distro-builder/recipes/linux-prebuilt.rhai"
+            } else {
+                "distro-builder/recipes/linux.rhai"
+            };
+
             assert_eq!(
                 loaded.contract.stages.stage_00_build.kernel_kconfig_path,
                 "kconfig"
             );
             assert_eq!(
                 loaded.contract.stages.stage_00_build.recipe_kernel_script,
-                "distro-builder/recipes/linux.rhai"
+                expected_kernel_recipe
             );
             assert_eq!(
                 loaded

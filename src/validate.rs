@@ -10,8 +10,7 @@ use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, Viol
 use crate::s00_build::{
     EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE, REQUIRED_KERNEL_IMAGE_PATH,
     REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH, REQUIRED_MODULE_INSTALL_PATH,
-    REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE, REQUIRED_RECIPE_INVOCATION,
-    REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
+    REQUIRED_RECIPE_INVOCATION, REQUIRED_RECIPE_KERNEL_SCRIPT, REQUIRED_VARIANT_KCONFIG,
 };
 use crate::schema::{
     ConformanceContract, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
@@ -95,6 +94,134 @@ fn contains_forbidden_stage00_rootfs_token(value: &str) -> bool {
     value
         .to_ascii_lowercase()
         .contains(FORBIDDEN_STAGE00_ROOTFS_TOKEN)
+}
+
+fn first_transform_output<'a>(
+    violations: &mut Vec<Violation>,
+    field: &'static str,
+    outputs: &'a [String],
+) -> Option<&'a str> {
+    outputs.first().map(String::as_str).or_else(|| {
+        push_violation(
+            violations,
+            None,
+            field,
+            ViolationCode::MissingValue,
+            format!("{field} must contain at least one output name"),
+        );
+        None
+    })
+}
+
+fn expected_stage_00_required_inputs<'a>(
+    violations: &mut Vec<Violation>,
+    contract: &'a ConformanceContract,
+) -> Vec<&'a str> {
+    let mut values = Vec::new();
+    if let Some(rootfs) = first_transform_output(
+        violations,
+        "transforms.rootfs_image.output_names",
+        &contract.transforms.rootfs_image.output_names,
+    ) {
+        values.push(rootfs);
+    }
+    if let Some(initramfs_live) = first_transform_output(
+        violations,
+        "transforms.initramfs_live.output_names",
+        &contract.transforms.initramfs_live.output_names,
+    ) {
+        values.push(initramfs_live);
+    }
+    if let Some(overlay) = first_transform_output(
+        violations,
+        "transforms.overlay_image.output_names",
+        &contract.transforms.overlay_image.output_names,
+    ) {
+        values.push(overlay);
+    }
+    values
+}
+
+fn validate_artifact_identity_mirrors(
+    violations: &mut Vec<Violation>,
+    contract: &ConformanceContract,
+) {
+    if let Some(rootfs_name) = first_transform_output(
+        violations,
+        "transforms.rootfs_image.output_names",
+        &contract.transforms.rootfs_image.output_names,
+    ) {
+        if contract.artifacts.rootfs_name != rootfs_name {
+            push_violation(
+                violations,
+                None,
+                "artifacts.rootfs_name",
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "artifacts.rootfs_name must mirror transforms.rootfs_image.output_names[0] ('{}')",
+                    rootfs_name
+                ),
+            );
+        }
+    }
+
+    if let Some(initramfs_live_name) = first_transform_output(
+        violations,
+        "transforms.initramfs_live.output_names",
+        &contract.transforms.initramfs_live.output_names,
+    ) {
+        if contract.artifacts.initramfs_live_output != initramfs_live_name {
+            push_violation(
+                violations,
+                None,
+                "artifacts.initramfs_live_output",
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "artifacts.initramfs_live_output must mirror transforms.initramfs_live.output_names[0] ('{}')",
+                    initramfs_live_name
+                ),
+            );
+        }
+    }
+
+    if let Some(iso_name) = first_transform_output(
+        violations,
+        "transforms.iso.output_names",
+        &contract.transforms.iso.output_names,
+    ) {
+        if contract.artifacts.iso_filename != iso_name {
+            push_violation(
+                violations,
+                None,
+                "artifacts.iso_filename",
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "artifacts.iso_filename must mirror transforms.iso.output_names[0] ('{}')",
+                    iso_name
+                ),
+            );
+        }
+    }
+
+    let installed_transform_output = contract
+        .transforms
+        .initramfs_installed
+        .as_ref()
+        .and_then(|transform| transform.output_names.first())
+        .cloned();
+    if contract.artifacts.initramfs_installed_output != installed_transform_output {
+        let expected = installed_transform_output.as_deref().unwrap_or("<none>");
+        push_violation(
+            violations,
+            None,
+            "artifacts.initramfs_installed_output",
+            ViolationCode::InvalidPathDeclaration,
+            format!(
+                "artifacts.initramfs_installed_output must mirror transforms.initramfs_installed.output_names[0] ('{}')",
+                expected
+            ),
+        );
+    }
 }
 
 fn validate_unique_values(
@@ -339,25 +466,24 @@ fn validate_stage_00_non_kernel_inputs(
         &groups.deferred_to_03install_plus,
     );
 
-    let mut required = HashSet::new();
-    for item in &groups.required_for_00build {
-        required.insert(item.as_str());
-    }
-
-    let mut baseline_required = vec![
-        contract.artifacts.rootfs_name.as_str(),
-        contract.artifacts.initramfs_live_output.as_str(),
-    ];
-    baseline_required.extend(REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE.iter().copied());
-    let expected_required: HashSet<&str> = baseline_required.iter().copied().collect();
-    for required_item in baseline_required {
+    let required: HashSet<&str> = groups
+        .required_for_00build
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let expected_required_values = expected_stage_00_required_inputs(violations, contract);
+    let expected_required: HashSet<&str> = expected_required_values.iter().copied().collect();
+    for required_item in &expected_required_values {
         if !required.contains(required_item) {
             push_violation(
                 violations,
                 Some(StageId::Stage00),
                 required_field,
                 ViolationCode::MissingBaselineArtifact,
-                format!("{required_field} must include '{required_item}'"),
+                format!(
+                    "{required_field} must mirror Stage 00 transform outputs and include '{}'",
+                    required_item
+                ),
             );
         }
     }
@@ -369,7 +495,7 @@ fn validate_stage_00_non_kernel_inputs(
                 required_field,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "{required_field} contains unexpected Stage 00 input '{item}'; only canonical minimal Stage 00 inputs are allowed"
+                    "{required_field} contains unexpected compatibility artifact '{item}'; only transform-derived Stage 00 inputs are allowed"
                 ),
             );
         }
@@ -387,19 +513,19 @@ fn validate_stage_00_non_kernel_inputs(
                 field,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "{field} must be empty for minimal Stage 00; move these artifacts to their runtime stage manifests"
+                    "{field} is compatibility-only and must be empty; explicit ownership now belongs in product/transform declarations"
                 ),
             );
         }
     }
 
-    let mut owners: HashMap<&str, &str> = HashMap::new();
     let all_groups = [
         (required_field, groups.required_for_00build.as_slice()),
         (stage01_field, groups.deferred_to_01boot.as_slice()),
         (stage02_field, groups.deferred_to_02livetools.as_slice()),
         (stage03_field, groups.deferred_to_03install_plus.as_slice()),
     ];
+    let mut owners: HashMap<&str, &str> = HashMap::new();
     for (field, values) in all_groups {
         for value in values {
             let key = value.as_str();
@@ -411,7 +537,7 @@ fn validate_stage_00_non_kernel_inputs(
                         field,
                         ViolationCode::DuplicateEntry,
                         format!(
-                            "'{key}' is declared in both '{prev}' and '{field}'; each non-kernel input must belong to exactly one stage bucket"
+                            "'{key}' is declared in both '{prev}' and '{field}'; compatibility buckets must not overlap"
                         ),
                     );
                 }
@@ -424,7 +550,12 @@ fn validate_stage_00_non_kernel_inputs(
         stage_00.kernel_image_path.as_str(),
         stage_00.kernel_modules_path.as_str(),
     ];
-    for (field, values) in all_groups {
+    for (field, values) in [
+        (required_field, groups.required_for_00build.as_slice()),
+        (stage01_field, groups.deferred_to_01boot.as_slice()),
+        (stage02_field, groups.deferred_to_02livetools.as_slice()),
+        (stage03_field, groups.deferred_to_03install_plus.as_slice()),
+    ] {
         for value in values {
             if kernel_paths.contains(&value.as_str()) {
                 push_violation(
@@ -744,13 +875,8 @@ fn validate_stage_00_erofs_boundary(
         }
     }
 
-    let required_inputs_field = "stage_00_build.non_kernel_inputs.required_for_00build";
-    for item in &contract
-        .stages
-        .stage_00_build
-        .non_kernel_inputs
-        .required_for_00build
-    {
+    let required_inputs_field = "transforms.stage00_required_inputs";
+    for item in expected_stage_00_required_inputs(violations, contract) {
         if contains_forbidden_stage00_rootfs_token(item) {
             push_violation(
                 violations,
@@ -850,6 +976,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     }
 
     validate_stage_00_erofs_boundary(&mut violations, contract);
+    validate_artifact_identity_mirrors(&mut violations, contract);
     validate_stage_00_build(&mut violations, contract);
     validate_kernel_cmdline_tokens(
         &mut violations,
@@ -935,6 +1062,186 @@ mod tests {
                 iso_label: "EXAMPLEOS".to_string(),
                 os_version: "1.0".to_string(),
                 default_hostname: "example".to_string(),
+            },
+            build: BuildContract {
+                required_build_tools: vec![
+                    "recipe".to_string(),
+                    "cargo".to_string(),
+                    "make".to_string(),
+                    "recuki".to_string(),
+                    "ukify".to_string(),
+                    "mkfs.erofs".to_string(),
+                    "xorriso".to_string(),
+                    "reciso".to_string(),
+                    "recinit".to_string(),
+                    "recstrap".to_string(),
+                    "recfstab".to_string(),
+                    "recchroot".to_string(),
+                ],
+                kernel: KernelBuildContract {
+                    kconfig_path: "kconfig".to_string(),
+                    recipe_script: "distro-builder/recipes/linux.rhai".to_string(),
+                    recipe_invocation: "recipe install".to_string(),
+                    release_path: "kernel-build/include/config/kernel.release".to_string(),
+                    image_path: "staging/boot/vmlinuz".to_string(),
+                    modules_path: "staging/usr/lib/modules/<kernel.release>".to_string(),
+                    version: "6.12.71".to_string(),
+                    sha256: "143e8bc76cc41f831b51aa5e75819bed55bed41f299d35922820f1d2d2b02600"
+                        .to_string(),
+                    localversion: "-exampleos".to_string(),
+                    module_install_path: "/usr/lib/modules".to_string(),
+                },
+                evidence: ScriptEvidence {
+                    script_path: "00Build-build-capability.sh".to_string(),
+                    pass_marker: "STAGE 00 PASSED".to_string(),
+                },
+            },
+            products: ProductContract {
+                rootfs_base: ProductDecl {
+                    logical_name: "product.rootfs.base".to_string(),
+                    description: "Canonical base root filesystem tree".to_string(),
+                },
+                live_overlay: ProductDecl {
+                    logical_name: "product.payload.live_overlay".to_string(),
+                    description: "Read-only live overlay payload tree".to_string(),
+                },
+                boot_live: ProductDecl {
+                    logical_name: "product.payload.boot.live".to_string(),
+                    description: "Live boot payload inputs".to_string(),
+                },
+                boot_installed: Some(ProductDecl {
+                    logical_name: "product.payload.boot.installed".to_string(),
+                    description: "Installed-system boot payload inputs".to_string(),
+                }),
+                kernel_staging: ProductDecl {
+                    logical_name: "product.kernel.staging".to_string(),
+                    description: "Kernel image and modules staging product".to_string(),
+                },
+            },
+            transforms: TransformContract {
+                rootfs_image: ArtifactTransform {
+                    logical_name: "artifact.rootfs.erofs".to_string(),
+                    input_products: vec!["product.rootfs.base".to_string()],
+                    output_names: vec!["exampleos.erofs".to_string()],
+                    format: "erofs".to_string(),
+                    extra_cmdline: None,
+                },
+                overlay_image: ArtifactTransform {
+                    logical_name: "artifact.overlay.erofs".to_string(),
+                    input_products: vec!["product.payload.live_overlay".to_string()],
+                    output_names: vec!["s00-overlayfs.erofs".to_string()],
+                    format: "erofs".to_string(),
+                    extra_cmdline: None,
+                },
+                initramfs_live: ArtifactTransform {
+                    logical_name: "artifact.initramfs.live".to_string(),
+                    input_products: vec![
+                        "product.payload.boot.live".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec!["initramfs-live.cpio.gz".to_string()],
+                    format: "cpio.gz".to_string(),
+                    extra_cmdline: None,
+                },
+                initramfs_installed: Some(ArtifactTransform {
+                    logical_name: "artifact.initramfs.installed".to_string(),
+                    input_products: vec![
+                        "product.payload.boot.installed".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec!["s00-initramfs-installed.img".to_string()],
+                    format: "img".to_string(),
+                    extra_cmdline: None,
+                }),
+                live_uki: ArtifactTransform {
+                    logical_name: "artifact.uki.live".to_string(),
+                    input_products: vec![
+                        "product.payload.boot.live".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec![
+                        "exampleos-live.efi".to_string(),
+                        "exampleos-emergency.efi".to_string(),
+                        "exampleos-debug.efi".to_string(),
+                    ],
+                    format: "uki".to_string(),
+                    extra_cmdline: Some("video=1920x1080".to_string()),
+                },
+                iso: ArtifactTransform {
+                    logical_name: "artifact.iso".to_string(),
+                    input_products: vec![
+                        "artifact.rootfs.erofs".to_string(),
+                        "artifact.overlay.erofs".to_string(),
+                        "artifact.initramfs.live".to_string(),
+                        "artifact.uki.live".to_string(),
+                    ],
+                    output_names: vec!["exampleos.iso".to_string()],
+                    format: "iso".to_string(),
+                    extra_cmdline: None,
+                },
+            },
+            scenarios: ScenarioContract {
+                live_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
+                    required_live_services: vec!["sshd".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-01-live-boot.sh".to_string(),
+                        pass_marker: "STAGE 01 PASSED".to_string(),
+                    },
+                },
+                live_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-02-live-tools.sh".to_string(),
+                        pass_marker: "STAGE 02 PASSED".to_string(),
+                    },
+                },
+                install: InstallStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-03-installation.sh".to_string(),
+                        pass_marker: "STAGE 03 PASSED".to_string(),
+                    },
+                },
+                installed_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec![],
+                    required_live_services: vec![],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-04-installed-boot.sh".to_string(),
+                        pass_marker: "STAGE 04 PASSED".to_string(),
+                    },
+                },
+                automated_login: AutomatedLoginStage {
+                    auth_mode: AuthMode::DefaultPasswordLogin,
+                    default_username: Some("ignored-in-stage_00-phase".to_string()),
+                    default_password: Some("ignored-in-stage_00-phase".to_string()),
+                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
+                    evidence: ScriptEvidence {
+                        script_path: "stage-05-automated-login.sh".to_string(),
+                        pass_marker: "STAGE 05 PASSED".to_string(),
+                    },
+                },
+                installed_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-06-daily-driver.sh".to_string(),
+                        pass_marker: "STAGE 06 PASSED".to_string(),
+                    },
+                },
+                runtime_policy: RuntimePolicyStage {
+                    rootfs_mutability: RootfsMutability::Mutable,
+                    mutable_required_rw_paths: vec![],
+                    immutable_required_ro_paths: vec![],
+                },
+            },
+            release: ReleaseContract {
+                primary_outputs: vec!["exampleos.iso".to_string()],
+                required_metadata: vec!["exampleos.sha512".to_string()],
             },
             artifacts: ArtifactIdentity {
                 rootfs_name: "exampleos.erofs".to_string(),
@@ -1049,8 +1356,8 @@ mod tests {
                     immutable_required_ro_paths: vec![],
                 },
                 stage_08_release: ReleaseStage {
-                    required_artifacts: vec![],
-                    required_metadata: vec![],
+                    required_artifacts: vec!["exampleos.iso".to_string()],
+                    required_metadata: vec!["exampleos.sha512".to_string()],
                 },
             },
         }

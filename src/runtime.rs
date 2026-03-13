@@ -51,6 +51,25 @@ fn read_trimmed(path: &Path) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn expected_stage_00_required_inputs<'a>(
+    contract: &'a ConformanceContract,
+) -> Vec<(&'static str, &'a str)> {
+    let mut values = Vec::new();
+    if let Some(rootfs) = contract.transforms.rootfs_image.output_names.first() {
+        values.push(("transforms.rootfs_image.output_names", rootfs.as_str()));
+    }
+    if let Some(initramfs_live) = contract.transforms.initramfs_live.output_names.first() {
+        values.push((
+            "transforms.initramfs_live.output_names",
+            initramfs_live.as_str(),
+        ));
+    }
+    if let Some(overlay) = contract.transforms.overlay_image.output_names.first() {
+        values.push(("transforms.overlay_image.output_names", overlay.as_str()));
+    }
+    values
+}
+
 fn parse_kconfig_localversion(raw: &str) -> Option<String> {
     for line in raw.lines() {
         let line = line.trim();
@@ -136,9 +155,9 @@ pub fn validate_stage_00_runtime_with_stage_dirs(
     violations.extend(artifact_layout.violations);
 
     let mut non_kernel_requirements = Vec::new();
-    for input in &stage_00.non_kernel_inputs.required_for_00build {
+    for (field, input) in expected_stage_00_required_inputs(contract) {
         non_kernel_requirements.push(LayoutRequirement::file(
-            "stage_00_build.non_kernel_inputs.required_for_00build",
+            field,
             input,
             ViolationCode::MissingBaselineArtifact,
             "required Stage 00 non-kernel input",
@@ -1065,6 +1084,186 @@ mod tests {
                 os_version: "1.0".to_string(),
                 default_hostname: "levitateos".to_string(),
             },
+            build: BuildContract {
+                required_build_tools: vec![
+                    "recipe".to_string(),
+                    "cargo".to_string(),
+                    "make".to_string(),
+                    "recuki".to_string(),
+                    "ukify".to_string(),
+                    "mkfs.erofs".to_string(),
+                    "xorriso".to_string(),
+                    "reciso".to_string(),
+                    "recinit".to_string(),
+                    "recstrap".to_string(),
+                    "recfstab".to_string(),
+                    "recchroot".to_string(),
+                ],
+                kernel: KernelBuildContract {
+                    kconfig_path: "kconfig".to_string(),
+                    recipe_script: "distro-builder/recipes/linux.rhai".to_string(),
+                    recipe_invocation: "recipe install".to_string(),
+                    release_path: "kernel-build/include/config/kernel.release".to_string(),
+                    image_path: "staging/boot/vmlinuz".to_string(),
+                    modules_path: "staging/usr/lib/modules/<kernel.release>".to_string(),
+                    version: "6.12.71".to_string(),
+                    sha256: "143e8bc76cc41f831b51aa5e75819bed55bed41f299d35922820f1d2d2b02600"
+                        .to_string(),
+                    localversion: "-levitate".to_string(),
+                    module_install_path: "/usr/lib/modules".to_string(),
+                },
+                evidence: ScriptEvidence {
+                    script_path: "00Build-build-capability.sh".to_string(),
+                    pass_marker: "STAGE 00 PASSED".to_string(),
+                },
+            },
+            products: ProductContract {
+                rootfs_base: ProductDecl {
+                    logical_name: "product.rootfs.base".to_string(),
+                    description: "Canonical base root filesystem tree".to_string(),
+                },
+                live_overlay: ProductDecl {
+                    logical_name: "product.payload.live_overlay".to_string(),
+                    description: "Read-only live overlay payload tree".to_string(),
+                },
+                boot_live: ProductDecl {
+                    logical_name: "product.payload.boot.live".to_string(),
+                    description: "Live boot payload inputs".to_string(),
+                },
+                boot_installed: Some(ProductDecl {
+                    logical_name: "product.payload.boot.installed".to_string(),
+                    description: "Installed-system boot payload inputs".to_string(),
+                }),
+                kernel_staging: ProductDecl {
+                    logical_name: "product.kernel.staging".to_string(),
+                    description: "Kernel image and modules staging product".to_string(),
+                },
+            },
+            transforms: TransformContract {
+                rootfs_image: ArtifactTransform {
+                    logical_name: "artifact.rootfs.erofs".to_string(),
+                    input_products: vec!["product.rootfs.base".to_string()],
+                    output_names: vec!["s00-filesystem.erofs".to_string()],
+                    format: "erofs".to_string(),
+                    extra_cmdline: None,
+                },
+                overlay_image: ArtifactTransform {
+                    logical_name: "artifact.overlay.erofs".to_string(),
+                    input_products: vec!["product.payload.live_overlay".to_string()],
+                    output_names: vec!["s00-overlayfs.erofs".to_string()],
+                    format: "erofs".to_string(),
+                    extra_cmdline: None,
+                },
+                initramfs_live: ArtifactTransform {
+                    logical_name: "artifact.initramfs.live".to_string(),
+                    input_products: vec![
+                        "product.payload.boot.live".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec!["s00-initramfs-live.cpio.gz".to_string()],
+                    format: "cpio.gz".to_string(),
+                    extra_cmdline: None,
+                },
+                initramfs_installed: Some(ArtifactTransform {
+                    logical_name: "artifact.initramfs.installed".to_string(),
+                    input_products: vec![
+                        "product.payload.boot.installed".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec!["s00-initramfs-installed.img".to_string()],
+                    format: "img".to_string(),
+                    extra_cmdline: None,
+                }),
+                live_uki: ArtifactTransform {
+                    logical_name: "artifact.uki.live".to_string(),
+                    input_products: vec![
+                        "product.payload.boot.live".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec![
+                        "levitateos-live.efi".to_string(),
+                        "levitateos-emergency.efi".to_string(),
+                        "levitateos-debug.efi".to_string(),
+                    ],
+                    format: "uki".to_string(),
+                    extra_cmdline: Some("video=1920x1080".to_string()),
+                },
+                iso: ArtifactTransform {
+                    logical_name: "artifact.iso".to_string(),
+                    input_products: vec![
+                        "artifact.rootfs.erofs".to_string(),
+                        "artifact.overlay.erofs".to_string(),
+                        "artifact.initramfs.live".to_string(),
+                        "artifact.uki.live".to_string(),
+                    ],
+                    output_names: vec!["levitateos-x86_64.iso".to_string()],
+                    format: "iso".to_string(),
+                    extra_cmdline: None,
+                },
+            },
+            scenarios: ScenarioContract {
+                live_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
+                    required_live_services: vec!["sshd".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-01-live-boot.sh".to_string(),
+                        pass_marker: "STAGE 01 PASSED".to_string(),
+                    },
+                },
+                live_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-02-live-tools.sh".to_string(),
+                        pass_marker: "STAGE 02 PASSED".to_string(),
+                    },
+                },
+                install: InstallStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-03-installation.sh".to_string(),
+                        pass_marker: "STAGE 03 PASSED".to_string(),
+                    },
+                },
+                installed_boot: BootStage {
+                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_kernel_cmdline: vec![],
+                    required_live_services: vec![],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-04-installed-boot.sh".to_string(),
+                        pass_marker: "STAGE 04 PASSED".to_string(),
+                    },
+                },
+                automated_login: AutomatedLoginStage {
+                    auth_mode: AuthMode::DefaultPasswordLogin,
+                    default_username: Some("ignored-in-stage_00-phase".to_string()),
+                    default_password: Some("ignored-in-stage_00-phase".to_string()),
+                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
+                    evidence: ScriptEvidence {
+                        script_path: "stage-05-automated-login.sh".to_string(),
+                        pass_marker: "STAGE 05 PASSED".to_string(),
+                    },
+                },
+                installed_tools: ToolsStage {
+                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    evidence: ScriptEvidence {
+                        script_path: "stage-06-daily-driver.sh".to_string(),
+                        pass_marker: "STAGE 06 PASSED".to_string(),
+                    },
+                },
+                runtime_policy: RuntimePolicyStage {
+                    rootfs_mutability: RootfsMutability::Mutable,
+                    mutable_required_rw_paths: vec![],
+                    immutable_required_ro_paths: vec![],
+                },
+            },
+            release: ReleaseContract {
+                primary_outputs: vec!["levitateos-x86_64.iso".to_string()],
+                required_metadata: vec!["levitateos-x86_64.sha512".to_string()],
+            },
             artifacts: ArtifactIdentity {
                 rootfs_name: "s00-filesystem.erofs".to_string(),
                 initramfs_live_output: "s00-initramfs-live.cpio.gz".to_string(),
@@ -1178,8 +1377,8 @@ mod tests {
                     immutable_required_ro_paths: vec![],
                 },
                 stage_08_release: ReleaseStage {
-                    required_artifacts: vec![],
-                    required_metadata: vec![],
+                    required_artifacts: vec!["levitateos-x86_64.iso".to_string()],
+                    required_metadata: vec!["levitateos-x86_64.sha512".to_string()],
                 },
             },
         }

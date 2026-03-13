@@ -55,6 +55,92 @@ pub struct ArtifactIdentity {
     pub initramfs_installed_output: Option<String>,
 }
 
+/// Minimal build-system ownership model.
+///
+/// This is the filesystem-first replacement for treating Stage 00 as the
+/// canonical aggregate owner. It captures build prerequisites and kernel
+/// ownership without implying that "stage" is the architecture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildContract {
+    pub required_build_tools: Vec<String>,
+    pub kernel: KernelBuildContract,
+    pub evidence: ScriptEvidence,
+}
+
+/// Kernel build/product declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KernelBuildContract {
+    pub kconfig_path: String,
+    pub recipe_script: String,
+    pub recipe_invocation: String,
+    pub release_path: String,
+    pub image_path: String,
+    pub modules_path: String,
+    pub version: String,
+    pub sha256: String,
+    pub localversion: String,
+    pub module_install_path: String,
+}
+
+/// Product declaration with a stable logical identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductDecl {
+    pub logical_name: String,
+    pub description: String,
+}
+
+/// Canonical product ownership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductContract {
+    pub rootfs_base: ProductDecl,
+    pub live_overlay: ProductDecl,
+    pub boot_live: ProductDecl,
+    pub boot_installed: Option<ProductDecl>,
+    pub kernel_staging: ProductDecl,
+}
+
+/// Artifact transform declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactTransform {
+    pub logical_name: String,
+    pub input_products: Vec<String>,
+    pub output_names: Vec<String>,
+    pub format: String,
+    pub extra_cmdline: Option<String>,
+}
+
+/// Canonical transform ownership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransformContract {
+    pub rootfs_image: ArtifactTransform,
+    pub overlay_image: ArtifactTransform,
+    pub initramfs_live: ArtifactTransform,
+    pub initramfs_installed: Option<ArtifactTransform>,
+    pub live_uki: ArtifactTransform,
+    pub iso: ArtifactTransform,
+}
+
+/// Scenario ownership.
+///
+/// These are validation/runtime scenarios, not build-graph owners.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenarioContract {
+    pub live_boot: BootStage,
+    pub live_tools: ToolsStage,
+    pub install: InstallStage,
+    pub installed_boot: BootStage,
+    pub automated_login: AutomatedLoginStage,
+    pub installed_tools: ToolsStage,
+    pub runtime_policy: RuntimePolicyStage,
+}
+
+/// Release ownership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseContract {
+    pub primary_outputs: Vec<String>,
+    pub required_metadata: Vec<String>,
+}
+
 /// Stage 01/Stage 04 boot declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootStage {
@@ -189,6 +275,11 @@ pub struct StageContract {
 pub struct ConformanceContract {
     pub schema_version: u32,
     pub identity: DistroIdentity,
+    pub build: BuildContract,
+    pub products: ProductContract,
+    pub transforms: TransformContract,
+    pub scenarios: ScenarioContract,
+    pub release: ReleaseContract,
     pub artifacts: ArtifactIdentity,
     pub stages: StageContract,
 }
