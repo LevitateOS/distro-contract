@@ -222,6 +222,158 @@ fn validate_artifact_identity_mirrors(
             ),
         );
     }
+
+    let installed_uki_outputs = contract
+        .transforms
+        .installed_uki
+        .as_ref()
+        .map(|transform| transform.output_names.clone())
+        .unwrap_or_default();
+    if contract.artifacts.installed_uki_outputs != installed_uki_outputs {
+        push_violation(
+            violations,
+            None,
+            "artifacts.installed_uki_outputs",
+            ViolationCode::InvalidPathDeclaration,
+            format!(
+                "artifacts.installed_uki_outputs must mirror transforms.installed_uki.output_names ({:?})",
+                installed_uki_outputs
+            ),
+        );
+    }
+
+    let disk_image_output = contract
+        .transforms
+        .disk_image
+        .as_ref()
+        .and_then(|transform| transform.output_names.first())
+        .cloned();
+    if contract.artifacts.disk_image_output != disk_image_output {
+        let expected = disk_image_output.as_deref().unwrap_or("<none>");
+        push_violation(
+            violations,
+            None,
+            "artifacts.disk_image_output",
+            ViolationCode::InvalidPathDeclaration,
+            format!(
+                "artifacts.disk_image_output must mirror transforms.disk_image.output_names[0] ('{}')",
+                expected
+            ),
+        );
+    }
+}
+
+fn validate_release_mirrors_stage_08(
+    violations: &mut Vec<Violation>,
+    contract: &ConformanceContract,
+) {
+    let expected_artifacts: Vec<String> = contract
+        .release
+        .primary_outputs
+        .iter()
+        .chain(contract.release.supporting_artifacts.iter())
+        .cloned()
+        .collect();
+    let declared_artifacts: HashSet<&str> = contract
+        .stages
+        .stage_08_release
+        .required_artifacts
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let expected_artifact_set: HashSet<&str> =
+        expected_artifacts.iter().map(String::as_str).collect();
+    if declared_artifacts != expected_artifact_set {
+        push_violation(
+            violations,
+            Some(StageId::Stage08),
+            "stages.stage_08_release.required_artifacts",
+            ViolationCode::InvalidPathDeclaration,
+            format!(
+                "stage_08_release.required_artifacts must mirror release.primary_outputs + release.supporting_artifacts ({:?})",
+                expected_artifacts
+            ),
+        );
+    }
+
+    let expected_metadata: Vec<String> = contract
+        .release
+        .metadata_outputs
+        .iter()
+        .chain(contract.release.metadata_facts.iter())
+        .cloned()
+        .collect();
+    let declared_metadata: HashSet<&str> = contract
+        .stages
+        .stage_08_release
+        .required_metadata
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let expected_metadata_set: HashSet<&str> =
+        expected_metadata.iter().map(String::as_str).collect();
+    if declared_metadata != expected_metadata_set {
+        push_violation(
+            violations,
+            Some(StageId::Stage08),
+            "stages.stage_08_release.required_metadata",
+            ViolationCode::InvalidPathDeclaration,
+            format!(
+                "stage_08_release.required_metadata must mirror release.metadata_outputs + release.metadata_facts ({:?})",
+                expected_metadata
+            ),
+        );
+    }
+
+    let primary: HashSet<&str> = contract
+        .release
+        .primary_outputs
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let supporting: HashSet<&str> = contract
+        .release
+        .supporting_artifacts
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if let Some(overlap) = primary.intersection(&supporting).next() {
+        push_violation(
+            violations,
+            None,
+            "release.supporting_artifacts",
+            ViolationCode::DuplicateEntry,
+            format!(
+                "release.primary_outputs and release.supporting_artifacts must not overlap ('{}')",
+                overlap
+            ),
+        );
+    }
+
+    let metadata_outputs: HashSet<&str> = contract
+        .release
+        .metadata_outputs
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let metadata_facts: HashSet<&str> = contract
+        .release
+        .metadata_facts
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if let Some(overlap) = metadata_outputs.intersection(&metadata_facts).next() {
+        push_violation(
+            violations,
+            None,
+            "release.metadata_facts",
+            ViolationCode::DuplicateEntry,
+            format!(
+                "release.metadata_outputs and release.metadata_facts must not overlap ('{}')",
+                overlap
+            ),
+        );
+    }
 }
 
 fn validate_unique_values(
@@ -977,6 +1129,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
 
     validate_stage_00_erofs_boundary(&mut violations, contract);
     validate_artifact_identity_mirrors(&mut violations, contract);
+    validate_release_mirrors_stage_08(&mut violations, contract);
     validate_stage_00_build(&mut violations, contract);
     validate_kernel_cmdline_tokens(
         &mut violations,
@@ -1121,21 +1274,21 @@ mod tests {
             transforms: TransformContract {
                 rootfs_image: ArtifactTransform {
                     logical_name: "artifact.rootfs.erofs".to_string(),
-                    input_products: vec!["product.rootfs.base".to_string()],
+                    dependencies: vec!["product.rootfs.base".to_string()],
                     output_names: vec!["exampleos.erofs".to_string()],
                     format: "erofs".to_string(),
                     extra_cmdline: None,
                 },
                 overlay_image: ArtifactTransform {
                     logical_name: "artifact.overlay.erofs".to_string(),
-                    input_products: vec!["product.payload.live_overlay".to_string()],
+                    dependencies: vec!["product.payload.live_overlay".to_string()],
                     output_names: vec!["s00-overlayfs.erofs".to_string()],
                     format: "erofs".to_string(),
                     extra_cmdline: None,
                 },
                 initramfs_live: ArtifactTransform {
                     logical_name: "artifact.initramfs.live".to_string(),
-                    input_products: vec![
+                    dependencies: vec![
                         "product.payload.boot.live".to_string(),
                         "product.kernel.staging".to_string(),
                     ],
@@ -1145,7 +1298,7 @@ mod tests {
                 },
                 initramfs_installed: Some(ArtifactTransform {
                     logical_name: "artifact.initramfs.installed".to_string(),
-                    input_products: vec![
+                    dependencies: vec![
                         "product.payload.boot.installed".to_string(),
                         "product.kernel.staging".to_string(),
                     ],
@@ -1155,7 +1308,7 @@ mod tests {
                 }),
                 live_uki: ArtifactTransform {
                     logical_name: "artifact.uki.live".to_string(),
-                    input_products: vec![
+                    dependencies: vec![
                         "product.payload.boot.live".to_string(),
                         "product.kernel.staging".to_string(),
                     ],
@@ -1167,9 +1320,22 @@ mod tests {
                     format: "uki".to_string(),
                     extra_cmdline: Some("video=1920x1080".to_string()),
                 },
+                installed_uki: Some(ArtifactTransform {
+                    logical_name: "artifact.uki.installed".to_string(),
+                    dependencies: vec![
+                        "product.payload.boot.installed".to_string(),
+                        "product.kernel.staging".to_string(),
+                    ],
+                    output_names: vec![
+                        "exampleos.efi".to_string(),
+                        "exampleos-recovery.efi".to_string(),
+                    ],
+                    format: "uki".to_string(),
+                    extra_cmdline: None,
+                }),
                 iso: ArtifactTransform {
                     logical_name: "artifact.iso".to_string(),
-                    input_products: vec![
+                    dependencies: vec![
                         "artifact.rootfs.erofs".to_string(),
                         "artifact.overlay.erofs".to_string(),
                         "artifact.initramfs.live".to_string(),
@@ -1179,75 +1345,93 @@ mod tests {
                     format: "iso".to_string(),
                     extra_cmdline: None,
                 },
+                disk_image: None,
             },
             scenarios: ScenarioContract {
-                live_boot: BootStage {
-                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                live_boot: Some(BootStage {
+                    success_patterns: vec!["Boot complete".to_string()],
+                    fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
                     required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-01-live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
                     },
-                },
-                live_tools: ToolsStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                }),
+                live_tools: Some(ToolsStage {
+                    required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-02-live-tools.sh".to_string(),
                         pass_marker: "STAGE 02 PASSED".to_string(),
                     },
-                },
-                install: InstallStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
-                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
+                }),
+                install: Some(InstallStage {
+                    required_tools: vec!["recstrap".to_string()],
+                    required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-03-installation.sh".to_string(),
                         pass_marker: "STAGE 03 PASSED".to_string(),
                     },
-                },
-                installed_boot: BootStage {
-                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                }),
+                installed_boot: Some(BootStage {
+                    success_patterns: vec!["example login:".to_string()],
+                    fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec![],
                     required_live_services: vec![],
                     evidence: ScriptEvidence {
                         script_path: "stage-04-installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
                     },
-                },
-                automated_login: AutomatedLoginStage {
+                }),
+                automated_login: Some(AutomatedLoginStage {
                     auth_mode: AuthMode::DefaultPasswordLogin,
-                    default_username: Some("ignored-in-stage_00-phase".to_string()),
-                    default_password: Some("ignored-in-stage_00-phase".to_string()),
-                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
+                    default_username: Some("example".to_string()),
+                    default_password: Some("example".to_string()),
+                    login_prompt_pattern: "example login:".to_string(),
                     evidence: ScriptEvidence {
                         script_path: "stage-05-automated-login.sh".to_string(),
                         pass_marker: "STAGE 05 PASSED".to_string(),
                     },
-                },
-                installed_tools: ToolsStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                }),
+                installed_tools: Some(ToolsStage {
+                    required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-06-daily-driver.sh".to_string(),
                         pass_marker: "STAGE 06 PASSED".to_string(),
                     },
-                },
-                runtime_policy: RuntimePolicyStage {
+                }),
+                runtime_policy: Some(RuntimePolicyStage {
                     rootfs_mutability: RootfsMutability::Mutable,
                     mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],
-                },
+                }),
             },
             release: ReleaseContract {
                 primary_outputs: vec!["exampleos.iso".to_string()],
-                required_metadata: vec!["exampleos.sha512".to_string()],
+                supporting_artifacts: vec![
+                    "exampleos.erofs".to_string(),
+                    "initramfs-live.cpio.gz".to_string(),
+                    "s00-initramfs-installed.img".to_string(),
+                ],
+                metadata_outputs: vec![],
+                metadata_facts: vec![
+                    "kernel_source.version".to_string(),
+                    "kernel_source.sha256".to_string(),
+                    "kernel_source.localversion".to_string(),
+                    "artifact.rootfs_name".to_string(),
+                    "artifact.iso_filename".to_string(),
+                ],
             },
             artifacts: ArtifactIdentity {
                 rootfs_name: "exampleos.erofs".to_string(),
                 initramfs_live_output: "initramfs-live.cpio.gz".to_string(),
                 iso_filename: "exampleos.iso".to_string(),
                 initramfs_installed_output: Some("s00-initramfs-installed.img".to_string()),
+                installed_uki_outputs: vec![
+                    "exampleos.efi".to_string(),
+                    "exampleos-recovery.efi".to_string(),
+                ],
+                disk_image_output: None,
             },
             stages: StageContract {
                 stage_00_build: BuildCapabilityStage {
@@ -1299,8 +1483,8 @@ mod tests {
                     },
                 },
                 stage_01_live_boot: BootStage {
-                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    success_patterns: vec!["Boot complete".to_string()],
+                    fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
                     required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
@@ -1309,23 +1493,23 @@ mod tests {
                     },
                 },
                 stage_02_live_tools: ToolsStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-02-live-tools.sh".to_string(),
                         pass_marker: "STAGE 02 PASSED".to_string(),
                     },
                 },
                 stage_03_install: InstallStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
-                    required_services: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_tools: vec!["recstrap".to_string()],
+                    required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-03-installation.sh".to_string(),
                         pass_marker: "STAGE 03 PASSED".to_string(),
                     },
                 },
                 stage_04_installed_boot: BootStage {
-                    success_patterns: vec!["ignored-in-stage_00-phase".to_string()],
-                    fatal_patterns: vec!["ignored-in-stage_00-phase".to_string()],
+                    success_patterns: vec!["example login:".to_string()],
+                    fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec![],
                     required_live_services: vec![],
                     evidence: ScriptEvidence {
@@ -1335,16 +1519,16 @@ mod tests {
                 },
                 stage_05_automated_login: AutomatedLoginStage {
                     auth_mode: AuthMode::DefaultPasswordLogin,
-                    default_username: Some("ignored".to_string()),
-                    default_password: Some("ignored".to_string()),
-                    login_prompt_pattern: "ignored-in-stage_00-phase".to_string(),
+                    default_username: Some("example".to_string()),
+                    default_password: Some("example".to_string()),
+                    login_prompt_pattern: "example login:".to_string(),
                     evidence: ScriptEvidence {
                         script_path: "stage-05-automated-login.sh".to_string(),
                         pass_marker: "STAGE 05 PASSED".to_string(),
                     },
                 },
                 stage_06_installed_tools: ToolsStage {
-                    required_tools: vec!["ignored-in-stage_00-phase".to_string()],
+                    required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "stage-06-daily-driver.sh".to_string(),
                         pass_marker: "STAGE 06 PASSED".to_string(),
@@ -1356,8 +1540,19 @@ mod tests {
                     immutable_required_ro_paths: vec![],
                 },
                 stage_08_release: ReleaseStage {
-                    required_artifacts: vec!["exampleos.iso".to_string()],
-                    required_metadata: vec!["exampleos.sha512".to_string()],
+                    required_artifacts: vec![
+                        "exampleos.iso".to_string(),
+                        "exampleos.erofs".to_string(),
+                        "initramfs-live.cpio.gz".to_string(),
+                        "s00-initramfs-installed.img".to_string(),
+                    ],
+                    required_metadata: vec![
+                        "kernel_source.version".to_string(),
+                        "kernel_source.sha256".to_string(),
+                        "kernel_source.localversion".to_string(),
+                        "artifact.rootfs_name".to_string(),
+                        "artifact.iso_filename".to_string(),
+                    ],
                 },
             },
         }

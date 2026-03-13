@@ -53,6 +53,8 @@ pub struct ArtifactIdentity {
     pub initramfs_live_output: String,
     pub iso_filename: String,
     pub initramfs_installed_output: Option<String>,
+    pub installed_uki_outputs: Vec<String>,
+    pub disk_image_output: Option<String>,
 }
 
 /// Minimal build-system ownership model.
@@ -103,7 +105,10 @@ pub struct ProductContract {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactTransform {
     pub logical_name: String,
-    pub input_products: Vec<String>,
+    /// Immediate dependency identities in the build graph.
+    ///
+    /// These may be product logical names or upstream artifact logical names.
+    pub dependencies: Vec<String>,
     pub output_names: Vec<String>,
     pub format: String,
     pub extra_cmdline: Option<String>,
@@ -117,7 +122,9 @@ pub struct TransformContract {
     pub initramfs_live: ArtifactTransform,
     pub initramfs_installed: Option<ArtifactTransform>,
     pub live_uki: ArtifactTransform,
+    pub installed_uki: Option<ArtifactTransform>,
     pub iso: ArtifactTransform,
+    pub disk_image: Option<ArtifactTransform>,
 }
 
 /// Scenario ownership.
@@ -125,20 +132,22 @@ pub struct TransformContract {
 /// These are validation/runtime scenarios, not build-graph owners.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScenarioContract {
-    pub live_boot: BootStage,
-    pub live_tools: ToolsStage,
-    pub install: InstallStage,
-    pub installed_boot: BootStage,
-    pub automated_login: AutomatedLoginStage,
-    pub installed_tools: ToolsStage,
-    pub runtime_policy: RuntimePolicyStage,
+    pub live_boot: Option<BootStage>,
+    pub live_tools: Option<ToolsStage>,
+    pub install: Option<InstallStage>,
+    pub installed_boot: Option<BootStage>,
+    pub automated_login: Option<AutomatedLoginStage>,
+    pub installed_tools: Option<ToolsStage>,
+    pub runtime_policy: Option<RuntimePolicyStage>,
 }
 
 /// Release ownership.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseContract {
     pub primary_outputs: Vec<String>,
-    pub required_metadata: Vec<String>,
+    pub supporting_artifacts: Vec<String>,
+    pub metadata_outputs: Vec<String>,
+    pub metadata_facts: Vec<String>,
 }
 
 /// Stage 01/Stage 04 boot declaration.
