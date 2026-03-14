@@ -3,6 +3,7 @@
 //! This module keeps `00Build.toml` as the current canonical contract source
 //! while also validating the emerging ring-manifest family in parallel.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -444,6 +445,7 @@ impl VariantStage00Manifest {
     ) -> Result<ConformanceContract, VariantContractLoadError> {
         let legacy_identity = identity_from_manifest(&self.identity);
         let legacy_build = build_contract_from_manifest(&self.stage_00);
+        let legacy_products = product_contract_from_manifest(&self.artifacts);
         let (identity, build) = if let Some(ring) = ring_manifest_bundle {
             let ring_identity = identity_from_manifest(&ring.identity.identity);
             if ring_identity != legacy_identity {
@@ -473,8 +475,23 @@ impl VariantStage00Manifest {
         } else {
             (legacy_identity, legacy_build)
         };
-
-        let products = product_contract_from_manifest(&self.artifacts);
+        let products = if let Some(ring) = ring_manifest_bundle {
+            let ring_products =
+                product_contract_from_ring_manifest(&ring.ring2_products.ring2_products);
+            if ring_products != legacy_products {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "ring2_products",
+                    message: format!(
+                        "legacy product contract {:?} does not match ring2 product contract {:?}",
+                        legacy_products, ring_products
+                    ),
+                });
+            }
+            ring_products
+        } else {
+            legacy_products
+        };
         let transforms = transform_contract_from_manifest(&self.artifacts, &self.stage_00);
         let scenarios = scenario_contract_from_manifest(self.stage_01.as_ref());
         let release = release_contract_from_manifest(&self.artifacts, &transforms);
@@ -577,6 +594,34 @@ fn product_contract_from_manifest(artifacts: &VariantArtifacts) -> ProductContra
         kernel_staging: ProductDecl {
             logical_name: "product.kernel.staging".to_string(),
             description: "Kernel image and modules staging product".to_string(),
+        },
+    }
+}
+
+fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) -> ProductContract {
+    ProductContract {
+        rootfs_base: ProductDecl {
+            logical_name: ring2_products.rootfs_base.logical_name.clone(),
+            description: ring2_products.rootfs_base.description.clone(),
+        },
+        live_overlay: ProductDecl {
+            logical_name: ring2_products.live_overlay.logical_name.clone(),
+            description: ring2_products.live_overlay.description.clone(),
+        },
+        boot_live: ProductDecl {
+            logical_name: ring2_products.boot_live.logical_name.clone(),
+            description: ring2_products.boot_live.description.clone(),
+        },
+        boot_installed: ring2_products
+            .boot_installed
+            .as_ref()
+            .map(|product| ProductDecl {
+                logical_name: product.logical_name.clone(),
+                description: product.description.clone(),
+            }),
+        kernel_staging: ProductDecl {
+            logical_name: ring2_products.kernel_staging.logical_name.clone(),
+            description: ring2_products.kernel_staging.description.clone(),
         },
     }
 }
@@ -1105,6 +1150,7 @@ struct VariantRootfsSource {
     kind: String,
     recipe_script: String,
     preseed_recipe_script: Option<String>,
+    defines: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1137,6 +1183,9 @@ struct VariantOverlayProductDecl {
     logical_name: String,
     description: String,
     overlay_kind: String,
+    issue_message: Option<String>,
+    openrc_inittab: Option<String>,
+    profile_overlay: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1230,6 +1279,7 @@ struct VariantLiveToolsScenario {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CONTRACT_SCHEMA_VERSION;
 
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1798,6 +1848,51 @@ pass_marker = "STAGE 02 PASSED"
     }
 
     #[test]
+    fn ring2_product_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring2-product-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME),
+            &VALID_RING2_PRODUCTS_MANIFEST.replace(
+                "Canonical base root filesystem tree",
+                "Drifted base root filesystem tree",
+            ),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring2 product drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "ring2_products",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
     fn fails_when_recipe_declaration_does_not_reference_required_invocation() {
         let repo_root = temp_repo_root("bad-recipe-decl");
 
@@ -1949,6 +2044,49 @@ pass_marker = "STAGE 02 PASSED"
             ring_bundle.ring0_release.ring0_release.iso.output_names,
             vec!["levitateos-x86_64.iso".to_string()]
         );
+    }
+
+    #[test]
+    fn workspace_ring_scaffolds_are_complete_and_parseable_for_all_variants() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()
+            .expect("canonicalize workspace root");
+
+        for distro_id in ["levitate", "ralph", "acorn", "iuppiter"] {
+            let variant_dir = repo_root.join("distro-variants").join(distro_id);
+            let ring_bundle = load_ring_manifest_bundle_if_present(&variant_dir)
+                .unwrap_or_else(|err| {
+                    panic!("failed to parse {} ring scaffold: {}", distro_id, err)
+                })
+                .unwrap_or_else(|| panic!("missing ring scaffold for {}", distro_id));
+
+            assert_eq!(ring_bundle.identity.schema_version, CONTRACT_SCHEMA_VERSION);
+            assert_eq!(
+                ring_bundle.build_host.schema_version,
+                CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(
+                ring_bundle.ring3_sources.schema_version,
+                CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(
+                ring_bundle.ring2_products.schema_version,
+                CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(
+                ring_bundle.ring1_transforms.schema_version,
+                CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(
+                ring_bundle.ring0_release.schema_version,
+                CONTRACT_SCHEMA_VERSION
+            );
+            assert_eq!(
+                ring_bundle.scenarios.schema_version,
+                CONTRACT_SCHEMA_VERSION
+            );
+        }
     }
 
     #[test]
