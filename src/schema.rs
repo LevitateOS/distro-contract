@@ -30,7 +30,7 @@ pub enum RootfsMutability {
 /// Shared script evidence declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptEvidence {
-    /// On-ISO stage script filename (for example `stage-02-live-tools.sh`).
+    /// On-ISO scenario script filename (for example `live-tools.sh`).
     pub script_path: String,
     /// Required PASS marker emitted by script output.
     pub pass_marker: String,

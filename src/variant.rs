@@ -1,8 +1,9 @@
 //! Variant-local contract loader.
 //!
-//! Canonical ownership is migrating from `00Build.toml` into ring manifests in
-//! slices. This loader keeps validating legacy parity while switching adopted
-//! owners to their canonical ring manifests.
+//! Canonical ownership now lives in the ring/owner manifest family:
+//! `identity.toml`, `build-host.toml`, `ring3-sources.toml`,
+//! `ring2-products.toml`, `ring1-transforms.toml`, `ring0-release.toml`, and
+//! `scenarios.toml`.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -12,9 +13,11 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
+use crate::build_host_legacy::{
+    MANIFEST_FILENAME, REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE_DECL,
+};
 use crate::error::{StageId, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
-use crate::s00_build::{MANIFEST_FILENAME, REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE_DECL};
 use crate::schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage,
     BuildCapabilityStage, BuildContract, ConformanceContract, DistroIdentity, InstallStage,
@@ -42,7 +45,7 @@ pub struct LoadedVariantContract {
     pub contract: ConformanceContract,
 }
 
-/// Loader errors for variant-local Stage 00 declarations.
+/// Loader errors for variant-local contract declarations.
 #[derive(Debug)]
 pub enum VariantContractLoadError {
     CurrentDirectoryUnavailable(std::io::Error),
@@ -112,18 +115,18 @@ impl fmt::Display for VariantContractLoadError {
             ),
             Self::MissingManifestFile { path } => write!(
                 f,
-                "missing 00Build contract manifest: expected '{}'",
+                "missing legacy variant contract manifest: expected '{}'",
                 path.display()
             ),
             Self::ReadManifestFailed { path, source } => write!(
                 f,
-                "failed reading Stage 00 contract manifest '{}': {}",
+                "failed reading legacy variant contract manifest '{}': {}",
                 path.display(),
                 source
             ),
             Self::ParseManifestFailed { path, source } => write!(
                 f,
-                "failed parsing Stage 00 contract manifest '{}': {}",
+                "failed parsing legacy variant contract manifest '{}': {}",
                 path.display(),
                 source
             ),
@@ -163,12 +166,12 @@ impl fmt::Display for VariantContractLoadError {
             ),
             Self::MissingRequiredFile { path, description } => write!(
                 f,
-                "missing required Stage 00 scaffold file ({description}): '{}'",
+                "missing required build-host scaffold file ({description}): '{}'",
                 path.display()
             ),
             Self::InvalidRecipeDeclaration { path, message } => write!(
                 f,
-                "invalid Stage 00 recipe declaration '{}': {}",
+                "invalid build-host recipe declaration '{}': {}",
                 path.display(),
                 message
             ),
@@ -189,30 +192,53 @@ impl std::error::Error for VariantContractLoadError {
     }
 }
 
-/// Load a Stage 00 contract for a distro using current working directory discovery.
-pub fn load_stage_00_contract_for_distro(
+/// Load a variant contract for a distro using current working directory discovery.
+pub fn load_variant_contract_for_distro(
     distro_id: &str,
 ) -> Result<ConformanceContract, VariantContractLoadError> {
     let cwd =
         std::env::current_dir().map_err(VariantContractLoadError::CurrentDirectoryUnavailable)?;
-    load_stage_00_contract_for_distro_from(&cwd, distro_id)
+    load_variant_contract_for_distro_from(&cwd, distro_id)
 }
 
-/// Load a Stage 00 contract for a distro using `start` as repo-root discovery anchor.
-pub fn load_stage_00_contract_for_distro_from(
+/// Load a variant contract for a distro using `start` as repo-root discovery anchor.
+pub fn load_variant_contract_for_distro_from(
     start: &Path,
     distro_id: &str,
 ) -> Result<ConformanceContract, VariantContractLoadError> {
-    Ok(load_stage_00_contract_bundle_for_distro_from(start, distro_id)?.contract)
+    Ok(load_variant_contract_bundle_for_distro_from(start, distro_id)?.contract)
 }
 
-/// Load a Stage 00 contract bundle (contract + resolved paths) for a distro.
-pub fn load_stage_00_contract_bundle_for_distro_from(
+/// Load a variant contract bundle (contract + resolved paths) for a distro.
+pub fn load_variant_contract_bundle_for_distro_from(
     start: &Path,
     distro_id: &str,
 ) -> Result<LoadedVariantContract, VariantContractLoadError> {
     let repo_root = locate_repo_root(start)?;
-    load_stage_00_contract_bundle_for_distro_at_root(&repo_root, distro_id)
+    load_variant_contract_bundle_for_distro_at_root(&repo_root, distro_id)
+}
+
+/// Compatibility wrapper for older Stage 00-oriented call sites.
+pub fn load_stage_00_contract_for_distro(
+    distro_id: &str,
+) -> Result<ConformanceContract, VariantContractLoadError> {
+    load_variant_contract_for_distro(distro_id)
+}
+
+/// Compatibility wrapper for older Stage 00-oriented call sites.
+pub fn load_stage_00_contract_for_distro_from(
+    start: &Path,
+    distro_id: &str,
+) -> Result<ConformanceContract, VariantContractLoadError> {
+    load_variant_contract_for_distro_from(start, distro_id)
+}
+
+/// Compatibility wrapper for older Stage 00-oriented call sites.
+pub fn load_stage_00_contract_bundle_for_distro_from(
+    start: &Path,
+    distro_id: &str,
+) -> Result<LoadedVariantContract, VariantContractLoadError> {
+    load_variant_contract_bundle_for_distro_from(start, distro_id)
 }
 
 fn locate_repo_root(start: &Path) -> Result<PathBuf, VariantContractLoadError> {
@@ -235,7 +261,7 @@ fn locate_repo_root(start: &Path) -> Result<PathBuf, VariantContractLoadError> {
     })
 }
 
-fn load_stage_00_contract_bundle_for_distro_at_root(
+fn load_variant_contract_bundle_for_distro_at_root(
     repo_root: &Path,
     distro_id: &str,
 ) -> Result<LoadedVariantContract, VariantContractLoadError> {
@@ -244,6 +270,85 @@ fn load_stage_00_contract_bundle_for_distro_at_root(
         return Err(VariantContractLoadError::VariantDirectoryNotFound {
             distro_id: distro_id.to_string(),
             path: variant_dir,
+        });
+    }
+
+    let ring_manifest_bundle = load_ring_manifest_bundle_if_present(&variant_dir)?;
+    if let Some(ring_manifest_bundle) = ring_manifest_bundle {
+        let manifest_path = variant_dir.join(BUILD_HOST_MANIFEST_FILENAME);
+        let variant_layout = validate_layout(
+            Some(StageId::Stage00),
+            &variant_dir,
+            &[
+                LayoutRequirement::file(
+                    "build_host.kernel_kconfig_path",
+                    REQUIRED_VARIANT_KCONFIG,
+                    ViolationCode::InvalidPathDeclaration,
+                    "variant kernel kconfig",
+                ),
+                LayoutRequirement::file(
+                    "build_host.recipe_kernel_declaration",
+                    REQUIRED_VARIANT_RECIPE_DECL,
+                    ViolationCode::InvalidPathDeclaration,
+                    "variant recipe declaration",
+                ),
+                LayoutRequirement::file(
+                    "build_host.evidence.script_path",
+                    &ring_manifest_bundle
+                        .build_host
+                        .build_host
+                        .evidence
+                        .script_path,
+                    ViolationCode::InvalidEvidenceDeclaration,
+                    "build evidence script",
+                ),
+            ],
+        );
+        if let Some(first) = variant_layout.failures.first() {
+            return Err(VariantContractLoadError::MissingRequiredFile {
+                path: first.path.clone(),
+                description: first.description,
+            });
+        }
+
+        let repo_layout = validate_layout(
+            Some(StageId::Stage00),
+            repo_root,
+            &[LayoutRequirement::file(
+                "build_host.recipe_kernel_script",
+                &ring_manifest_bundle
+                    .build_host
+                    .build_host
+                    .recipe_kernel_script,
+                ViolationCode::RecipeKernelOrchestrationRequired,
+                "declared recipe_kernel_script target",
+            )],
+        );
+        if let Some(first) = repo_layout.failures.first() {
+            return Err(VariantContractLoadError::MissingRequiredFile {
+                path: first.path.clone(),
+                description: first.description,
+            });
+        }
+
+        validate_recipe_declaration_content(
+            &variant_dir.join(REQUIRED_VARIANT_RECIPE_DECL),
+            &ring_manifest_bundle
+                .build_host
+                .build_host
+                .recipe_kernel_script,
+            &ring_manifest_bundle
+                .build_host
+                .build_host
+                .recipe_kernel_invocation,
+        )?;
+
+        let contract = contract_from_ring_manifest_bundle(&ring_manifest_bundle);
+        return Ok(LoadedVariantContract {
+            repo_root: repo_root.to_path_buf(),
+            variant_dir,
+            manifest_path,
+            contract,
         });
     }
 
@@ -320,9 +425,7 @@ fn load_stage_00_contract_bundle_for_distro_at_root(
         &manifest.stage_00.recipe_kernel_script,
         &manifest.stage_00.recipe_kernel_invocation,
     )?;
-    let ring_manifest_bundle = load_ring_manifest_bundle_if_present(&variant_dir)?;
-
-    let contract = manifest.into_contract(ring_manifest_bundle.as_ref(), &variant_dir)?;
+    let contract = manifest.into_contract(None, &variant_dir)?;
 
     Ok(LoadedVariantContract {
         repo_root: repo_root.to_path_buf(),
@@ -361,6 +464,61 @@ fn validate_recipe_declaration_content(
     }
 
     Ok(())
+}
+
+fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> ConformanceContract {
+    let identity = identity_from_manifest(&ring.identity.identity);
+    let build = build_contract_from_ring_manifest(&ring.build_host.build_host);
+    let products = product_contract_from_ring_manifest(&ring.ring2_products.ring2_products);
+    let transforms = TransformContract {
+        rootfs_image: artifact_transform_from_ring_manifest(
+            &ring.ring1_transforms.ring1_transforms.rootfs_image,
+        ),
+        overlay_image: artifact_transform_from_ring_manifest(
+            &ring.ring1_transforms.ring1_transforms.overlay_image,
+        ),
+        initramfs_live: artifact_transform_from_ring_manifest(
+            &ring.ring1_transforms.ring1_transforms.initramfs_live,
+        ),
+        initramfs_installed: ring
+            .ring1_transforms
+            .ring1_transforms
+            .initramfs_installed
+            .as_ref()
+            .map(artifact_transform_from_ring_manifest),
+        live_uki: artifact_transform_from_ring_manifest(
+            &ring.ring1_transforms.ring1_transforms.live_uki,
+        ),
+        installed_uki: ring
+            .ring1_transforms
+            .ring1_transforms
+            .installed_uki
+            .as_ref()
+            .map(artifact_transform_from_ring_manifest),
+        iso: artifact_transform_from_ring_manifest(&ring.ring0_release.ring0_release.iso),
+        disk_image: ring
+            .ring0_release
+            .ring0_release
+            .disk_image
+            .as_ref()
+            .map(artifact_transform_from_ring_manifest),
+    };
+    let scenarios = scenario_contract_from_ring_manifest(&ring.scenarios.scenarios);
+    let release = release_contract_from_ring_manifest(&ring.ring0_release.ring0_release.release);
+    let artifacts = artifact_identity_from_transforms(&transforms);
+    let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
+
+    ConformanceContract {
+        schema_version: ring.build_host.schema_version,
+        identity,
+        build,
+        products,
+        transforms,
+        scenarios,
+        release,
+        artifacts,
+        stages,
+    }
 }
 
 fn load_ring_manifest_bundle_if_present(
@@ -895,7 +1053,7 @@ fn scenario_contract_from_manifest(stage: Option<&VariantStage01Boot>) -> Scenar
             required_kernel_cmdline,
             required_live_services,
             evidence: ScriptEvidence {
-                script_path: "stage-01-live-boot.sh".to_string(),
+                script_path: "live-boot.sh".to_string(),
                 pass_marker: "STAGE 01 PASSED".to_string(),
             },
         }),
@@ -1072,7 +1230,7 @@ fn compat_default_live_boot_stage() -> BootStage {
         required_kernel_cmdline: vec![],
         required_live_services: vec![],
         evidence: ScriptEvidence {
-            script_path: "stage-01-live-boot.sh".to_string(),
+            script_path: "live-boot.sh".to_string(),
             pass_marker: "STAGE 01 PASSED".to_string(),
         },
     }
@@ -1082,7 +1240,7 @@ fn compat_default_live_tools_stage() -> ToolsStage {
     ToolsStage {
         required_tools: vec![],
         evidence: ScriptEvidence {
-            script_path: "stage-02-live-tools.sh".to_string(),
+            script_path: "live-tools.sh".to_string(),
             pass_marker: "STAGE 02 PASSED".to_string(),
         },
     }
@@ -1093,7 +1251,7 @@ fn compat_default_install_stage() -> InstallStage {
         required_tools: vec![],
         required_services: vec![],
         evidence: ScriptEvidence {
-            script_path: "stage-03-installation.sh".to_string(),
+            script_path: "install.sh".to_string(),
             pass_marker: "STAGE 03 PASSED".to_string(),
         },
     }
@@ -1106,7 +1264,7 @@ fn compat_default_installed_boot_stage() -> BootStage {
         required_kernel_cmdline: vec![],
         required_live_services: vec![],
         evidence: ScriptEvidence {
-            script_path: "stage-04-installed-boot.sh".to_string(),
+            script_path: "installed-boot.sh".to_string(),
             pass_marker: "STAGE 04 PASSED".to_string(),
         },
     }
@@ -1119,7 +1277,7 @@ fn compat_default_automated_login_stage() -> AutomatedLoginStage {
         default_password: None,
         login_prompt_pattern: String::new(),
         evidence: ScriptEvidence {
-            script_path: "stage-05-automated-login.sh".to_string(),
+            script_path: "automated-login.sh".to_string(),
             pass_marker: "STAGE 05 PASSED".to_string(),
         },
     }
@@ -1129,7 +1287,7 @@ fn compat_default_installed_tools_stage() -> ToolsStage {
     ToolsStage {
         required_tools: vec![],
         evidence: ScriptEvidence {
-            script_path: "stage-06-daily-driver.sh".to_string(),
+            script_path: "installed-tools.sh".to_string(),
             pass_marker: "STAGE 06 PASSED".to_string(),
         },
     }
@@ -1584,7 +1742,7 @@ debug_uki_filename = "levitateos-debug.efi"
 live_cmdline = "video=1920x1080"
 
 [stage_00.evidence]
-script_path = "00Build-build-capability.sh"
+script_path = "build-capability.sh"
 pass_marker = "STAGE 00 PASSED"
 
 [stage_01]
@@ -1618,7 +1776,7 @@ kernel_localversion = "-levitate"
 module_install_path = "/usr/lib/modules"
 
 [build_host.evidence]
-script_path = "00Build-build-capability.sh"
+script_path = "build-capability.sh"
 pass_marker = "STAGE 00 PASSED"
 "#;
 
@@ -1758,7 +1916,7 @@ required_kernel_cmdline = ["audit=1"]
 required_live_services = ["sshd"]
 
 [scenarios.live_boot.evidence]
-script_path = "stage-01-live-boot.sh"
+script_path = "live-boot.sh"
 pass_marker = "STAGE 01 PASSED"
 
 [scenarios.live_environment]
@@ -1768,7 +1926,7 @@ required_services = ["sshd", "auditd"]
 install_experience = "ux"
 
 [scenarios.live_tools.evidence]
-script_path = "stage-02-live-tools.sh"
+script_path = "live-tools.sh"
 pass_marker = "STAGE 02 PASSED"
 "#;
 
@@ -1841,7 +1999,7 @@ pass_marker = "STAGE 02 PASSED"
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &repo_root.join("distro-variants/levitate/00Build-build-capability.sh"),
+            &repo_root.join("distro-variants/levitate/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_file(
@@ -1965,7 +2123,7 @@ pass_marker = "STAGE 02 PASSED"
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
+            &variant_dir.join("build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
@@ -2078,8 +2236,8 @@ pass_marker = "STAGE 02 PASSED"
     }
 
     #[test]
-    fn ring_identity_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring-identity-drift");
+    fn ring_scaffold_is_authoritative_when_legacy_manifest_drifts() {
+        let repo_root = temp_repo_root("ring-authoritative");
         let variant_dir = repo_root.join("distro-variants/levitate");
 
         write_file(
@@ -2096,336 +2254,25 @@ pass_marker = "STAGE 02 PASSED"
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
+            &variant_dir.join("build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_file(
+            &variant_dir.join("00Build.toml"),
+            &VALID_MANIFEST
+                .replace("LevitateOS", "Legacy Drift OS")
+                .replace("s00-filesystem.erofs", "legacy-drift-filesystem.erofs"),
+        );
         write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
-            &VALID_IDENTITY_RING_MANIFEST.replace("levitateos", "levitateos-drift"),
-        );
 
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring identity drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "identity",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn ring_build_host_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring-build-host-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
+        let contract = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect("ring scaffold should load authoritatively");
+        assert_eq!(contract.identity.os_name, "LevitateOS");
+        assert_eq!(
+            contract.transforms.rootfs_image.output_names,
+            vec!["s00-filesystem.erofs".to_string()]
         );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(BUILD_HOST_MANIFEST_FILENAME),
-            &VALID_BUILD_HOST_RING_MANIFEST.replace(
-                "kernel_localversion = \"-levitate\"",
-                "kernel_localversion = \"-levitate-drift\"",
-            ),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring build_host drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "build_host",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn ring2_product_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring2-product-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME),
-            &VALID_RING2_PRODUCTS_MANIFEST.replace(
-                "Canonical base root filesystem tree",
-                "Drifted base root filesystem tree",
-            ),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring2 product drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "ring2_products",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn ring1_filesystem_transform_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring1-filesystem-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
-            &VALID_RING1_TRANSFORMS_MANIFEST
-                .replace("s00-filesystem.erofs", "drifted-filesystem.erofs"),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring1 filesystem drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "ring1_transforms",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn ring1_boot_transform_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring1-boot-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
-            &VALID_RING1_TRANSFORMS_MANIFEST.replace(
-                "s00-initramfs-live.cpio.gz",
-                "drifted-initramfs-live.cpio.gz",
-            ),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring1 boot drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "ring1_transforms",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn ring0_release_transform_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring0-release-transform-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME),
-            &VALID_RING0_RELEASE_MANIFEST
-                .replace("levitateos-x86_64.iso", "drifted-levitateos-x86_64.iso"),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring0 release transform drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "ring0_release",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn ring0_release_bundle_drift_is_rejected() {
-        let repo_root = temp_repo_root("ring0-release-bundle-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME),
-            &VALID_RING0_RELEASE_MANIFEST.replace(
-                "primary_outputs = [\"levitateos-x86_64.iso\"]",
-                "primary_outputs = [\"drifted-levitateos-x86_64.iso\"]",
-            ),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("ring0 release bundle drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "ring0_release",
-                ..
-            }
-        ));
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn scenarios_drift_is_rejected() {
-        let repo_root = temp_repo_root("scenarios-drift");
-        let variant_dir = repo_root.join("distro-variants/levitate");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir.join("kconfig"),
-            "CONFIG_LOCALVERSION=\"-levitate\"\n",
-        );
-        write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir.join("00Build-build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
-        write_full_ring_scaffold(&variant_dir);
-        write_file(
-            &variant_dir.join(SCENARIOS_MANIFEST_FILENAME),
-            &VALID_SCENARIOS_MANIFEST.replace(
-                "pass_marker = \"STAGE 01 PASSED\"",
-                "pass_marker = \"STAGE 01 DRIFTED\"",
-            ),
-        );
-
-        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
-            .expect_err("scenario drift should fail");
-        assert!(matches!(
-            err,
-            VariantContractLoadError::RingOwnerParityMismatch {
-                owner: "scenarios",
-                ..
-            }
-        ));
+        assert_eq!(contract.build.evidence.script_path, "build-capability.sh");
 
         fs::remove_dir_all(repo_root).expect("cleanup temp root");
     }
@@ -2447,7 +2294,7 @@ pass_marker = "STAGE 02 PASSED"
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n",
         );
         write_file(
-            &repo_root.join("distro-variants/levitate/00Build-build-capability.sh"),
+            &repo_root.join("distro-variants/levitate/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_file(
@@ -2719,7 +2566,7 @@ pass_marker = "STAGE 02 PASSED"
                 required_kernel_cmdline: vec![],
                 required_live_services: vec![],
                 evidence: ScriptEvidence {
-                    script_path: "stage-01-live-boot.sh".to_string(),
+                    script_path: "live-boot.sh".to_string(),
                     pass_marker: "STAGE 01 PASSED".to_string(),
                 },
             }),
@@ -2740,11 +2587,11 @@ pass_marker = "STAGE 02 PASSED"
         let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
         assert_eq!(
             stages.stage_01_live_boot.evidence.script_path,
-            "stage-01-live-boot.sh"
+            "live-boot.sh"
         );
         assert_eq!(
             stages.stage_02_live_tools.evidence.script_path,
-            "stage-02-live-tools.sh"
+            "live-tools.sh"
         );
     }
 }

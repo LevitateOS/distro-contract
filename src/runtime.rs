@@ -1229,7 +1229,7 @@ mod tests {
                     module_install_path: "/usr/lib/modules".to_string(),
                 },
                 evidence: ScriptEvidence {
-                    script_path: "00Build-build-capability.sh".to_string(),
+                    script_path: "build-capability.sh".to_string(),
                     pass_marker: "STAGE 00 PASSED".to_string(),
                 },
             },
@@ -1348,14 +1348,14 @@ mod tests {
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
                     required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-01-live-boot.sh".to_string(),
+                        script_path: "live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
                     },
                 }),
                 live_tools: Some(ToolsStage {
                     required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-02-live-tools.sh".to_string(),
+                        script_path: "live-tools.sh".to_string(),
                         pass_marker: "STAGE 02 PASSED".to_string(),
                     },
                 }),
@@ -1363,7 +1363,7 @@ mod tests {
                     required_tools: vec!["recstrap".to_string()],
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-03-installation.sh".to_string(),
+                        script_path: "install.sh".to_string(),
                         pass_marker: "STAGE 03 PASSED".to_string(),
                     },
                 }),
@@ -1373,7 +1373,7 @@ mod tests {
                     required_kernel_cmdline: vec![],
                     required_live_services: vec![],
                     evidence: ScriptEvidence {
-                        script_path: "stage-04-installed-boot.sh".to_string(),
+                        script_path: "installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
                     },
                 }),
@@ -1383,14 +1383,14 @@ mod tests {
                     default_password: Some("levitate".to_string()),
                     login_prompt_pattern: "levitateos login:".to_string(),
                     evidence: ScriptEvidence {
-                        script_path: "stage-05-automated-login.sh".to_string(),
+                        script_path: "automated-login.sh".to_string(),
                         pass_marker: "STAGE 05 PASSED".to_string(),
                     },
                 }),
                 installed_tools: Some(ToolsStage {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-06-daily-driver.sh".to_string(),
+                        script_path: "installed-tools.sh".to_string(),
                         pass_marker: "STAGE 06 PASSED".to_string(),
                     },
                 }),
@@ -1472,7 +1472,7 @@ mod tests {
                         live_cmdline: "video=1920x1080".to_string(),
                     },
                     evidence: ScriptEvidence {
-                        script_path: "00Build-build-capability.sh".to_string(),
+                        script_path: "build-capability.sh".to_string(),
                         pass_marker: "STAGE 00 PASSED".to_string(),
                     },
                 },
@@ -1482,14 +1482,14 @@ mod tests {
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
                     required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-01-live-boot.sh".to_string(),
+                        script_path: "live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
                     },
                 },
                 stage_02_live_tools: ToolsStage {
                     required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-02-live-tools.sh".to_string(),
+                        script_path: "live-tools.sh".to_string(),
                         pass_marker: "STAGE 02 PASSED".to_string(),
                     },
                 },
@@ -1497,7 +1497,7 @@ mod tests {
                     required_tools: vec!["recstrap".to_string()],
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-03-installation.sh".to_string(),
+                        script_path: "install.sh".to_string(),
                         pass_marker: "STAGE 03 PASSED".to_string(),
                     },
                 },
@@ -1507,7 +1507,7 @@ mod tests {
                     required_kernel_cmdline: vec![],
                     required_live_services: vec![],
                     evidence: ScriptEvidence {
-                        script_path: "stage-04-installed-boot.sh".to_string(),
+                        script_path: "installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
                     },
                 },
@@ -1517,14 +1517,14 @@ mod tests {
                     default_password: Some("levitate".to_string()),
                     login_prompt_pattern: "levitateos login:".to_string(),
                     evidence: ScriptEvidence {
-                        script_path: "stage-05-automated-login.sh".to_string(),
+                        script_path: "automated-login.sh".to_string(),
                         pass_marker: "STAGE 05 PASSED".to_string(),
                     },
                 },
                 stage_06_installed_tools: ToolsStage {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
-                        script_path: "stage-06-daily-driver.sh".to_string(),
+                        script_path: "installed-tools.sh".to_string(),
                         pass_marker: "STAGE 06 PASSED".to_string(),
                     },
                 },

@@ -6,8 +6,8 @@
 /// Stage 00 manifest filename used by `distro-variants/<distro>/`.
 pub const MANIFEST_FILENAME: &str = "00Build.toml";
 
-/// Stage 00 evidence script required filename prefix.
-pub const EVIDENCE_SCRIPT_PREFIX: &str = "00Build-";
+/// Build-host evidence script required filename prefix.
+pub const EVIDENCE_SCRIPT_PREFIX: &str = "build-capability";
 
 /// Required variant-local kconfig path for Stage 00.
 pub const REQUIRED_VARIANT_KCONFIG: &str = "kconfig";
