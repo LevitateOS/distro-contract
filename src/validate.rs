@@ -1241,22 +1241,32 @@ mod tests {
                 rootfs_base: ProductDecl {
                     logical_name: "product.rootfs.base".to_string(),
                     description: "Canonical base root filesystem tree".to_string(),
+                    extends: None,
                 },
                 live_overlay: ProductDecl {
                     logical_name: "product.payload.live_overlay".to_string(),
                     description: "Read-only live overlay payload tree".to_string(),
+                    extends: None,
                 },
                 boot_live: ProductDecl {
                     logical_name: "product.payload.boot.live".to_string(),
                     description: "Live boot payload inputs".to_string(),
+                    extends: Some("product.rootfs.base".to_string()),
+                },
+                live_tools: ProductDecl {
+                    logical_name: "product.payload.live_tools".to_string(),
+                    description: "Live tools payload tree".to_string(),
+                    extends: Some("product.payload.boot.live".to_string()),
                 },
                 boot_installed: Some(ProductDecl {
                     logical_name: "product.payload.boot.installed".to_string(),
                     description: "Installed-system boot payload inputs".to_string(),
+                    extends: None,
                 }),
                 kernel_staging: ProductDecl {
                     logical_name: "product.kernel.staging".to_string(),
                     description: "Kernel image and modules staging product".to_string(),
+                    extends: None,
                 },
             },
             transforms: TransformContract {

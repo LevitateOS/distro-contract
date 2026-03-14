@@ -89,6 +89,8 @@ pub struct KernelBuildContract {
 pub struct ProductDecl {
     pub logical_name: String,
     pub description: String,
+    /// Immediate parent product in the Ring 2 composition DAG, if any.
+    pub extends: Option<String>,
 }
 
 /// Canonical product ownership.
@@ -97,6 +99,7 @@ pub struct ProductContract {
     pub rootfs_base: ProductDecl,
     pub live_overlay: ProductDecl,
     pub boot_live: ProductDecl,
+    pub live_tools: ProductDecl,
     pub boot_installed: Option<ProductDecl>,
     pub kernel_staging: ProductDecl,
 }

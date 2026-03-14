@@ -571,14 +571,22 @@ fn product_contract_from_manifest(artifacts: &VariantArtifacts) -> ProductContra
         rootfs_base: ProductDecl {
             logical_name: "product.rootfs.base".to_string(),
             description: "Canonical base root filesystem tree".to_string(),
+            extends: None,
         },
         live_overlay: ProductDecl {
             logical_name: "product.payload.live_overlay".to_string(),
             description: "Read-only live overlay payload tree".to_string(),
+            extends: None,
         },
         boot_live: ProductDecl {
             logical_name: "product.payload.boot.live".to_string(),
             description: "Live boot payload inputs".to_string(),
+            extends: Some("product.rootfs.base".to_string()),
+        },
+        live_tools: ProductDecl {
+            logical_name: "product.payload.live_tools".to_string(),
+            description: "Live tools payload tree".to_string(),
+            extends: Some("product.payload.boot.live".to_string()),
         },
         boot_installed: (artifacts.initramfs_installed_output.is_some()
             || artifacts
@@ -590,10 +598,12 @@ fn product_contract_from_manifest(artifacts: &VariantArtifacts) -> ProductContra
         .then_some(ProductDecl {
             logical_name: "product.payload.boot.installed".to_string(),
             description: "Installed-system boot payload inputs".to_string(),
+            extends: None,
         }),
         kernel_staging: ProductDecl {
             logical_name: "product.kernel.staging".to_string(),
             description: "Kernel image and modules staging product".to_string(),
+            extends: None,
         },
     }
 }
@@ -603,14 +613,22 @@ fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) ->
         rootfs_base: ProductDecl {
             logical_name: ring2_products.rootfs_base.logical_name.clone(),
             description: ring2_products.rootfs_base.description.clone(),
+            extends: ring2_products.rootfs_base.extends.clone(),
         },
         live_overlay: ProductDecl {
             logical_name: ring2_products.live_overlay.logical_name.clone(),
             description: ring2_products.live_overlay.description.clone(),
+            extends: ring2_products.live_overlay.extends.clone(),
         },
         boot_live: ProductDecl {
             logical_name: ring2_products.boot_live.logical_name.clone(),
             description: ring2_products.boot_live.description.clone(),
+            extends: ring2_products.boot_live.extends.clone(),
+        },
+        live_tools: ProductDecl {
+            logical_name: ring2_products.live_tools.logical_name.clone(),
+            description: ring2_products.live_tools.description.clone(),
+            extends: ring2_products.live_tools.extends.clone(),
         },
         boot_installed: ring2_products
             .boot_installed
@@ -618,10 +636,12 @@ fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) ->
             .map(|product| ProductDecl {
                 logical_name: product.logical_name.clone(),
                 description: product.description.clone(),
+                extends: product.extends.clone(),
             }),
         kernel_staging: ProductDecl {
             logical_name: ring2_products.kernel_staging.logical_name.clone(),
             description: ring2_products.kernel_staging.description.clone(),
+            extends: ring2_products.kernel_staging.extends.clone(),
         },
     }
 }
@@ -1166,6 +1186,7 @@ struct VariantRing2Products {
     rootfs_base: VariantProductDecl,
     live_overlay: VariantOverlayProductDecl,
     boot_live: VariantProductDecl,
+    live_tools: VariantProductDecl,
     boot_installed: Option<VariantProductDecl>,
     kernel_staging: VariantProductDecl,
 }
@@ -1175,6 +1196,7 @@ struct VariantRing2Products {
 struct VariantProductDecl {
     logical_name: String,
     description: String,
+    extends: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1182,6 +1204,7 @@ struct VariantProductDecl {
 struct VariantOverlayProductDecl {
     logical_name: String,
     description: String,
+    extends: Option<String>,
     overlay_kind: String,
     issue_message: Option<String>,
     openrc_inittab: Option<String>,
@@ -1385,6 +1408,12 @@ overlay_kind = "systemd"
 [ring2_products.boot_live]
 logical_name = "product.payload.boot.live"
 description = "Live boot payload inputs"
+extends = "product.rootfs.base"
+
+[ring2_products.live_tools]
+logical_name = "product.payload.live_tools"
+description = "Live tools payload tree"
+extends = "product.payload.boot.live"
 
 [ring2_products.boot_installed]
 logical_name = "product.payload.boot.installed"
