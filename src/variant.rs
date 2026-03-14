@@ -1,7 +1,8 @@
-//! Variant-local Stage 00 contract loader.
+//! Variant-local contract loader.
 //!
-//! This module keeps `00Build.toml` as the current canonical contract source
-//! while also validating the emerging ring-manifest family in parallel.
+//! Canonical ownership is migrating from `00Build.toml` into ring manifests in
+//! slices. This loader keeps validating legacy parity while switching adopted
+//! owners to their canonical ring manifests.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -492,7 +493,37 @@ impl VariantStage00Manifest {
         } else {
             legacy_products
         };
-        let transforms = transform_contract_from_manifest(&self.artifacts, &self.stage_00);
+        let legacy_transforms = transform_contract_from_manifest(&self.artifacts, &self.stage_00);
+        let transforms = if let Some(ring) = ring_manifest_bundle {
+            let ring_rootfs_image = artifact_transform_from_ring_manifest(
+                &ring.ring1_transforms.ring1_transforms.rootfs_image,
+            );
+            let ring_overlay_image = artifact_transform_from_ring_manifest(
+                &ring.ring1_transforms.ring1_transforms.overlay_image,
+            );
+            if legacy_transforms.rootfs_image != ring_rootfs_image
+                || legacy_transforms.overlay_image != ring_overlay_image
+            {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "ring1_transforms",
+                    message: format!(
+                        "legacy filesystem transforms ({:?}, {:?}) do not match ring1 filesystem transforms ({:?}, {:?})",
+                        legacy_transforms.rootfs_image,
+                        legacy_transforms.overlay_image,
+                        ring_rootfs_image,
+                        ring_overlay_image
+                    ),
+                });
+            }
+
+            let mut transforms = legacy_transforms;
+            transforms.rootfs_image = ring_rootfs_image;
+            transforms.overlay_image = ring_overlay_image;
+            transforms
+        } else {
+            legacy_transforms
+        };
         let scenarios = scenario_contract_from_manifest(self.stage_01.as_ref());
         let release = release_contract_from_manifest(&self.artifacts, &transforms);
         let artifacts = artifact_identity_from_transforms(&transforms);
@@ -643,6 +674,16 @@ fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) ->
             description: ring2_products.kernel_staging.description.clone(),
             extends: ring2_products.kernel_staging.extends.clone(),
         },
+    }
+}
+
+fn artifact_transform_from_ring_manifest(transform: &VariantRingTransform) -> ArtifactTransform {
+    ArtifactTransform {
+        logical_name: transform.logical_name.clone(),
+        dependencies: transform.dependencies.clone(),
+        output_names: transform.output_names.clone(),
+        format: transform.format.clone(),
+        extra_cmdline: transform.extra_cmdline.clone(),
     }
 }
 
@@ -2041,6 +2082,49 @@ pass_marker = "STAGE 02 PASSED"
             err,
             VariantContractLoadError::RingOwnerParityMismatch {
                 owner: "ring2_products",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn ring1_filesystem_transform_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring1-filesystem-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
+            &VALID_RING1_TRANSFORMS_MANIFEST
+                .replace("s00-filesystem.erofs", "drifted-filesystem.erofs"),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring1 filesystem drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "ring1_transforms",
                 ..
             }
         ));
