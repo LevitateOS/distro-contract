@@ -1179,6 +1179,7 @@ struct VariantRing2ProductsManifest {
     schema_version: u32,
     ring2_products: VariantRing2Products,
     ring2_payload_profiles: Option<BTreeMap<String, VariantRing2PayloadProfile>>,
+    ring2_runtime_profiles: Option<BTreeMap<String, VariantRing2RuntimeProfile>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1199,6 +1200,9 @@ struct VariantProductDecl {
     description: String,
     extends: Option<String>,
     payload_profile: Option<String>,
+    runtime_profiles: Option<Vec<String>>,
+    runtime_profiles_ux: Option<Vec<String>>,
+    runtime_profiles_automated_ssh: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1228,6 +1232,45 @@ enum VariantRing2PayloadProducer {
         path: String,
         content: String,
         mode: Option<u32>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VariantInstallDocsFrontend {
+    PlainText,
+    BunBundle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing2RuntimeProfile {
+    actions: Vec<VariantRing2RuntimeAction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum VariantRing2RuntimeAction {
+    ToolPayloadWorkspaceBinary {
+        package: String,
+        binary: Option<String>,
+        target: Option<String>,
+    },
+    RootfsWorkspaceBinary {
+        package: String,
+        binary: Option<String>,
+        target: Option<String>,
+        destination: String,
+    },
+    ApkPackages {
+        packages: Vec<String>,
+    },
+    IuppiterDarPayload {
+        target: Option<String>,
+    },
+    InstallModePayload {
+        interactive_shell: String,
+        ux_docs_frontend: VariantInstallDocsFrontend,
     },
 }
 
@@ -1447,6 +1490,8 @@ payload_profile = "boot_baseline"
 logical_name = "product.payload.live_tools"
 description = "Live tools payload tree"
 extends = "product.payload.boot.live"
+runtime_profiles = ["live_tools_common"]
+runtime_profiles_ux = ["live_tools_ux"]
 
 [ring2_products.boot_installed]
 logical_name = "product.payload.boot.installed"
@@ -1459,6 +1504,31 @@ payload_profile = "boot_baseline"
 kind = "write_text"
 path = ".live-payload-role"
 content = "rootfs\n"
+
+[ring2_runtime_profiles.live_tools_common]
+[[ring2_runtime_profiles.live_tools_common.actions]]
+kind = "tool_payload_workspace_binary"
+package = "recstrap"
+
+[[ring2_runtime_profiles.live_tools_common.actions]]
+kind = "tool_payload_workspace_binary"
+package = "recfstab"
+
+[[ring2_runtime_profiles.live_tools_common.actions]]
+kind = "tool_payload_workspace_binary"
+package = "recchroot"
+
+[[ring2_runtime_profiles.live_tools_common.actions]]
+kind = "install_mode_payload"
+interactive_shell = "/bin/bash"
+ux_docs_frontend = "bun_bundle"
+
+[ring2_runtime_profiles.live_tools_ux]
+[[ring2_runtime_profiles.live_tools_ux.actions]]
+kind = "rootfs_workspace_binary"
+package = "stage02-split-pane"
+binary = "levitate-install-docs-split"
+destination = "usr/local/bin/levitate-install-docs-split"
 
 [ring2_products.kernel_staging]
 logical_name = "product.kernel.staging"
@@ -1767,6 +1837,22 @@ pass_marker = "STAGE 02 PASSED"
                 .overlay_kind,
             "systemd"
         );
+        assert_eq!(
+            ring_bundle
+                .ring2_products
+                .ring2_products
+                .live_tools
+                .runtime_profiles
+                .as_ref()
+                .expect("live tools runtime profiles should parse"),
+            &vec!["live_tools_common".to_string()]
+        );
+        assert!(ring_bundle
+            .ring2_products
+            .ring2_runtime_profiles
+            .as_ref()
+            .expect("ring2 runtime profiles should parse")
+            .contains_key("live_tools_common"));
         assert_eq!(
             ring_bundle
                 .ring0_release
