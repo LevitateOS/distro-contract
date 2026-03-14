@@ -494,7 +494,9 @@ impl VariantStage00Manifest {
             legacy_products
         };
         let legacy_transforms = transform_contract_from_manifest(&self.artifacts, &self.stage_00);
-        let transforms = if let Some(ring) = ring_manifest_bundle {
+        let legacy_scenarios = scenario_contract_from_manifest(self.stage_01.as_ref());
+        let legacy_release = release_contract_from_manifest(&self.artifacts);
+        let (transforms, release, scenarios) = if let Some(ring) = ring_manifest_bundle {
             let ring_rootfs_image = artifact_transform_from_ring_manifest(
                 &ring.ring1_transforms.ring1_transforms.rootfs_image,
             );
@@ -555,12 +557,56 @@ impl VariantStage00Manifest {
             transforms.initramfs_installed = ring_initramfs_installed;
             transforms.live_uki = ring_live_uki;
             transforms.installed_uki = ring_installed_uki;
-            transforms
+            let ring_iso =
+                artifact_transform_from_ring_manifest(&ring.ring0_release.ring0_release.iso);
+            let ring_disk_image = ring
+                .ring0_release
+                .ring0_release
+                .disk_image
+                .as_ref()
+                .map(artifact_transform_from_ring_manifest);
+            if transforms.iso != ring_iso || transforms.disk_image != ring_disk_image {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "ring0_release",
+                    message: format!(
+                        "legacy Ring 0 transforms ({:?}, {:?}) do not match ring0 release transforms ({:?}, {:?})",
+                        transforms.iso, transforms.disk_image, ring_iso, ring_disk_image
+                    ),
+                });
+            }
+            transforms.iso = ring_iso;
+            transforms.disk_image = ring_disk_image;
+
+            let ring_release =
+                release_contract_from_ring_manifest(&ring.ring0_release.ring0_release.release);
+            if legacy_release != ring_release {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "ring0_release",
+                    message: format!(
+                        "legacy release contract {:?} does not match ring0 release contract {:?}",
+                        legacy_release, ring_release
+                    ),
+                });
+            }
+
+            let ring_scenarios = scenario_contract_from_ring_manifest(&ring.scenarios.scenarios);
+            if legacy_scenarios != ring_scenarios {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "scenarios",
+                    message: format!(
+                        "legacy scenario contract {:?} does not match scenarios contract {:?}",
+                        legacy_scenarios, ring_scenarios
+                    ),
+                });
+            }
+
+            (transforms, ring_release, ring_scenarios)
         } else {
-            legacy_transforms
+            (legacy_transforms, legacy_release, legacy_scenarios)
         };
-        let scenarios = scenario_contract_from_manifest(self.stage_01.as_ref());
-        let release = release_contract_from_manifest(&self.artifacts, &transforms);
         let artifacts = artifact_identity_from_transforms(&transforms);
         let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
 
@@ -862,10 +908,33 @@ fn scenario_contract_from_manifest(stage: Option<&VariantStage01Boot>) -> Scenar
     }
 }
 
-fn release_contract_from_manifest(
-    artifacts: &VariantArtifacts,
-    _transforms: &TransformContract,
-) -> ReleaseContract {
+fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> ScenarioContract {
+    let (required_kernel_cmdline, required_live_services) = stage01_defaults_from_values(
+        scenarios.live_boot.required_kernel_cmdline.clone(),
+        scenarios.live_boot.required_live_services.clone(),
+    );
+
+    ScenarioContract {
+        live_boot: Some(BootStage {
+            success_patterns: vec![],
+            fatal_patterns: vec![],
+            required_kernel_cmdline,
+            required_live_services,
+            evidence: ScriptEvidence {
+                script_path: scenarios.live_boot.evidence.script_path.clone(),
+                pass_marker: scenarios.live_boot.evidence.pass_marker.clone(),
+            },
+        }),
+        live_tools: None,
+        install: None,
+        installed_boot: None,
+        automated_login: None,
+        installed_tools: None,
+        runtime_policy: None,
+    }
+}
+
+fn release_contract_from_manifest(artifacts: &VariantArtifacts) -> ReleaseContract {
     let mut primary_outputs = vec![artifacts.iso_filename.clone()];
     if let Some(disk_image_output) = artifacts.disk_image_output.as_ref() {
         primary_outputs.push(disk_image_output.clone());
@@ -884,6 +953,15 @@ fn release_contract_from_manifest(
         supporting_artifacts,
         metadata_outputs: vec![],
         metadata_facts: release_metadata_facts_from_manifest(artifacts),
+    }
+}
+
+fn release_contract_from_ring_manifest(release: &VariantReleaseDecl) -> ReleaseContract {
+    ReleaseContract {
+        primary_outputs: release.primary_outputs.clone(),
+        supporting_artifacts: release.supporting_artifacts.clone(),
+        metadata_outputs: release.metadata_outputs.clone(),
+        metadata_facts: release.metadata_facts.clone(),
     }
 }
 
@@ -1076,13 +1154,20 @@ fn overlay_output_name(rootfs_name: &str) -> String {
 fn stage01_defaults_with_manifest(
     stage: Option<&VariantStage01Boot>,
 ) -> (Vec<String>, Vec<String>) {
-    let mut required_kernel_cmdline = stage
-        .map(|s| s.required_kernel_cmdline.clone())
-        .unwrap_or_default();
-    let mut required_live_services = stage
-        .map(|s| s.required_live_services.clone())
-        .unwrap_or_default();
+    stage01_defaults_from_values(
+        stage
+            .map(|s| s.required_kernel_cmdline.clone())
+            .unwrap_or_default(),
+        stage
+            .map(|s| s.required_live_services.clone())
+            .unwrap_or_default(),
+    )
+}
 
+fn stage01_defaults_from_values(
+    mut required_kernel_cmdline: Vec<String>,
+    mut required_live_services: Vec<String>,
+) -> (Vec<String>, Vec<String>) {
     merge_required_strings(
         &mut required_kernel_cmdline,
         STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
@@ -2205,6 +2290,139 @@ pass_marker = "STAGE 02 PASSED"
             err,
             VariantContractLoadError::RingOwnerParityMismatch {
                 owner: "ring1_transforms",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn ring0_release_transform_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring0-release-transform-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME),
+            &VALID_RING0_RELEASE_MANIFEST
+                .replace("levitateos-x86_64.iso", "drifted-levitateos-x86_64.iso"),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring0 release transform drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "ring0_release",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn ring0_release_bundle_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring0-release-bundle-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME),
+            &VALID_RING0_RELEASE_MANIFEST.replace(
+                "primary_outputs = [\"levitateos-x86_64.iso\"]",
+                "primary_outputs = [\"drifted-levitateos-x86_64.iso\"]",
+            ),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring0 release bundle drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "ring0_release",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn scenarios_drift_is_rejected() {
+        let repo_root = temp_repo_root("scenarios-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(SCENARIOS_MANIFEST_FILENAME),
+            &VALID_SCENARIOS_MANIFEST.replace(
+                "pass_marker = \"STAGE 01 PASSED\"",
+                "pass_marker = \"STAGE 01 DRIFTED\"",
+            ),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("scenario drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "scenarios",
                 ..
             }
         ));

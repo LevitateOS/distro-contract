@@ -267,6 +267,36 @@ fn validate_release_mirrors_stage_08(
     violations: &mut Vec<Violation>,
     contract: &ConformanceContract,
 ) {
+    let mut expected_primary_outputs = Vec::new();
+    if let Some(iso_output) = first_transform_output(
+        violations,
+        "transforms.iso.output_names",
+        &contract.transforms.iso.output_names,
+    ) {
+        expected_primary_outputs.push(iso_output.to_string());
+    }
+    if let Some(disk_image) = contract.transforms.disk_image.as_ref() {
+        if let Some(disk_output) = first_transform_output(
+            violations,
+            "transforms.disk_image.output_names",
+            &disk_image.output_names,
+        ) {
+            expected_primary_outputs.push(disk_output.to_string());
+        }
+    }
+    if contract.release.primary_outputs != expected_primary_outputs {
+        push_violation(
+            violations,
+            None,
+            "release.primary_outputs",
+            ViolationCode::InvalidPathDeclaration,
+            format!(
+                "release.primary_outputs must mirror Ring 0 final outputs ({:?})",
+                expected_primary_outputs
+            ),
+        );
+    }
+
     let expected_artifacts: Vec<String> = contract
         .release
         .primary_outputs
@@ -1560,6 +1590,19 @@ mod tests {
     fn valid_contract_passes() {
         let report = validate_contract(&valid_contract());
         assert!(report.passed(), "violations: {:#?}", report.violations);
+    }
+
+    #[test]
+    fn release_primary_outputs_must_mirror_ring0_transforms() {
+        let mut contract = valid_contract();
+        contract.release.primary_outputs = vec!["drifted-exampleos.iso".to_string()];
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.field == "release.primary_outputs"));
     }
 
     #[test]
