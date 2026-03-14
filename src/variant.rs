@@ -1,12 +1,13 @@
 //! Variant-local Stage 00 contract loader.
 //!
-//! This module defines the authoritative on-disk 00Build contract format at:
-//! `distro-variants/<variant>/00Build.toml`.
+//! This module keeps `00Build.toml` as the current canonical contract source
+//! while also validating the emerging ring-manifest family in parallel.
 
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::error::{StageId, ViolationCode};
@@ -22,6 +23,13 @@ use crate::schema::{
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
+const IDENTITY_MANIFEST_FILENAME: &str = "identity.toml";
+const BUILD_HOST_MANIFEST_FILENAME: &str = "build-host.toml";
+const RING3_SOURCES_MANIFEST_FILENAME: &str = "ring3-sources.toml";
+const RING2_PRODUCTS_MANIFEST_FILENAME: &str = "ring2-products.toml";
+const RING1_TRANSFORMS_MANIFEST_FILENAME: &str = "ring1-transforms.toml";
+const RING0_RELEASE_MANIFEST_FILENAME: &str = "ring0-release.toml";
+const SCENARIOS_MANIFEST_FILENAME: &str = "scenarios.toml";
 
 /// Loaded variant contract bundle with resolved filesystem paths.
 #[derive(Debug, Clone)]
@@ -53,6 +61,24 @@ pub enum VariantContractLoadError {
     ParseManifestFailed {
         path: PathBuf,
         source: toml::de::Error,
+    },
+    PartialRingManifestSet {
+        variant_dir: PathBuf,
+        present: Vec<String>,
+        missing: Vec<String>,
+    },
+    ReadRingManifestFailed {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    ParseRingManifestFailed {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
+    RingOwnerParityMismatch {
+        variant_dir: PathBuf,
+        owner: &'static str,
+        message: String,
     },
     MissingRequiredFile {
         path: PathBuf,
@@ -99,6 +125,40 @@ impl fmt::Display for VariantContractLoadError {
                 path.display(),
                 source
             ),
+            Self::PartialRingManifestSet {
+                variant_dir,
+                present,
+                missing,
+            } => write!(
+                f,
+                "partial ring-manifest scaffold under '{}': present [{}], missing [{}]",
+                variant_dir.display(),
+                present.join(", "),
+                missing.join(", ")
+            ),
+            Self::ReadRingManifestFailed { path, source } => write!(
+                f,
+                "failed reading ring manifest '{}': {}",
+                path.display(),
+                source
+            ),
+            Self::ParseRingManifestFailed { path, source } => write!(
+                f,
+                "failed parsing ring manifest '{}': {}",
+                path.display(),
+                source
+            ),
+            Self::RingOwnerParityMismatch {
+                variant_dir,
+                owner,
+                message,
+            } => write!(
+                f,
+                "ring owner parity mismatch under '{}' for {}: {}",
+                variant_dir.display(),
+                owner,
+                message
+            ),
             Self::MissingRequiredFile { path, description } => write!(
                 f,
                 "missing required Stage 00 scaffold file ({description}): '{}'",
@@ -120,6 +180,8 @@ impl std::error::Error for VariantContractLoadError {
             Self::CurrentDirectoryUnavailable(source) => Some(source),
             Self::ReadManifestFailed { source, .. } => Some(source),
             Self::ParseManifestFailed { source, .. } => Some(source),
+            Self::ReadRingManifestFailed { source, .. } => Some(source),
+            Self::ParseRingManifestFailed { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -256,12 +318,15 @@ fn load_stage_00_contract_bundle_for_distro_at_root(
         &manifest.stage_00.recipe_kernel_script,
         &manifest.stage_00.recipe_kernel_invocation,
     )?;
+    let ring_manifest_bundle = load_ring_manifest_bundle_if_present(&variant_dir)?;
+
+    let contract = manifest.into_contract(ring_manifest_bundle.as_ref(), &variant_dir)?;
 
     Ok(LoadedVariantContract {
         repo_root: repo_root.to_path_buf(),
         variant_dir,
         manifest_path,
-        contract: manifest.into_contract(),
+        contract,
     })
 }
 
@@ -296,7 +361,72 @@ fn validate_recipe_declaration_content(
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
+fn load_ring_manifest_bundle_if_present(
+    variant_dir: &Path,
+) -> Result<Option<VariantRingManifestBundle>, VariantContractLoadError> {
+    let manifest_specs = [
+        ("identity", IDENTITY_MANIFEST_FILENAME),
+        ("build_host", BUILD_HOST_MANIFEST_FILENAME),
+        ("ring3_sources", RING3_SOURCES_MANIFEST_FILENAME),
+        ("ring2_products", RING2_PRODUCTS_MANIFEST_FILENAME),
+        ("ring1_transforms", RING1_TRANSFORMS_MANIFEST_FILENAME),
+        ("ring0_release", RING0_RELEASE_MANIFEST_FILENAME),
+        ("scenarios", SCENARIOS_MANIFEST_FILENAME),
+    ];
+
+    let mut present = Vec::new();
+    let mut missing = Vec::new();
+    for (_, filename) in manifest_specs {
+        let path = variant_dir.join(filename);
+        if path.is_file() {
+            present.push(filename.to_string());
+        } else {
+            missing.push(filename.to_string());
+        }
+    }
+
+    if present.is_empty() {
+        return Ok(None);
+    }
+
+    if !missing.is_empty() {
+        return Err(VariantContractLoadError::PartialRingManifestSet {
+            variant_dir: variant_dir.to_path_buf(),
+            present,
+            missing,
+        });
+    }
+
+    Ok(Some(VariantRingManifestBundle {
+        identity: read_ring_manifest(&variant_dir.join(IDENTITY_MANIFEST_FILENAME))?,
+        build_host: read_ring_manifest(&variant_dir.join(BUILD_HOST_MANIFEST_FILENAME))?,
+        ring3_sources: read_ring_manifest(&variant_dir.join(RING3_SOURCES_MANIFEST_FILENAME))?,
+        ring2_products: read_ring_manifest(&variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME))?,
+        ring1_transforms: read_ring_manifest(
+            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
+        )?,
+        ring0_release: read_ring_manifest(&variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME))?,
+        scenarios: read_ring_manifest(&variant_dir.join(SCENARIOS_MANIFEST_FILENAME))?,
+    }))
+}
+
+fn read_ring_manifest<T>(path: &Path) -> Result<T, VariantContractLoadError>
+where
+    T: DeserializeOwned,
+{
+    let raw = fs::read_to_string(path).map_err(|source| {
+        VariantContractLoadError::ReadRingManifestFailed {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
+    toml::from_str(&raw).map_err(|source| VariantContractLoadError::ParseRingManifestFailed {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantStage00Manifest {
     schema_version: u32,
@@ -307,8 +437,43 @@ struct VariantStage00Manifest {
 }
 
 impl VariantStage00Manifest {
-    fn into_contract(self) -> ConformanceContract {
-        let build = build_contract_from_manifest(&self.stage_00);
+    fn into_contract(
+        self,
+        ring_manifest_bundle: Option<&VariantRingManifestBundle>,
+        variant_dir: &Path,
+    ) -> Result<ConformanceContract, VariantContractLoadError> {
+        let legacy_identity = identity_from_manifest(&self.identity);
+        let legacy_build = build_contract_from_manifest(&self.stage_00);
+        let (identity, build) = if let Some(ring) = ring_manifest_bundle {
+            let ring_identity = identity_from_manifest(&ring.identity.identity);
+            if ring_identity != legacy_identity {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "identity",
+                    message: format!(
+                        "legacy 00Build identity {:?} does not match ring identity {:?}",
+                        legacy_identity, ring_identity
+                    ),
+                });
+            }
+
+            let ring_build = build_contract_from_ring_manifest(&ring.build_host.build_host);
+            if ring_build != legacy_build {
+                return Err(VariantContractLoadError::RingOwnerParityMismatch {
+                    variant_dir: variant_dir.to_path_buf(),
+                    owner: "build_host",
+                    message: format!(
+                        "legacy 00Build build_host {:?} does not match ring build_host {:?}",
+                        legacy_build, ring_build
+                    ),
+                });
+            }
+
+            (ring_identity, ring_build)
+        } else {
+            (legacy_identity, legacy_build)
+        };
+
         let products = product_contract_from_manifest(&self.artifacts);
         let transforms = transform_contract_from_manifest(&self.artifacts, &self.stage_00);
         let scenarios = scenario_contract_from_manifest(self.stage_01.as_ref());
@@ -316,15 +481,9 @@ impl VariantStage00Manifest {
         let artifacts = artifact_identity_from_transforms(&transforms);
         let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
 
-        ConformanceContract {
+        Ok(ConformanceContract {
             schema_version: self.schema_version,
-            identity: DistroIdentity {
-                os_name: self.identity.os_name,
-                os_id: self.identity.os_id,
-                iso_label: self.identity.iso_label,
-                os_version: self.identity.os_version,
-                default_hostname: self.identity.default_hostname,
-            },
+            identity,
             build,
             products,
             transforms,
@@ -332,7 +491,17 @@ impl VariantStage00Manifest {
             release,
             artifacts,
             stages,
-        }
+        })
+    }
+}
+
+fn identity_from_manifest(identity: &VariantIdentity) -> DistroIdentity {
+    DistroIdentity {
+        os_name: identity.os_name.clone(),
+        os_id: identity.os_id.clone(),
+        iso_label: identity.iso_label.clone(),
+        os_version: identity.os_version.clone(),
+        default_hostname: identity.default_hostname.clone(),
     }
 }
 
@@ -354,6 +523,28 @@ fn build_contract_from_manifest(stage_00: &VariantStage00Build) -> BuildContract
         evidence: ScriptEvidence {
             script_path: stage_00.evidence.script_path.clone(),
             pass_marker: stage_00.evidence.pass_marker.clone(),
+        },
+    }
+}
+
+fn build_contract_from_ring_manifest(build_host: &VariantBuildHost) -> BuildContract {
+    BuildContract {
+        required_build_tools: build_host.required_build_tools.clone(),
+        kernel: KernelBuildContract {
+            kconfig_path: build_host.kernel_kconfig_path.clone(),
+            recipe_script: build_host.recipe_kernel_script.clone(),
+            recipe_invocation: build_host.recipe_kernel_invocation.clone(),
+            release_path: build_host.kernel_release_path.clone(),
+            image_path: build_host.kernel_image_path.clone(),
+            modules_path: build_host.kernel_modules_path.clone(),
+            version: build_host.kernel_version.clone(),
+            sha256: build_host.kernel_sha256.clone(),
+            localversion: build_host.kernel_localversion.clone(),
+            module_install_path: build_host.module_install_path.clone(),
+        },
+        evidence: ScriptEvidence {
+            script_path: build_host.evidence.script_path.clone(),
+            pass_marker: build_host.evidence.pass_marker.clone(),
         },
     }
 }
@@ -772,7 +963,7 @@ fn merge_required_strings(values: &mut Vec<String>, required: &[&str]) {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantIdentity {
     os_name: String,
@@ -782,7 +973,7 @@ struct VariantIdentity {
     default_hostname: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantArtifacts {
     rootfs_name: String,
@@ -793,7 +984,7 @@ struct VariantArtifacts {
     disk_image_output: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(dead_code)]
 struct VariantStage00Build {
@@ -813,14 +1004,14 @@ struct VariantStage00Build {
     evidence: VariantEvidence,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantStage01Boot {
     required_kernel_cmdline: Vec<String>,
     required_live_services: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(dead_code)]
 struct VariantStage00NonKernelInputs {
@@ -830,7 +1021,7 @@ struct VariantStage00NonKernelInputs {
     deferred_to_03install_plus: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantStage00IsoAssembly {
     live_uki_filename: String,
@@ -839,11 +1030,201 @@ struct VariantStage00IsoAssembly {
     live_cmdline: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantEvidence {
     script_path: String,
     pass_marker: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VariantRingManifestBundle {
+    #[allow(dead_code)]
+    identity: VariantIdentityManifest,
+    #[allow(dead_code)]
+    build_host: VariantBuildHostManifest,
+    #[allow(dead_code)]
+    ring3_sources: VariantRing3SourcesManifest,
+    #[allow(dead_code)]
+    ring2_products: VariantRing2ProductsManifest,
+    #[allow(dead_code)]
+    ring1_transforms: VariantRing1TransformsManifest,
+    #[allow(dead_code)]
+    ring0_release: VariantRing0ReleaseManifest,
+    #[allow(dead_code)]
+    scenarios: VariantScenariosManifest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantIdentityManifest {
+    schema_version: u32,
+    identity: VariantIdentity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantBuildHostManifest {
+    schema_version: u32,
+    build_host: VariantBuildHost,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantBuildHost {
+    required_build_tools: Vec<String>,
+    kernel_kconfig_path: String,
+    recipe_kernel_script: String,
+    recipe_kernel_invocation: String,
+    kernel_release_path: String,
+    kernel_image_path: String,
+    kernel_modules_path: String,
+    kernel_version: String,
+    kernel_sha256: String,
+    kernel_localversion: String,
+    module_install_path: String,
+    evidence: VariantEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing3SourcesManifest {
+    schema_version: u32,
+    ring3_sources: VariantRing3Sources,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing3Sources {
+    rootfs_source: VariantRootfsSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRootfsSource {
+    kind: String,
+    recipe_script: String,
+    preseed_recipe_script: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing2ProductsManifest {
+    schema_version: u32,
+    ring2_products: VariantRing2Products,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing2Products {
+    rootfs_base: VariantProductDecl,
+    live_overlay: VariantOverlayProductDecl,
+    boot_live: VariantProductDecl,
+    boot_installed: Option<VariantProductDecl>,
+    kernel_staging: VariantProductDecl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantProductDecl {
+    logical_name: String,
+    description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantOverlayProductDecl {
+    logical_name: String,
+    description: String,
+    overlay_kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing1TransformsManifest {
+    schema_version: u32,
+    ring1_transforms: VariantRing1Transforms,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing1Transforms {
+    rootfs_image: VariantRingTransform,
+    overlay_image: VariantRingTransform,
+    initramfs_live: VariantRingTransform,
+    initramfs_installed: Option<VariantRingTransform>,
+    live_uki: VariantRingTransform,
+    installed_uki: Option<VariantRingTransform>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRingTransform {
+    logical_name: String,
+    dependencies: Vec<String>,
+    output_names: Vec<String>,
+    format: String,
+    extra_cmdline: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing0ReleaseManifest {
+    schema_version: u32,
+    ring0_release: VariantRing0Release,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing0Release {
+    iso: VariantRingTransform,
+    disk_image: Option<VariantRingTransform>,
+    release: VariantReleaseDecl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantReleaseDecl {
+    primary_outputs: Vec<String>,
+    supporting_artifacts: Vec<String>,
+    metadata_outputs: Vec<String>,
+    metadata_facts: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantScenariosManifest {
+    schema_version: u32,
+    scenarios: VariantScenarios,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantScenarios {
+    live_boot: VariantLiveBootScenario,
+    live_environment: VariantLiveEnvironmentScenario,
+    live_tools: VariantLiveToolsScenario,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantLiveBootScenario {
+    required_kernel_cmdline: Vec<String>,
+    required_live_services: Vec<String>,
+    evidence: VariantEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantLiveEnvironmentScenario {
+    required_services: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantLiveToolsScenario {
+    install_experience: String,
+    evidence: VariantEvidence,
 }
 
 #[cfg(test)]
@@ -902,6 +1283,144 @@ required_kernel_cmdline = ["audit=1"]
 required_live_services = ["sshd"]
 "#;
 
+    const VALID_IDENTITY_RING_MANIFEST: &str = r#"schema_version = 6
+
+[identity]
+os_name = "LevitateOS"
+os_id = "levitateos"
+iso_label = "LEVITATEOS"
+os_version = "1.0"
+default_hostname = "levitateos"
+"#;
+
+    const VALID_BUILD_HOST_RING_MANIFEST: &str = r#"schema_version = 6
+
+[build_host]
+required_build_tools = ["recipe", "cargo", "make", "recuki", "ukify", "mkfs.erofs", "xorriso", "reciso", "recinit", "recstrap", "recfstab", "recchroot"]
+kernel_kconfig_path = "kconfig"
+recipe_kernel_script = "distro-builder/recipes/linux.rhai"
+recipe_kernel_invocation = "recipe install"
+kernel_release_path = "kernel-build/include/config/kernel.release"
+kernel_image_path = "staging/boot/vmlinuz"
+kernel_modules_path = "staging/usr/lib/modules/<kernel.release>"
+kernel_version = "6.12.71"
+kernel_sha256 = "143e8bc76cc41f831b51aa5e75819bed55bed41f299d35922820f1d2d2b02600"
+kernel_localversion = "-levitate"
+module_install_path = "/usr/lib/modules"
+
+[build_host.evidence]
+script_path = "00Build-build-capability.sh"
+pass_marker = "STAGE 00 PASSED"
+"#;
+
+    const VALID_RING3_SOURCES_MANIFEST: &str = r#"schema_version = 6
+
+[ring3_sources.rootfs_source]
+kind = "recipe_rpm_dvd"
+recipe_script = "distro-builder/recipes/fedora-stage01-rootfs.rhai"
+preseed_recipe_script = "distro-builder/recipes/fedora-preseed-iso.rhai"
+"#;
+
+    const VALID_RING2_PRODUCTS_MANIFEST: &str = r#"schema_version = 6
+
+[ring2_products.rootfs_base]
+logical_name = "product.rootfs.base"
+description = "Canonical base root filesystem tree"
+
+[ring2_products.live_overlay]
+logical_name = "product.payload.live_overlay"
+description = "Read-only live overlay payload tree"
+overlay_kind = "systemd"
+
+[ring2_products.boot_live]
+logical_name = "product.payload.boot.live"
+description = "Live boot payload inputs"
+
+[ring2_products.boot_installed]
+logical_name = "product.payload.boot.installed"
+description = "Installed-system boot payload inputs"
+
+[ring2_products.kernel_staging]
+logical_name = "product.kernel.staging"
+description = "Kernel image and modules staging product"
+"#;
+
+    const VALID_RING1_TRANSFORMS_MANIFEST: &str = r#"schema_version = 6
+
+[ring1_transforms.rootfs_image]
+logical_name = "artifact.rootfs.erofs"
+dependencies = ["product.rootfs.base"]
+output_names = ["s00-filesystem.erofs"]
+format = "erofs"
+
+[ring1_transforms.overlay_image]
+logical_name = "artifact.overlay.erofs"
+dependencies = ["product.payload.live_overlay"]
+output_names = ["s00-overlayfs.erofs"]
+format = "erofs"
+
+[ring1_transforms.initramfs_live]
+logical_name = "artifact.initramfs.live"
+dependencies = ["product.payload.boot.live", "product.kernel.staging"]
+output_names = ["s00-initramfs-live.cpio.gz"]
+format = "cpio.gz"
+
+[ring1_transforms.initramfs_installed]
+logical_name = "artifact.initramfs.installed"
+dependencies = ["product.payload.boot.installed", "product.kernel.staging"]
+output_names = ["s00-initramfs-installed.img"]
+format = "img"
+
+[ring1_transforms.live_uki]
+logical_name = "artifact.uki.live"
+dependencies = ["product.payload.boot.live", "product.kernel.staging"]
+output_names = ["levitateos-live.efi", "levitateos-emergency.efi", "levitateos-debug.efi"]
+format = "uki"
+extra_cmdline = "video=1920x1080"
+
+[ring1_transforms.installed_uki]
+logical_name = "artifact.uki.installed"
+dependencies = ["product.payload.boot.installed", "product.kernel.staging"]
+output_names = ["levitateos.efi", "levitateos-recovery.efi"]
+format = "uki"
+"#;
+
+    const VALID_RING0_RELEASE_MANIFEST: &str = r#"schema_version = 6
+
+[ring0_release.iso]
+logical_name = "artifact.iso"
+dependencies = ["artifact.rootfs.erofs", "artifact.overlay.erofs", "artifact.initramfs.live", "artifact.uki.live"]
+output_names = ["levitateos-x86_64.iso"]
+format = "iso"
+
+[ring0_release.release]
+primary_outputs = ["levitateos-x86_64.iso"]
+supporting_artifacts = ["s00-filesystem.erofs", "s00-initramfs-live.cpio.gz", "s00-initramfs-installed.img"]
+metadata_outputs = []
+metadata_facts = ["kernel_source.version", "kernel_source.sha256", "kernel_source.localversion", "artifact.rootfs_name", "artifact.iso_filename"]
+"#;
+
+    const VALID_SCENARIOS_MANIFEST: &str = r#"schema_version = 6
+
+[scenarios.live_boot]
+required_kernel_cmdline = ["audit=1"]
+required_live_services = ["sshd"]
+
+[scenarios.live_boot.evidence]
+script_path = "stage-01-live-boot.sh"
+pass_marker = "STAGE 01 PASSED"
+
+[scenarios.live_environment]
+required_services = ["sshd", "auditd"]
+
+[scenarios.live_tools]
+install_experience = "ux"
+
+[scenarios.live_tools.evidence]
+script_path = "stage-02-live-tools.sh"
+pass_marker = "STAGE 02 PASSED"
+"#;
+
     fn temp_repo_root(test_name: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -920,6 +1439,37 @@ required_live_services = ["sshd"]
             fs::create_dir_all(parent).expect("create parent");
         }
         fs::write(path, content).expect("write file");
+    }
+
+    fn write_full_ring_scaffold(variant_dir: &Path) {
+        write_file(
+            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
+            VALID_IDENTITY_RING_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(BUILD_HOST_MANIFEST_FILENAME),
+            VALID_BUILD_HOST_RING_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(RING3_SOURCES_MANIFEST_FILENAME),
+            VALID_RING3_SOURCES_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME),
+            VALID_RING2_PRODUCTS_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
+            VALID_RING1_TRANSFORMS_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME),
+            VALID_RING0_RELEASE_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(SCENARIOS_MANIFEST_FILENAME),
+            VALID_SCENARIOS_MANIFEST,
+        );
     }
 
     #[test]
@@ -1046,6 +1596,82 @@ required_live_services = ["sshd"]
     }
 
     #[test]
+    fn full_ring_scaffold_parses_without_changing_canonical_contract_output() {
+        let repo_root = temp_repo_root("ring-parity");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+
+        let baseline = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect("load baseline levitate contract");
+
+        write_full_ring_scaffold(&variant_dir);
+        let ring_bundle = load_ring_manifest_bundle_if_present(&variant_dir)
+            .expect("parse ring scaffold")
+            .expect("ring scaffold should be present");
+        assert_eq!(ring_bundle.identity.identity.os_id, "levitateos");
+        assert_eq!(
+            ring_bundle.build_host.build_host.kernel_localversion,
+            "-levitate"
+        );
+        assert_eq!(
+            ring_bundle
+                .ring3_sources
+                .ring3_sources
+                .rootfs_source
+                .recipe_script,
+            "distro-builder/recipes/fedora-stage01-rootfs.rhai"
+        );
+        assert_eq!(
+            ring_bundle
+                .ring2_products
+                .ring2_products
+                .live_overlay
+                .overlay_kind,
+            "systemd"
+        );
+        assert_eq!(
+            ring_bundle
+                .ring0_release
+                .ring0_release
+                .release
+                .primary_outputs,
+            vec!["levitateos-x86_64.iso".to_string()]
+        );
+        assert_eq!(
+            ring_bundle
+                .scenarios
+                .scenarios
+                .live_tools
+                .install_experience,
+            "ux"
+        );
+
+        let with_ring_scaffold = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect("load levitate contract with ring scaffold");
+        assert_eq!(with_ring_scaffold, baseline);
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
     fn fails_when_variant_manifest_is_missing() {
         let repo_root = temp_repo_root("missing-manifest");
         fs::create_dir_all(repo_root.join("distro-variants/acorn")).expect("create variant dir");
@@ -1055,6 +1681,117 @@ required_live_services = ["sshd"]
         assert!(matches!(
             err,
             VariantContractLoadError::MissingManifestFile { .. }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn partial_ring_scaffold_fails_fast() {
+        let repo_root = temp_repo_root("partial-ring");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+        fs::create_dir_all(&variant_dir).expect("create variant dir");
+        write_file(
+            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
+            VALID_IDENTITY_RING_MANIFEST,
+        );
+        write_file(
+            &variant_dir.join(BUILD_HOST_MANIFEST_FILENAME),
+            VALID_BUILD_HOST_RING_MANIFEST,
+        );
+
+        let err = load_ring_manifest_bundle_if_present(&variant_dir)
+            .expect_err("partial ring scaffold should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::PartialRingManifestSet { .. }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn ring_identity_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring-identity-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
+            &VALID_IDENTITY_RING_MANIFEST.replace("levitateos", "levitateos-drift"),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring identity drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "identity",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn ring_build_host_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring-build-host-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(BUILD_HOST_MANIFEST_FILENAME),
+            &VALID_BUILD_HOST_RING_MANIFEST.replace(
+                "kernel_localversion = \"-levitate\"",
+                "kernel_localversion = \"-levitate-drift\"",
+            ),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring build_host drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "build_host",
+                ..
+            }
         ));
 
         fs::remove_dir_all(repo_root).expect("cleanup temp root");
@@ -1193,6 +1930,25 @@ required_live_services = ["sshd"]
                 other => panic!("unexpected distro {}", other),
             }
         }
+    }
+
+    #[test]
+    fn workspace_levitate_ring_scaffold_is_complete_and_parseable() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .canonicalize()
+            .expect("canonicalize workspace root");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        let ring_bundle = load_ring_manifest_bundle_if_present(&variant_dir)
+            .expect("parse levitate ring scaffold")
+            .expect("levitate ring scaffold should exist");
+
+        assert_eq!(ring_bundle.identity.identity.os_id, "levitateos");
+        assert_eq!(
+            ring_bundle.ring0_release.ring0_release.iso.output_names,
+            vec!["levitateos-x86_64.iso".to_string()]
+        );
     }
 
     #[test]
