@@ -20,6 +20,22 @@ const LEGACY_ROOTFS_COMPONENT_SEQUENCES: &[&[&str]] = &[
     &["iuppiteros", "downloads", "rootfs"],
 ];
 
+#[derive(Debug, Clone)]
+pub struct Stage00RuntimeArtifacts {
+    pub rootfs_image: PathBuf,
+    pub initramfs_live: PathBuf,
+    pub overlay_image: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct LiveBootRuntimeArtifacts {
+    pub rootfs_image: PathBuf,
+    pub initramfs_live: PathBuf,
+    pub overlay_image: PathBuf,
+    pub live_overlay_dir: PathBuf,
+    pub rootfs_source_pointer: PathBuf,
+}
+
 fn push_stage_violation(
     violations: &mut Vec<Violation>,
     stage: StageId,
@@ -51,23 +67,45 @@ fn read_trimmed(path: &Path) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn expected_stage_00_required_inputs<'a>(
-    contract: &'a ConformanceContract,
-) -> Vec<(&'static str, &'a str)> {
-    let mut values = Vec::new();
-    if let Some(rootfs) = contract.transforms.rootfs_image.output_names.first() {
-        values.push(("transforms.rootfs_image.output_names", rootfs.as_str()));
+fn stage00_runtime_artifacts_from_contract(
+    contract: &ConformanceContract,
+    stage_artifact_dir: &Path,
+) -> Stage00RuntimeArtifacts {
+    let rootfs_name = contract
+        .transforms
+        .rootfs_image
+        .output_names
+        .first()
+        .map(String::as_str)
+        .unwrap_or(&contract.artifacts.rootfs_name);
+    let initramfs_live = contract
+        .transforms
+        .initramfs_live
+        .output_names
+        .first()
+        .map(String::as_str)
+        .unwrap_or(&contract.artifacts.initramfs_live_output);
+    let overlay_name = contract
+        .transforms
+        .overlay_image
+        .output_names
+        .first()
+        .map(String::as_str)
+        .unwrap_or("overlayfs.erofs");
+
+    Stage00RuntimeArtifacts {
+        rootfs_image: stage_artifact_dir.join(rootfs_name),
+        initramfs_live: stage_artifact_dir.join(initramfs_live),
+        overlay_image: stage_artifact_dir.join(overlay_name),
     }
-    if let Some(initramfs_live) = contract.transforms.initramfs_live.output_names.first() {
-        values.push((
-            "transforms.initramfs_live.output_names",
-            initramfs_live.as_str(),
-        ));
-    }
-    if let Some(overlay) = contract.transforms.overlay_image.output_names.first() {
-        values.push(("transforms.overlay_image.output_names", overlay.as_str()));
-    }
-    values
+}
+
+fn live_boot_scenario<'a>(contract: &'a ConformanceContract) -> &'a crate::schema::BootStage {
+    contract
+        .scenarios
+        .live_boot
+        .as_ref()
+        .unwrap_or(&contract.stages.stage_01_live_boot)
 }
 
 fn parse_kconfig_localversion(raw: &str) -> Option<String> {
@@ -104,7 +142,13 @@ pub fn validate_stage_00_runtime(
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> ConformanceReport {
-    validate_stage_00_runtime_with_stage_dirs(contract, variant_dir, artifact_dir, artifact_dir)
+    let runtime_artifacts = stage00_runtime_artifacts_from_contract(contract, artifact_dir);
+    validate_stage_00_runtime_with_artifacts(
+        contract,
+        variant_dir,
+        artifact_dir,
+        &runtime_artifacts,
+    )
 }
 
 /// Validate Stage 00 runtime/provenance with split kernel + stage artifact roots.
@@ -116,6 +160,22 @@ pub fn validate_stage_00_runtime_with_stage_dirs(
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
     stage_artifact_dir: &Path,
+) -> ConformanceReport {
+    let runtime_artifacts = stage00_runtime_artifacts_from_contract(contract, stage_artifact_dir);
+    validate_stage_00_runtime_with_artifacts(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        &runtime_artifacts,
+    )
+}
+
+/// Validate Stage 00 runtime/provenance using explicit artifact paths.
+pub fn validate_stage_00_runtime_with_artifacts(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    artifacts: &Stage00RuntimeArtifacts,
 ) -> ConformanceReport {
     let stage_00 = &contract.stages.stage_00_build;
     let mut violations = Vec::new();
@@ -154,22 +214,31 @@ pub fn validate_stage_00_runtime_with_stage_dirs(
     let release_missing = artifact_layout.has_field_violation("stage_00_build.kernel_release_path");
     violations.extend(artifact_layout.violations);
 
-    let mut non_kernel_requirements = Vec::new();
-    for (field, input) in expected_stage_00_required_inputs(contract) {
-        non_kernel_requirements.push(LayoutRequirement::file(
-            field,
-            input,
-            ViolationCode::MissingBaselineArtifact,
-            "required Stage 00 non-kernel input",
-        ));
-    }
-    if !non_kernel_requirements.is_empty() {
-        let non_kernel_layout = validate_layout(
-            Some(StageId::Stage00),
-            stage_artifact_dir,
-            &non_kernel_requirements,
-        );
-        violations.extend(non_kernel_layout.violations);
+    for (field, expectation, path) in [
+        (
+            "transforms.rootfs_image.output_names",
+            "required Stage 00 rootfs image",
+            &artifacts.rootfs_image,
+        ),
+        (
+            "transforms.initramfs_live.output_names",
+            "required Stage 00 live initramfs",
+            &artifacts.initramfs_live,
+        ),
+        (
+            "transforms.overlay_image.output_names",
+            "required Stage 00 overlay image",
+            &artifacts.overlay_image,
+        ),
+    ] {
+        if !has_file(path) {
+            push_violation(
+                &mut violations,
+                field,
+                ViolationCode::MissingBaselineArtifact,
+                format!("missing {} at '{}'", expectation, path.display()),
+            );
+        }
     }
 
     let kconfig_path = variant_dir.join(&stage_00.kernel_kconfig_path);
@@ -308,11 +377,25 @@ pub fn require_valid_stage_00_runtime(
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> Result<(), ConformanceError> {
-    let report = validate_stage_00_runtime_with_stage_dirs(
+    let report = validate_stage_00_runtime(contract, variant_dir, artifact_dir);
+    if report.passed() {
+        Ok(())
+    } else {
+        Err(ConformanceError { report })
+    }
+}
+
+pub fn require_valid_stage_00_runtime_with_artifacts(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    artifacts: &Stage00RuntimeArtifacts,
+) -> Result<(), ConformanceError> {
+    let report = validate_stage_00_runtime_with_artifacts(
         contract,
         variant_dir,
-        artifact_dir,
-        artifact_dir,
+        kernel_artifact_dir,
+        artifacts,
     );
     if report.passed() {
         Ok(())
@@ -373,13 +456,11 @@ fn symlink_target_equals(path: &Path, expected: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn resolve_stage_rootfs_source_dir(
-    stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
+fn resolve_live_boot_rootfs_source_dir(
+    rootfs_source_pointer: &Path,
     violations: &mut Vec<Violation>,
 ) -> Option<PathBuf> {
-    let pointer = stage_artifact_dir.join(stage_rootfs_source_pointer_name(stage_artifact_tag));
-    let Some(raw) = read_trimmed(&pointer) else {
+    let Some(raw) = read_trimmed(rootfs_source_pointer) else {
         push_stage_violation(
             violations,
             StageId::Stage01,
@@ -387,7 +468,7 @@ fn resolve_stage_rootfs_source_dir(
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing Stage 01 rootfs source pointer '{}'",
-                pointer.display()
+                rootfs_source_pointer.display()
             ),
         );
         return None;
@@ -397,7 +478,10 @@ fn resolve_stage_rootfs_source_dir(
     let resolved = if candidate.is_absolute() {
         candidate
     } else {
-        stage_artifact_dir.join(candidate)
+        rootfs_source_pointer
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(candidate)
     };
 
     if is_legacy_rootfs_source(&resolved) {
@@ -456,13 +540,11 @@ fn contains_component_sequence(haystack: &[String], needle: &[&str]) -> bool {
 }
 
 fn validate_stage01_shared_contract_requirements(
-    contract: &ConformanceContract,
+    live_boot: &crate::schema::BootStage,
     violations: &mut Vec<Violation>,
 ) {
     for token in STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE {
-        if contract
-            .stages
-            .stage_01_live_boot
+        if live_boot
             .required_kernel_cmdline
             .iter()
             .any(|candidate| candidate == token)
@@ -482,9 +564,7 @@ fn validate_stage01_shared_contract_requirements(
     }
 
     for service in STAGE_01_REQUIRED_LIVE_SERVICES_BASE {
-        if contract
-            .stages
-            .stage_01_live_boot
+        if live_boot
             .required_live_services
             .iter()
             .any(|candidate| candidate == service)
@@ -505,7 +585,7 @@ fn validate_stage01_shared_contract_requirements(
 }
 
 fn validate_stage01_systemd_ssh(
-    contract: &ConformanceContract,
+    live_boot: &crate::schema::BootStage,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
@@ -579,9 +659,7 @@ fn validate_stage01_systemd_ssh(
 
     let anaconda_sshd = rootfs_dir.join("usr/lib/systemd/system/anaconda-sshd.service");
     if has_file(&anaconda_sshd)
-        && !contract
-            .stages
-            .stage_01_live_boot
+        && !live_boot
             .required_kernel_cmdline
             .iter()
             .any(|token| token == "inst.sshd=0")
@@ -642,7 +720,7 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
 }
 
 fn validate_stage01_openrc_ssh(
-    contract: &ConformanceContract,
+    live_boot: &crate::schema::BootStage,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
@@ -684,9 +762,7 @@ fn validate_stage01_openrc_ssh(
         );
     }
 
-    if contract
-        .stages
-        .stage_01_live_boot
+    if live_boot
         .required_live_services
         .iter()
         .any(|service| service == "networking")
@@ -734,9 +810,7 @@ fn validate_stage01_openrc_ssh(
         }
     }
 
-    if contract
-        .stages
-        .stage_01_live_boot
+    if live_boot
         .required_live_services
         .iter()
         .any(|service| service == "dhcpcd")
@@ -960,53 +1034,59 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
     }
 }
 
-/// Validate Stage 01 runtime SSH/service wiring against stage-scoped artifacts.
-///
-/// `stage_artifact_dir` should point to `.artifacts/out/<distro>/s01-boot` (or later stage dir
-/// that still carries Stage 01 boot requirements), and `stage_artifact_tag` should match the
-/// stage prefix (`s01`, `s02`, ...).
-pub fn validate_stage_01_runtime(
+/// Validate live-boot runtime SSH/service wiring against explicit artifact paths.
+pub fn validate_live_boot_runtime(
     contract: &ConformanceContract,
-    stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
+    artifacts: &LiveBootRuntimeArtifacts,
 ) -> ConformanceReport {
     let mut violations = Vec::new();
-    validate_stage01_shared_contract_requirements(contract, &mut violations);
+    let live_boot = live_boot_scenario(contract);
+    validate_stage01_shared_contract_requirements(live_boot, &mut violations);
 
-    let stage_layout = validate_layout(
-        Some(StageId::Stage01),
-        stage_artifact_dir,
-        &[
-            LayoutRequirement::file(
-                "stage_01_live_boot.artifacts",
-                stage01_artifact_name(stage_artifact_tag, "filesystem.erofs"),
+    for (field, expectation, path, is_dir) in [
+        (
+            "stage_01_live_boot.artifacts",
+            "Stage 01 rootfs image",
+            artifacts.rootfs_image.as_path(),
+            false,
+        ),
+        (
+            "stage_01_live_boot.artifacts",
+            "Stage 01 live initramfs",
+            artifacts.initramfs_live.as_path(),
+            false,
+        ),
+        (
+            "stage_01_live_boot.artifacts",
+            "Stage 01 live overlay image",
+            artifacts.overlay_image.as_path(),
+            false,
+        ),
+        (
+            "stage_01_live_boot.artifacts",
+            "Stage 01 live overlay source directory",
+            artifacts.live_overlay_dir.as_path(),
+            true,
+        ),
+    ] {
+        let exists = if is_dir {
+            has_directory(path)
+        } else {
+            has_file(path)
+        };
+        if !exists {
+            push_stage_violation(
+                &mut violations,
+                StageId::Stage01,
+                field,
                 ViolationCode::MissingBaselineArtifact,
-                "Stage 01 rootfs image",
-            ),
-            LayoutRequirement::file(
-                "stage_01_live_boot.artifacts",
-                stage01_artifact_name(stage_artifact_tag, "initramfs-live.cpio.gz"),
-                ViolationCode::MissingBaselineArtifact,
-                "Stage 01 live initramfs",
-            ),
-            LayoutRequirement::file(
-                "stage_01_live_boot.artifacts",
-                stage01_artifact_name(stage_artifact_tag, "overlayfs.erofs"),
-                ViolationCode::MissingBaselineArtifact,
-                "Stage 01 live overlay image",
-            ),
-            LayoutRequirement::directory(
-                "stage_01_live_boot.artifacts",
-                stage01_overlay_dir_name(stage_artifact_tag),
-                ViolationCode::MissingBaselineArtifact,
-                "Stage 01 live overlay source directory",
-            ),
-        ],
-    );
-    violations.extend(stage_layout.violations);
+                format!("missing {} at '{}'", expectation, path.display()),
+            );
+        }
+    }
 
     let Some(rootfs_source_dir) =
-        resolve_stage_rootfs_source_dir(stage_artifact_dir, stage_artifact_tag, &mut violations)
+        resolve_live_boot_rootfs_source_dir(&artifacts.rootfs_source_pointer, &mut violations)
     else {
         return ConformanceReport {
             distro_id: contract.identity.os_id.clone(),
@@ -1014,22 +1094,22 @@ pub fn validate_stage_01_runtime(
             violations,
         };
     };
-    let live_overlay_dir = stage_artifact_dir.join(stage01_overlay_dir_name(stage_artifact_tag));
+    let live_overlay_dir = &artifacts.live_overlay_dir;
 
     let has_systemd_unit = has_file(&rootfs_source_dir.join("usr/lib/systemd/system/sshd.service"));
     let has_openrc_script = has_file(&rootfs_source_dir.join("etc/init.d/sshd"));
     if has_systemd_unit {
         validate_stage01_systemd_ssh(
-            contract,
+            live_boot,
             &rootfs_source_dir,
-            &live_overlay_dir,
+            live_overlay_dir,
             &mut violations,
         );
     } else if has_openrc_script {
         validate_stage01_openrc_ssh(
-            contract,
+            live_boot,
             &rootfs_source_dir,
-            &live_overlay_dir,
+            live_overlay_dir,
             &mut violations,
         );
     } else {
@@ -1053,6 +1133,30 @@ pub fn validate_stage_01_runtime(
     }
 }
 
+/// Validate Stage 01 runtime SSH/service wiring against stage-scoped compatibility artifacts.
+pub fn validate_stage_01_runtime(
+    contract: &ConformanceContract,
+    stage_artifact_dir: &Path,
+    stage_artifact_tag: &str,
+) -> ConformanceReport {
+    let artifacts = LiveBootRuntimeArtifacts {
+        rootfs_image: stage_artifact_dir.join(stage01_artifact_name(
+            stage_artifact_tag,
+            "filesystem.erofs",
+        )),
+        initramfs_live: stage_artifact_dir.join(stage01_artifact_name(
+            stage_artifact_tag,
+            "initramfs-live.cpio.gz",
+        )),
+        overlay_image: stage_artifact_dir
+            .join(stage01_artifact_name(stage_artifact_tag, "overlayfs.erofs")),
+        live_overlay_dir: stage_artifact_dir.join(stage01_overlay_dir_name(stage_artifact_tag)),
+        rootfs_source_pointer: stage_artifact_dir
+            .join(stage_rootfs_source_pointer_name(stage_artifact_tag)),
+    };
+    validate_live_boot_runtime(contract, &artifacts)
+}
+
 /// Require Stage 01 runtime checks to pass for stage-scoped artifacts.
 pub fn require_valid_stage_01_runtime(
     contract: &ConformanceContract,
@@ -1060,6 +1164,18 @@ pub fn require_valid_stage_01_runtime(
     stage_artifact_tag: &str,
 ) -> Result<(), ConformanceError> {
     let report = validate_stage_01_runtime(contract, stage_artifact_dir, stage_artifact_tag);
+    if report.passed() {
+        Ok(())
+    } else {
+        Err(ConformanceError { report })
+    }
+}
+
+pub fn require_valid_live_boot_runtime(
+    contract: &ConformanceContract,
+    artifacts: &LiveBootRuntimeArtifacts,
+) -> Result<(), ConformanceError> {
+    let report = validate_live_boot_runtime(contract, artifacts);
     if report.passed() {
         Ok(())
     } else {
@@ -1593,6 +1709,9 @@ mod tests {
         let stage_dir = temp_dir("stage01-runtime-anaconda-missing-cmdline");
         let mut contract = valid_contract();
         contract.stages.stage_01_live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
+        if let Some(live_boot) = contract.scenarios.live_boot.as_mut() {
+            live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
+        }
         write_stage01_systemd_artifacts(&stage_dir, true);
 
         let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
