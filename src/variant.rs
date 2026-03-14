@@ -1178,6 +1178,7 @@ struct VariantRootfsSource {
 struct VariantRing2ProductsManifest {
     schema_version: u32,
     ring2_products: VariantRing2Products,
+    ring2_payload_profiles: Option<BTreeMap<String, VariantRing2PayloadProfile>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1197,6 +1198,37 @@ struct VariantProductDecl {
     logical_name: String,
     description: String,
     extends: Option<String>,
+    payload_profile: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRing2PayloadProfile {
+    producers: Vec<VariantRing2PayloadProducer>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum VariantRing2PayloadProducer {
+    CopyTree {
+        source: String,
+        destination: String,
+    },
+    CopySymlink {
+        source: String,
+        destination: String,
+    },
+    CopyFile {
+        source: String,
+        destination: String,
+        #[serde(default)]
+        optional: bool,
+    },
+    WriteText {
+        path: String,
+        content: String,
+        mode: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1409,6 +1441,7 @@ overlay_kind = "systemd"
 logical_name = "product.payload.boot.live"
 description = "Live boot payload inputs"
 extends = "product.rootfs.base"
+payload_profile = "boot_baseline"
 
 [ring2_products.live_tools]
 logical_name = "product.payload.live_tools"
@@ -1419,6 +1452,13 @@ extends = "product.payload.boot.live"
 logical_name = "product.payload.boot.installed"
 description = "Installed-system boot payload inputs"
 extends = "product.rootfs.base"
+payload_profile = "boot_baseline"
+
+[ring2_payload_profiles.boot_baseline]
+[[ring2_payload_profiles.boot_baseline.producers]]
+kind = "write_text"
+path = ".live-payload-role"
+content = "rootfs\n"
 
 [ring2_products.kernel_staging]
 logical_name = "product.kernel.staging"
