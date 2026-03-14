@@ -1170,7 +1170,7 @@ required_live_services = ["sshd"]
                     assert_eq!(
                         loaded.contract.release.primary_outputs,
                         vec![
-                            "iuppiter-x86_64-s00_build.iso".to_string(),
+                            "iuppiter-x86_64.iso".to_string(),
                             "iuppiteros-x86_64.img".to_string(),
                         ]
                     );
