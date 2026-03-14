@@ -501,18 +501,49 @@ impl VariantStage00Manifest {
             let ring_overlay_image = artifact_transform_from_ring_manifest(
                 &ring.ring1_transforms.ring1_transforms.overlay_image,
             );
+            let ring_initramfs_live = artifact_transform_from_ring_manifest(
+                &ring.ring1_transforms.ring1_transforms.initramfs_live,
+            );
+            let ring_initramfs_installed = ring
+                .ring1_transforms
+                .ring1_transforms
+                .initramfs_installed
+                .as_ref()
+                .map(artifact_transform_from_ring_manifest);
+            let ring_live_uki = artifact_transform_from_ring_manifest(
+                &ring.ring1_transforms.ring1_transforms.live_uki,
+            );
+            let ring_installed_uki = ring
+                .ring1_transforms
+                .ring1_transforms
+                .installed_uki
+                .as_ref()
+                .map(artifact_transform_from_ring_manifest);
             if legacy_transforms.rootfs_image != ring_rootfs_image
                 || legacy_transforms.overlay_image != ring_overlay_image
+                || legacy_transforms.initramfs_live != ring_initramfs_live
+                || legacy_transforms.initramfs_installed != ring_initramfs_installed
+                || legacy_transforms.live_uki != ring_live_uki
+                || legacy_transforms.installed_uki != ring_installed_uki
             {
                 return Err(VariantContractLoadError::RingOwnerParityMismatch {
                     variant_dir: variant_dir.to_path_buf(),
                     owner: "ring1_transforms",
                     message: format!(
-                        "legacy filesystem transforms ({:?}, {:?}) do not match ring1 filesystem transforms ({:?}, {:?})",
+                        "legacy Ring 1 transforms ({:?}, {:?}, {:?}, {:?}, {:?}, {:?}) do not match ring1 transforms ({:?}, {:?}, {:?}, {:?}, {:?}, {:?})",
                         legacy_transforms.rootfs_image,
                         legacy_transforms.overlay_image,
+                        legacy_transforms.initramfs_live,
+                        legacy_transforms.initramfs_installed,
+                        legacy_transforms.live_uki,
+                        legacy_transforms.installed_uki,
                         ring_rootfs_image,
                         ring_overlay_image
+                        ,
+                        ring_initramfs_live,
+                        ring_initramfs_installed,
+                        ring_live_uki,
+                        ring_installed_uki
                     ),
                 });
             }
@@ -520,6 +551,10 @@ impl VariantStage00Manifest {
             let mut transforms = legacy_transforms;
             transforms.rootfs_image = ring_rootfs_image;
             transforms.overlay_image = ring_overlay_image;
+            transforms.initramfs_live = ring_initramfs_live;
+            transforms.initramfs_installed = ring_initramfs_installed;
+            transforms.live_uki = ring_live_uki;
+            transforms.installed_uki = ring_installed_uki;
             transforms
         } else {
             legacy_transforms
@@ -2121,6 +2156,51 @@ pass_marker = "STAGE 02 PASSED"
 
         let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
             .expect_err("ring1 filesystem drift should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::RingOwnerParityMismatch {
+                owner: "ring1_transforms",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn ring1_boot_transform_drift_is_rejected() {
+        let repo_root = temp_repo_root("ring1-boot-drift");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("00Build-build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_file(&variant_dir.join("00Build.toml"), VALID_MANIFEST);
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
+            &VALID_RING1_TRANSFORMS_MANIFEST.replace(
+                "s00-initramfs-live.cpio.gz",
+                "drifted-initramfs-live.cpio.gz",
+            ),
+        );
+
+        let err = load_stage_00_contract_for_distro_from(&repo_root, "levitate")
+            .expect_err("ring1 boot drift should fail");
         assert!(matches!(
             err,
             VariantContractLoadError::RingOwnerParityMismatch {
