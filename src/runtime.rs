@@ -1257,7 +1257,7 @@ mod tests {
                 boot_installed: Some(ProductDecl {
                     logical_name: "product.payload.boot.installed".to_string(),
                     description: "Installed-system boot payload inputs".to_string(),
-                    extends: None,
+                    extends: Some("product.rootfs.base".to_string()),
                 }),
                 kernel_staging: ProductDecl {
                     logical_name: "product.kernel.staging".to_string(),
