@@ -3,9 +3,6 @@
 //! This module is the single source of truth for Stage 00 filenames, required
 //! paths, and required declaration values used by loaders and validators.
 
-/// Stage 00 manifest filename used by `distro-variants/<distro>/`.
-pub const MANIFEST_FILENAME: &str = "00Build.toml";
-
 /// Build-host evidence script required filename prefix.
 pub const EVIDENCE_SCRIPT_PREFIX: &str = "build-capability";
 
@@ -47,8 +44,3 @@ pub const REQUIRED_KERNEL_MODULES_PATH: &str = "staging/usr/lib/modules/<kernel.
 
 /// Required module install root declaration (UsrMerge invariant).
 pub const REQUIRED_MODULE_INSTALL_PATH: &str = "/usr/lib/modules";
-
-/// Mandatory minimal non-kernel Stage 00 inputs for ISO synthesis.
-///
-/// These are declared relative to `.artifacts/out/<DistroDir>/`.
-pub const REQUIRED_NON_KERNEL_INPUTS_00BUILD_BASELINE: &[&str] = &["s00-overlayfs.erofs"];

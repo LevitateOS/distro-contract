@@ -538,13 +538,24 @@ fn validate_evidence(
 
     if marker_ok {
         let lowered = pass_marker.to_ascii_uppercase();
-        if !lowered.contains("STAGE") || !lowered.contains("PASS") {
+        let has_pass = lowered.contains("PASS");
+        let marker_valid = if stage == StageId::Stage00 {
+            has_pass && (lowered.contains("STAGE") || lowered.contains("BUILD"))
+        } else {
+            has_pass && lowered.contains("STAGE")
+        };
+        if !marker_valid {
+            let requirement = if stage == StageId::Stage00 {
+                "BUILD or STAGE, plus PASS"
+            } else {
+                "STAGE and PASS"
+            };
             push_violation(
                 violations,
                 Some(stage),
                 &marker_field,
                 ViolationCode::InvalidEvidenceDeclaration,
-                format!("{marker_field} must contain STAGE and PASS tokens"),
+                format!("{marker_field} must contain {requirement} tokens"),
             );
         }
     }
@@ -1589,6 +1600,16 @@ mod tests {
     #[test]
     fn valid_contract_passes() {
         let report = validate_contract(&valid_contract());
+        assert!(report.passed(), "violations: {:#?}", report.violations);
+    }
+
+    #[test]
+    fn stage_00_evidence_accepts_build_capability_pass_marker() {
+        let mut contract = valid_contract();
+        contract.stages.stage_00_build.evidence.pass_marker = "BUILD CAPABILITY PASSED".to_string();
+        contract.build.evidence.pass_marker = "BUILD CAPABILITY PASSED".to_string();
+
+        let report = validate_contract(&contract);
         assert!(report.passed(), "violations: {:#?}", report.violations);
     }
 

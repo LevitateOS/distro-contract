@@ -1,13 +1,13 @@
 # distro-contract
 
-Conformance schema + validation engine for LevitateOS distro stage contracts.
+Conformance schema + validation engine for LevitateOS variant contracts.
 
 ## Purpose
 
-This crate enforces Stage 00 declaration + Stage 00 runtime provenance:
+This crate enforces canonical declaration integrity plus Stage 00 runtime provenance:
 
 - Define Stage 00..Stage 08 contract schema
-- Load Stage 00 contracts from `distro-variants/*/00Build.toml`
+- Load canonical contracts from the ring/owner manifest family in `distro-variants/*`
 - Validate anti-gaming and consistency rules
 - Validate Stage 00 runtime provenance against real outputs (`kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
@@ -25,7 +25,7 @@ builder/component/disk interfaces.
 ## Public API
 
 - `ConformanceContract`: full declaration schema
-- `load_stage_00_contract_bundle_for_distro_from(&Path, &str) -> Result<LoadedVariantContract, VariantContractLoadError>`
+- `load_variant_contract_bundle_for_distro_from(&Path, &str) -> Result<LoadedVariantContract, VariantContractLoadError>`
 - `validate_contract(&ConformanceContract) -> ConformanceReport`
 - `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`
 - `validate_stage_00_runtime(&ConformanceContract, &Path, &Path) -> ConformanceReport`

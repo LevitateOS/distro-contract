@@ -6,7 +6,7 @@
 //! - Validates declaration integrity and anti-gaming rules
 //! - Produces deterministic violation reports
 
-pub mod build_host_legacy;
+mod build_host_legacy;
 pub mod error;
 pub mod fs_layout;
 pub mod runtime;
@@ -32,8 +32,6 @@ pub use schema::{
 };
 pub use validate::{require_valid_contract, validate_contract};
 pub use variant::{
-    load_stage_00_contract_bundle_for_distro_from, load_stage_00_contract_for_distro,
-    load_stage_00_contract_for_distro_from, load_variant_contract_bundle_for_distro_from,
-    load_variant_contract_for_distro, load_variant_contract_for_distro_from, LoadedVariantContract,
-    VariantContractLoadError,
+    load_variant_contract_bundle_for_distro_from, load_variant_contract_for_distro,
+    load_variant_contract_for_distro_from, LoadedVariantContract, VariantContractLoadError,
 };
