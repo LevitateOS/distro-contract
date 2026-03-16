@@ -7,7 +7,6 @@
 //! - Produces deterministic violation reports
 
 mod build_host_legacy;
-pub mod compatibility;
 pub mod error;
 pub mod fs_layout;
 pub mod runtime;

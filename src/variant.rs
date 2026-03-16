@@ -1981,21 +1981,20 @@ immutable_required_ro_paths = []
             scenarios,
             release,
         };
-        let stages = contract.compatibility_stage_view();
         assert_eq!(
-            stages.stage_01_live_boot.evidence.script_path,
+            contract.scenarios.live_boot.evidence.script_path,
             "live-boot.sh"
         );
         assert_eq!(
-            stages.stage_02_live_tools.evidence.script_path,
+            contract.scenarios.live_tools.evidence.script_path,
             "live-tools.sh"
         );
         assert_eq!(
-            stages.stage_04_installed_boot.success_patterns,
+            contract.scenarios.installed_boot.success_patterns,
             vec!["example login:".to_string()]
         );
         assert_eq!(
-            stages.stage_05_automated_login.default_username,
+            contract.scenarios.automated_login.default_username,
             Some("example".to_string())
         );
     }
