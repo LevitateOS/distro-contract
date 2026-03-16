@@ -20,15 +20,25 @@ const LEGACY_ROOTFS_COMPONENT_SEQUENCES: &[&[&str]] = &[
     &["iuppiteros", "downloads", "rootfs"],
 ];
 
+const BUILD_KERNEL_KCONFIG_FIELD: &str = "build.kernel.kconfig_path";
+const BUILD_KERNEL_RELEASE_FIELD: &str = "build.kernel.release_path";
+const BUILD_KERNEL_IMAGE_FIELD: &str = "build.kernel.image_path";
+const BUILD_KERNEL_MODULES_FIELD: &str = "build.kernel.modules_path";
+const BUILD_KERNEL_LOCALVERSION_FIELD: &str = "build.kernel.localversion";
+const BUILD_KERNEL_MODULE_INSTALL_FIELD: &str = "build.kernel.module_install_path";
+const LIVE_BOOT_ROOTFS_SOURCE_FIELD: &str = "scenarios.live_boot.rootfs_source_path";
+const LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD: &str = "scenarios.live_boot.required_kernel_cmdline";
+const LIVE_BOOT_REQUIRED_SERVICES_FIELD: &str = "scenarios.live_boot.required_live_services";
+const LIVE_BOOT_ENVELOPE_FIELD: &str = "scenarios.live_boot.envelope";
+const LIVE_BOOT_LOCALE_FIELD: &str = "scenarios.live_boot.locale";
+const LIVE_BOOT_ARTIFACTS_FIELD: &str = "scenarios.live_boot.artifacts";
+
 #[derive(Debug, Clone)]
 pub struct BuildRuntimeArtifacts {
     pub rootfs_image: PathBuf,
     pub initramfs_live: PathBuf,
     pub overlay_image: PathBuf,
 }
-
-#[deprecated(note = "use BuildRuntimeArtifacts")]
-pub type Stage00RuntimeArtifacts = BuildRuntimeArtifacts;
 
 #[derive(Debug, Clone)]
 pub struct LiveBootRuntimeArtifacts {
@@ -179,13 +189,13 @@ pub fn validate_build_runtime_with_artifacts(
         Some(StageId::Stage00),
         variant_dir,
         &[LayoutRequirement::file(
-            "stage_00_build.kernel_kconfig_path",
+            BUILD_KERNEL_KCONFIG_FIELD,
             &kernel.kconfig_path,
             ViolationCode::MissingRequiredKernelOutput,
             "declared kernel kconfig path",
         )],
     );
-    let kconfig_missing = variant_layout.has_field_violation("stage_00_build.kernel_kconfig_path");
+    let kconfig_missing = variant_layout.has_field_violation(BUILD_KERNEL_KCONFIG_FIELD);
     violations.extend(variant_layout.violations);
 
     let artifact_layout = validate_layout(
@@ -193,20 +203,20 @@ pub fn validate_build_runtime_with_artifacts(
         kernel_artifact_dir,
         &[
             LayoutRequirement::file(
-                "stage_00_build.kernel_release_path",
+                BUILD_KERNEL_RELEASE_FIELD,
                 &kernel.release_path,
                 ViolationCode::MissingRequiredKernelOutput,
                 "kernel.release output",
             ),
             LayoutRequirement::file(
-                "stage_00_build.kernel_image_path",
+                BUILD_KERNEL_IMAGE_FIELD,
                 &kernel.image_path,
                 ViolationCode::MissingRequiredKernelOutput,
                 "kernel image output",
             ),
         ],
     );
-    let release_missing = artifact_layout.has_field_violation("stage_00_build.kernel_release_path");
+    let release_missing = artifact_layout.has_field_violation(BUILD_KERNEL_RELEASE_FIELD);
     violations.extend(artifact_layout.violations);
 
     for (field, expectation, path) in [
@@ -244,7 +254,7 @@ pub fn validate_build_runtime_with_artifacts(
                     if localversion != kernel.localversion {
                         push_violation(
                             &mut violations,
-                            "stage_00_build.kernel_localversion",
+                            BUILD_KERNEL_LOCALVERSION_FIELD,
                             ViolationCode::InvalidKernelProvenance,
                             format!(
                                 "kconfig CONFIG_LOCALVERSION='{}' does not match declared '{}'",
@@ -256,7 +266,7 @@ pub fn validate_build_runtime_with_artifacts(
                 None => {
                     push_violation(
                         &mut violations,
-                        "stage_00_build.kernel_localversion",
+                        BUILD_KERNEL_LOCALVERSION_FIELD,
                         ViolationCode::InvalidKernelProvenance,
                         format!(
                             "kconfig '{}' is missing CONFIG_LOCALVERSION",
@@ -268,7 +278,7 @@ pub fn validate_build_runtime_with_artifacts(
             Err(err) => {
                 push_violation(
                     &mut violations,
-                    "stage_00_build.kernel_kconfig_path",
+                    BUILD_KERNEL_KCONFIG_FIELD,
                     ViolationCode::MissingRequiredKernelOutput,
                     format!(
                         "failed reading kconfig '{}': {}",
@@ -290,7 +300,7 @@ pub fn validate_build_runtime_with_artifacts(
             if !value.starts_with(&kernel.version) {
                 push_violation(
                     &mut violations,
-                    "stage_00_build.kernel_release_path",
+                    BUILD_KERNEL_RELEASE_FIELD,
                     ViolationCode::InvalidKernelProvenance,
                     format!(
                         "kernel.release '{}' does not start with declared kernel_version '{}'",
@@ -301,7 +311,7 @@ pub fn validate_build_runtime_with_artifacts(
             if !value.ends_with(&kernel.localversion) {
                 push_violation(
                     &mut violations,
-                    "stage_00_build.kernel_release_path",
+                    BUILD_KERNEL_RELEASE_FIELD,
                     ViolationCode::InvalidKernelProvenance,
                     format!(
                         "kernel.release '{}' does not end with declared kernel_localversion '{}'",
@@ -315,7 +325,7 @@ pub fn validate_build_runtime_with_artifacts(
             if !release_missing {
                 push_violation(
                     &mut violations,
-                    "stage_00_build.kernel_release_path",
+                    BUILD_KERNEL_RELEASE_FIELD,
                     ViolationCode::MissingRequiredKernelOutput,
                     format!(
                         "missing or empty kernel.release output at '{}'",
@@ -335,7 +345,7 @@ pub fn validate_build_runtime_with_artifacts(
             Some(StageId::Stage00),
             kernel_artifact_dir,
             &[LayoutRequirement::directory(
-                "stage_00_build.kernel_modules_path",
+                BUILD_KERNEL_MODULES_FIELD,
                 expanded_modules_rel,
                 ViolationCode::MissingRequiredKernelOutput,
                 "kernel modules output",
@@ -349,7 +359,7 @@ pub fn validate_build_runtime_with_artifacts(
     if is_real_directory(&legacy_root) && !usrmerge_root.is_dir() {
         push_violation(
             &mut violations,
-            "stage_00_build.module_install_path",
+            BUILD_KERNEL_MODULE_INSTALL_FIELD,
             ViolationCode::UnsupportedModuleInstallPath,
             format!(
                 "detected real modules directory at '{}' without usrmerge root '{}'",
@@ -364,43 +374,6 @@ pub fn validate_build_runtime_with_artifacts(
         schema_version: contract.schema_version,
         violations,
     }
-}
-
-/// Validate Stage 00 runtime/provenance invariants against on-disk files.
-#[deprecated(note = "use validate_build_runtime")]
-pub fn validate_stage_00_runtime(
-    contract: &ConformanceContract,
-    variant_dir: &Path,
-    artifact_dir: &Path,
-) -> ConformanceReport {
-    validate_build_runtime(contract, variant_dir, artifact_dir)
-}
-
-/// Validate Stage 00 runtime/provenance with split kernel + stage artifact roots.
-#[deprecated(note = "use validate_build_runtime_with_stage_dirs")]
-pub fn validate_stage_00_runtime_with_stage_dirs(
-    contract: &ConformanceContract,
-    variant_dir: &Path,
-    kernel_artifact_dir: &Path,
-    stage_artifact_dir: &Path,
-) -> ConformanceReport {
-    validate_build_runtime_with_stage_dirs(
-        contract,
-        variant_dir,
-        kernel_artifact_dir,
-        stage_artifact_dir,
-    )
-}
-
-/// Validate Stage 00 runtime/provenance using explicit artifact paths.
-#[deprecated(note = "use validate_build_runtime_with_artifacts")]
-pub fn validate_stage_00_runtime_with_artifacts(
-    contract: &ConformanceContract,
-    variant_dir: &Path,
-    kernel_artifact_dir: &Path,
-    artifacts: &BuildRuntimeArtifacts,
-) -> ConformanceReport {
-    validate_build_runtime_with_artifacts(contract, variant_dir, kernel_artifact_dir, artifacts)
 }
 
 /// Require build-runtime checks to pass.
@@ -454,47 +427,6 @@ pub fn require_valid_build_runtime_with_stage_dirs(
     } else {
         Err(ConformanceError { report })
     }
-}
-
-/// Require Stage 00 runtime checks to pass.
-#[deprecated(note = "use require_valid_build_runtime")]
-pub fn require_valid_stage_00_runtime(
-    contract: &ConformanceContract,
-    variant_dir: &Path,
-    artifact_dir: &Path,
-) -> Result<(), ConformanceError> {
-    require_valid_build_runtime(contract, variant_dir, artifact_dir)
-}
-
-#[deprecated(note = "use require_valid_build_runtime_with_artifacts")]
-pub fn require_valid_stage_00_runtime_with_artifacts(
-    contract: &ConformanceContract,
-    variant_dir: &Path,
-    kernel_artifact_dir: &Path,
-    artifacts: &BuildRuntimeArtifacts,
-) -> Result<(), ConformanceError> {
-    require_valid_build_runtime_with_artifacts(
-        contract,
-        variant_dir,
-        kernel_artifact_dir,
-        artifacts,
-    )
-}
-
-/// Require Stage 00 runtime checks to pass with split kernel + stage roots.
-#[deprecated(note = "use require_valid_build_runtime_with_stage_dirs")]
-pub fn require_valid_stage_00_runtime_with_stage_dirs(
-    contract: &ConformanceContract,
-    variant_dir: &Path,
-    kernel_artifact_dir: &Path,
-    stage_artifact_dir: &Path,
-) -> Result<(), ConformanceError> {
-    require_valid_build_runtime_with_stage_dirs(
-        contract,
-        variant_dir,
-        kernel_artifact_dir,
-        stage_artifact_dir,
-    )
 }
 
 fn stage01_artifact_name(tag: &str, suffix: &str) -> String {
@@ -558,7 +490,7 @@ fn resolve_live_boot_rootfs_source_dir(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.rootfs_source_path",
+            LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing Stage 01 rootfs source pointer '{}'",
@@ -582,7 +514,7 @@ fn resolve_live_boot_rootfs_source_dir(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.rootfs_source_path",
+            LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::InvalidPathDeclaration,
             format!(
                 "policy violation: legacy rootfs source '{}' is forbidden for Stage 01 runtime",
@@ -596,7 +528,7 @@ fn resolve_live_boot_rootfs_source_dir(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.rootfs_source_path",
+            LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "Stage 01 rootfs source directory does not exist: '{}'",
@@ -648,7 +580,7 @@ fn validate_stage01_shared_contract_requirements(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_kernel_cmdline",
+            LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
             ViolationCode::MissingValue,
             format!(
                 "Stage 01 required kernel cmdline token '{}' is missing from contract",
@@ -668,7 +600,7 @@ fn validate_stage01_shared_contract_requirements(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_live_services",
+            LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingValue,
             format!(
                 "Stage 01 required live service '{}' is missing from contract",
@@ -693,25 +625,25 @@ fn validate_stage01_systemd_ssh(
         rootfs_dir,
         &[
             LayoutRequirement::file(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "usr/sbin/sshd",
                 ViolationCode::MissingBaselineArtifact,
                 "OpenSSH daemon binary",
             ),
             LayoutRequirement::file(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "usr/lib/systemd/system/sshd.service",
                 ViolationCode::MissingBaselineArtifact,
                 "systemd sshd service unit",
             ),
             LayoutRequirement::file(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "usr/lib/systemd/system/sshd-keygen@.service",
                 ViolationCode::MissingBaselineArtifact,
                 "systemd sshd keygen unit",
             ),
             LayoutRequirement::directory(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "var/empty/sshd",
                 ViolationCode::MissingBaselineArtifact,
                 "OpenSSH privilege-separation directory",
@@ -726,7 +658,7 @@ fn validate_stage01_systemd_ssh(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_live_services",
+            LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing systemd Stage 01 sshd enablement symlink '{}'",
@@ -741,7 +673,7 @@ fn validate_stage01_systemd_ssh(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_live_services",
+            LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing /run/sshd tmpfiles policy (checked '{}' and '{}')",
@@ -761,7 +693,7 @@ fn validate_stage01_systemd_ssh(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_kernel_cmdline",
+            LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
             ViolationCode::MissingValue,
             format!(
                 "found '{}' but required kernel cmdline is missing 'inst.sshd=0'; \
@@ -786,7 +718,7 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.envelope",
+                LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "missing required Stage 01 merged-usr symlink '{}'; expected '{}' -> '{}'",
@@ -801,7 +733,7 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.envelope",
+                LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "invalid Stage 01 merged-usr symlink '{}'; expected target '{}'",
@@ -827,13 +759,13 @@ fn validate_stage01_openrc_ssh(
         rootfs_dir,
         &[
             LayoutRequirement::file(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "usr/sbin/sshd",
                 ViolationCode::MissingBaselineArtifact,
                 "OpenSSH daemon binary",
             ),
             LayoutRequirement::file(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "etc/init.d/sshd",
                 ViolationCode::MissingBaselineArtifact,
                 "OpenRC sshd service script",
@@ -847,7 +779,7 @@ fn validate_stage01_openrc_ssh(
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_live_services",
+            LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing OpenRC Stage 01 sshd runlevel symlink '{}'",
@@ -866,7 +798,7 @@ fn validate_stage01_openrc_ssh(
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "missing OpenRC networking service script '{}'",
@@ -880,7 +812,7 @@ fn validate_stage01_openrc_ssh(
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "missing OpenRC network interfaces config '{}'",
@@ -894,7 +826,7 @@ fn validate_stage01_openrc_ssh(
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "missing OpenRC Stage 01 networking runlevel symlink '{}'",
@@ -914,7 +846,7 @@ fn validate_stage01_openrc_ssh(
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "missing OpenRC dhcpcd service script '{}'",
@@ -928,7 +860,7 @@ fn validate_stage01_openrc_ssh(
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "missing OpenRC Stage 01 dhcpcd runlevel symlink '{}'",
@@ -947,7 +879,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.locale",
+            LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing Stage 01 locale config '{}'; expected canonical LANG=C.UTF-8",
@@ -965,7 +897,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
                     push_stage_violation(
                         violations,
                         StageId::Stage01,
-                        "stage_01_live_boot.locale",
+                        LIVE_BOOT_LOCALE_FIELD,
                         ViolationCode::MissingValue,
                         format!(
                             "invalid Stage 01 locale config '{}': expected line 'LANG=C.UTF-8'",
@@ -978,7 +910,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
                 push_stage_violation(
                     violations,
                     StageId::Stage01,
-                    "stage_01_live_boot.locale",
+                    LIVE_BOOT_LOCALE_FIELD,
                     ViolationCode::MissingBaselineArtifact,
                     format!(
                         "failed reading Stage 01 locale config '{}': {}",
@@ -1004,7 +936,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.locale",
+            LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing Stage 01 locale payload under '{}'; expected one of glibc paths [{}] or musl path 'usr/share/i18n/locales/musl/en_US.UTF-8'",
@@ -1022,7 +954,7 @@ fn validate_stage01_forbidden_tool_leaks(rootfs_dir: &Path, violations: &mut Vec
             push_stage_violation(
                 violations,
                 StageId::Stage01,
-                "stage_01_live_boot.envelope",
+                LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
                     "forbidden Stage 02 payload leaked into Stage 01 rootfs: '{}'",
@@ -1039,13 +971,13 @@ fn validate_stage01_required_ssh_artifacts(rootfs_dir: &Path, violations: &mut V
         rootfs_dir,
         &[
             LayoutRequirement::file(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "etc/ssh/sshd_config",
                 ViolationCode::MissingBaselineArtifact,
                 "canonical Stage 01 sshd config",
             ),
             LayoutRequirement::directory(
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "usr/share/empty.sshd",
                 ViolationCode::MissingBaselineArtifact,
                 "Stage 01 empty sshd directory",
@@ -1061,7 +993,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.locale",
+            LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing Stage 01 locale config '{}'; expected canonical LANG=C.UTF-8",
@@ -1079,7 +1011,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
                     push_stage_violation(
                         violations,
                         StageId::Stage01,
-                        "stage_01_live_boot.locale",
+                        LIVE_BOOT_LOCALE_FIELD,
                         ViolationCode::MissingValue,
                         format!(
                             "invalid Stage 01 locale config '{}': expected line 'LANG=C.UTF-8'",
@@ -1092,7 +1024,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
                 push_stage_violation(
                     violations,
                     StageId::Stage01,
-                    "stage_01_live_boot.locale",
+                    LIVE_BOOT_LOCALE_FIELD,
                     ViolationCode::MissingBaselineArtifact,
                     format!(
                         "failed reading Stage 01 locale config '{}': {}",
@@ -1117,7 +1049,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
         push_stage_violation(
             violations,
             StageId::Stage01,
-            "stage_01_live_boot.locale",
+            LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "missing Stage 01 UTF-8 locale payload under '{}'; expected one of: {}",
@@ -1139,25 +1071,25 @@ pub fn validate_live_boot_runtime(
 
     for (field, expectation, path, is_dir) in [
         (
-            "stage_01_live_boot.artifacts",
+            LIVE_BOOT_ARTIFACTS_FIELD,
             "Stage 01 rootfs image",
             artifacts.rootfs_image.as_path(),
             false,
         ),
         (
-            "stage_01_live_boot.artifacts",
+            LIVE_BOOT_ARTIFACTS_FIELD,
             "Stage 01 live initramfs",
             artifacts.initramfs_live.as_path(),
             false,
         ),
         (
-            "stage_01_live_boot.artifacts",
+            LIVE_BOOT_ARTIFACTS_FIELD,
             "Stage 01 live overlay image",
             artifacts.overlay_image.as_path(),
             false,
         ),
         (
-            "stage_01_live_boot.artifacts",
+            LIVE_BOOT_ARTIFACTS_FIELD,
             "Stage 01 live overlay source directory",
             artifacts.live_overlay_dir.as_path(),
             true,
@@ -1210,7 +1142,7 @@ pub fn validate_live_boot_runtime(
         push_stage_violation(
             &mut violations,
             StageId::Stage01,
-            "stage_01_live_boot.required_live_services",
+            LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
                 "unable to locate Stage 01 ssh service wiring under '{}': \
@@ -1238,16 +1170,6 @@ pub fn validate_live_boot_runtime_with_stage_dir(
     validate_live_boot_runtime(contract, &artifacts)
 }
 
-/// Validate Stage 01 runtime SSH/service wiring against stage-scoped compatibility artifacts.
-#[deprecated(note = "use validate_live_boot_runtime_with_stage_dir")]
-pub fn validate_stage_01_runtime(
-    contract: &ConformanceContract,
-    stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
-) -> ConformanceReport {
-    validate_live_boot_runtime_with_stage_dir(contract, stage_artifact_dir, stage_artifact_tag)
-}
-
 pub fn require_valid_live_boot_runtime_with_stage_dir(
     contract: &ConformanceContract,
     stage_artifact_dir: &Path,
@@ -1260,16 +1182,6 @@ pub fn require_valid_live_boot_runtime_with_stage_dir(
     } else {
         Err(ConformanceError { report })
     }
-}
-
-/// Require Stage 01 runtime checks to pass for stage-scoped artifacts.
-#[deprecated(note = "use require_valid_live_boot_runtime_with_stage_dir")]
-pub fn require_valid_stage_01_runtime(
-    contract: &ConformanceContract,
-    stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
-) -> Result<(), ConformanceError> {
-    require_valid_live_boot_runtime_with_stage_dir(contract, stage_artifact_dir, stage_artifact_tag)
 }
 
 pub fn require_valid_live_boot_runtime(
@@ -1705,7 +1617,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_01_live_boot.required_kernel_cmdline"));
+            .any(|v| v.field == LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
@@ -1746,7 +1658,7 @@ mod tests {
         let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report.violations.iter().any(|v| {
-            v.field == "stage_01_live_boot.rootfs_source_path"
+            v.field == LIVE_BOOT_ROOTFS_SOURCE_FIELD
                 && v.code == ViolationCode::InvalidPathDeclaration
         }));
 
@@ -1769,7 +1681,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_01_live_boot.locale"));
+            .any(|v| v.field == LIVE_BOOT_LOCALE_FIELD));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
@@ -1791,7 +1703,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_01_live_boot.locale"));
+            .any(|v| v.field == LIVE_BOOT_LOCALE_FIELD));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
@@ -1812,7 +1724,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_01_live_boot.required_live_services"));
+            .any(|v| v.field == LIVE_BOOT_REQUIRED_SERVICES_FIELD));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
@@ -1833,7 +1745,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_01_live_boot.required_live_services"));
+            .any(|v| v.field == LIVE_BOOT_REQUIRED_SERVICES_FIELD));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
@@ -1855,7 +1767,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_01_live_boot.envelope"));
+            .any(|v| v.field == LIVE_BOOT_ENVELOPE_FIELD));
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }

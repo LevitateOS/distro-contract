@@ -25,7 +25,7 @@ builder/component/disk interfaces.
 ## Public API
 
 - `ConformanceContract`: full declaration schema
-- `distro_contract::compatibility`: legacy stage-shaped compatibility types and helpers
+- `distro_contract::compatibility`: legacy stage-shaped compatibility types, facades, and deprecated runtime wrapper names
 - `load_variant_contract_bundle_for_distro_from(&Path, &str) -> Result<LoadedVariantContract, VariantContractLoadError>`
 - `validate_contract(&ConformanceContract) -> ConformanceReport`
 - `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`

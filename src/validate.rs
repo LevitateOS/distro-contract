@@ -29,6 +29,31 @@ const PLACEHOLDER_TOKENS: &[&str] = &[
     "unknown",
 ];
 const FORBIDDEN_STAGE00_ROOTFS_TOKEN: &str = "squashfs";
+const BUILD_REQUIRED_TOOLS_FIELD: &str = "build.required_build_tools";
+const BUILD_KERNEL_KCONFIG_FIELD: &str = "build.kernel.kconfig_path";
+const BUILD_KERNEL_RECIPE_SCRIPT_FIELD: &str = "build.kernel.recipe_script";
+const BUILD_KERNEL_RECIPE_INVOCATION_FIELD: &str = "build.kernel.recipe_invocation";
+const BUILD_KERNEL_RELEASE_FIELD: &str = "build.kernel.release_path";
+const BUILD_KERNEL_IMAGE_FIELD: &str = "build.kernel.image_path";
+const BUILD_KERNEL_MODULES_FIELD: &str = "build.kernel.modules_path";
+const BUILD_KERNEL_VERSION_FIELD: &str = "build.kernel.version";
+const BUILD_KERNEL_SHA256_FIELD: &str = "build.kernel.sha256";
+const BUILD_KERNEL_LOCALVERSION_FIELD: &str = "build.kernel.localversion";
+const BUILD_KERNEL_MODULE_INSTALL_FIELD: &str = "build.kernel.module_install_path";
+const BUILD_EVIDENCE_FIELD: &str = "build.evidence";
+const BUILD_RUNTIME_REQUIRED_INPUTS_FIELD: &str = "transforms.build_runtime.required_inputs";
+const BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD: &str =
+    "compatibility.build_runtime.deferred_live_boot_inputs";
+const BUILD_RUNTIME_DEFERRED_LIVE_TOOLS_FIELD: &str =
+    "compatibility.build_runtime.deferred_live_tools_inputs";
+const BUILD_RUNTIME_DEFERRED_INSTALL_PLUS_FIELD: &str =
+    "compatibility.build_runtime.deferred_install_plus_inputs";
+const LIVE_UKI_PRIMARY_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[0]";
+const LIVE_UKI_EMERGENCY_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[1]";
+const LIVE_UKI_DEBUG_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[2]";
+const LIVE_UKI_EXTRA_CMDLINE_FIELD: &str = "transforms.live_uki.extra_cmdline";
+const LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD: &str = "scenarios.live_boot.required_kernel_cmdline";
+const LIVE_BOOT_REQUIRED_SERVICES_FIELD: &str = "scenarios.live_boot.required_live_services";
 
 fn push_violation(
     violations: &mut Vec<Violation>,
@@ -593,10 +618,10 @@ fn validate_stage_00_non_kernel_inputs(
     contract: &ConformanceContract,
 ) {
     let kernel = &contract.build.kernel;
-    let required_field = "stage_00_build.non_kernel_inputs.required_for_00build";
-    let stage01_field = "stage_00_build.non_kernel_inputs.deferred_to_01boot";
-    let stage02_field = "stage_00_build.non_kernel_inputs.deferred_to_02livetools";
-    let stage03_field = "stage_00_build.non_kernel_inputs.deferred_to_03install_plus";
+    let required_field = BUILD_RUNTIME_REQUIRED_INPUTS_FIELD;
+    let stage01_field = BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD;
+    let stage02_field = BUILD_RUNTIME_DEFERRED_LIVE_TOOLS_FIELD;
+    let stage03_field = BUILD_RUNTIME_DEFERRED_INSTALL_PLUS_FIELD;
     let required_for_00build: Vec<String> = expected_stage_00_required_inputs(violations, contract)
         .into_iter()
         .map(str::to_string)
@@ -647,7 +672,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
     validate_command_entries(
         violations,
         Some(StageId::Stage00),
-        "stage_00_build.required_build_tools",
+        BUILD_REQUIRED_TOOLS_FIELD,
         &build.required_build_tools,
     );
     let stage_00_tools: HashSet<&str> = build
@@ -660,14 +685,14 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             push_violation(
                 violations,
                 Some(StageId::Stage00),
-                "stage_00_build.required_build_tools",
+                BUILD_REQUIRED_TOOLS_FIELD,
                 ViolationCode::MissingRequiredBuildTool,
-                format!("stage_00_build.required_build_tools must include '{tool}'"),
+                format!("{BUILD_REQUIRED_TOOLS_FIELD} must include '{tool}'"),
             );
         }
     }
 
-    let kconfig_field = "stage_00_build.kernel_kconfig_path";
+    let kconfig_field = BUILD_KERNEL_KCONFIG_FIELD;
     if validate_non_empty_trimmed(
         violations,
         Some(StageId::Stage00),
@@ -681,7 +706,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             kconfig_field,
             ViolationCode::InvalidPathDeclaration,
             format!(
-                "stage_00_build.kernel_kconfig_path must be exactly '{}'",
+                "{BUILD_KERNEL_KCONFIG_FIELD} must be exactly '{}'",
                 REQUIRED_VARIANT_KCONFIG
             ),
         );
@@ -689,25 +714,16 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
 
     for (field, value) in [
         (
-            "stage_00_build.recipe_kernel_script",
+            BUILD_KERNEL_RECIPE_SCRIPT_FIELD,
             kernel.recipe_script.as_str(),
         ),
         (
-            "stage_00_build.recipe_kernel_invocation",
+            BUILD_KERNEL_RECIPE_INVOCATION_FIELD,
             kernel.recipe_invocation.as_str(),
         ),
-        (
-            "stage_00_build.kernel_release_path",
-            kernel.release_path.as_str(),
-        ),
-        (
-            "stage_00_build.kernel_image_path",
-            kernel.image_path.as_str(),
-        ),
-        (
-            "stage_00_build.kernel_modules_path",
-            kernel.modules_path.as_str(),
-        ),
+        (BUILD_KERNEL_RELEASE_FIELD, kernel.release_path.as_str()),
+        (BUILD_KERNEL_IMAGE_FIELD, kernel.image_path.as_str()),
+        (BUILD_KERNEL_MODULES_FIELD, kernel.modules_path.as_str()),
     ] {
         if validate_non_empty_trimmed(violations, Some(StageId::Stage00), field, value)
             && !is_relative_contract_path(value)
@@ -726,10 +742,10 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.recipe_kernel_invocation",
+            BUILD_KERNEL_RECIPE_INVOCATION_FIELD,
             ViolationCode::RecipeKernelOrchestrationRequired,
             format!(
-                "stage_00_build.recipe_kernel_invocation must be '{}'",
+                "{BUILD_KERNEL_RECIPE_INVOCATION_FIELD} must be '{}'",
                 REQUIRED_RECIPE_INVOCATION
             ),
         );
@@ -739,10 +755,10 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.kernel_release_path",
+            BUILD_KERNEL_RELEASE_FIELD,
             ViolationCode::MissingRequiredKernelOutput,
             format!(
-                "stage_00_build.kernel_release_path must be '{}'",
+                "{BUILD_KERNEL_RELEASE_FIELD} must be '{}'",
                 REQUIRED_KERNEL_RELEASE_PATH
             ),
         );
@@ -751,10 +767,10 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.kernel_image_path",
+            BUILD_KERNEL_IMAGE_FIELD,
             ViolationCode::MissingRequiredKernelOutput,
             format!(
-                "stage_00_build.kernel_image_path must be '{}'",
+                "{BUILD_KERNEL_IMAGE_FIELD} must be '{}'",
                 REQUIRED_KERNEL_IMAGE_PATH
             ),
         );
@@ -763,10 +779,10 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.kernel_modules_path",
+            BUILD_KERNEL_MODULES_FIELD,
             ViolationCode::MissingRequiredKernelOutput,
             format!(
-                "stage_00_build.kernel_modules_path must be '{}'",
+                "{BUILD_KERNEL_MODULES_FIELD} must be '{}'",
                 REQUIRED_KERNEL_MODULES_PATH
             ),
         );
@@ -776,10 +792,10 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.module_install_path",
+            BUILD_KERNEL_MODULE_INSTALL_FIELD,
             ViolationCode::UnsupportedModuleInstallPath,
             format!(
-                "stage_00_build.module_install_path must be '{}' to enforce cross-distro consistency",
+                "{BUILD_KERNEL_MODULE_INSTALL_FIELD} must be '{}' to enforce cross-distro consistency",
                 REQUIRED_MODULE_INSTALL_PATH
             ),
         );
@@ -788,39 +804,39 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
     if validate_non_empty_trimmed(
         violations,
         Some(StageId::Stage00),
-        "stage_00_build.kernel_version",
+        BUILD_KERNEL_VERSION_FIELD,
         &kernel.version,
     ) && !is_kernel_version_token(&kernel.version)
     {
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.kernel_version",
+            BUILD_KERNEL_VERSION_FIELD,
             ViolationCode::InvalidKernelProvenance,
-            "stage_00_build.kernel_version must be digits/dot format (for example 6.12.71)",
+            "build.kernel.version must be digits/dot format (for example 6.12.71)",
         );
     }
 
     if validate_non_empty_trimmed(
         violations,
         Some(StageId::Stage00),
-        "stage_00_build.kernel_sha256",
+        BUILD_KERNEL_SHA256_FIELD,
         &kernel.sha256,
     ) && !is_sha256_hex(&kernel.sha256)
     {
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.kernel_sha256",
+            BUILD_KERNEL_SHA256_FIELD,
             ViolationCode::InvalidKernelProvenance,
-            "stage_00_build.kernel_sha256 must be a 64-character hex SHA256",
+            "build.kernel.sha256 must be a 64-character hex SHA256",
         );
     }
 
     if validate_non_empty_trimmed(
         violations,
         Some(StageId::Stage00),
-        "stage_00_build.kernel_localversion",
+        BUILD_KERNEL_LOCALVERSION_FIELD,
         &kernel.localversion,
     ) && (kernel.localversion.len() < 2
         || !kernel.localversion.starts_with('-')
@@ -833,25 +849,25 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.kernel_localversion",
+            BUILD_KERNEL_LOCALVERSION_FIELD,
             ViolationCode::InvalidKernelProvenance,
-            "stage_00_build.kernel_localversion must be '-' followed by lowercase alnum/underscore",
+            "build.kernel.localversion must be '-' followed by lowercase alnum/underscore",
         );
     }
 
     validate_evidence(
         violations,
         StageId::Stage00,
-        "stage_00_build.evidence",
+        BUILD_EVIDENCE_FIELD,
         &build.evidence.script_path,
         &build.evidence.pass_marker,
         EVIDENCE_SCRIPT_PREFIX,
     );
 
     for (index, field) in [
-        (0usize, "stage_00_build.iso_assembly.live_uki_filename"),
-        (1usize, "stage_00_build.iso_assembly.emergency_uki_filename"),
-        (2usize, "stage_00_build.iso_assembly.debug_uki_filename"),
+        (0usize, LIVE_UKI_PRIMARY_OUTPUT_FIELD),
+        (1usize, LIVE_UKI_EMERGENCY_OUTPUT_FIELD),
+        (2usize, LIVE_UKI_DEBUG_OUTPUT_FIELD),
     ] {
         let Some(value) = live_uki_output(
             violations,
@@ -893,9 +909,9 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         push_violation(
             violations,
             Some(StageId::Stage00),
-            "stage_00_build.iso_assembly.live_cmdline",
+            LIVE_UKI_EXTRA_CMDLINE_FIELD,
             ViolationCode::WhitespaceValue,
-            "stage_00_build.iso_assembly.live_cmdline must not include leading/trailing whitespace",
+            "transforms.live_uki.extra_cmdline must not include leading/trailing whitespace",
         );
     }
 
@@ -951,7 +967,7 @@ fn validate_stage_00_erofs_boundary(
         }
     }
 
-    let required_tools_field = "stage_00_build.required_build_tools";
+    let required_tools_field = BUILD_REQUIRED_TOOLS_FIELD;
     for tool in &contract.build.required_build_tools {
         if contains_forbidden_stage00_rootfs_token(tool) {
             push_violation(
@@ -1044,13 +1060,13 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     validate_kernel_cmdline_tokens(
         &mut violations,
         StageId::Stage01,
-        "stage_01_live_boot.required_kernel_cmdline",
+        LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
         &live_boot.required_kernel_cmdline,
     );
     validate_command_entries(
         &mut violations,
         Some(StageId::Stage01),
-        "stage_01_live_boot.required_live_services",
+        LIVE_BOOT_REQUIRED_SERVICES_FIELD,
         &live_boot.required_live_services,
     );
     for token in STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE {
@@ -1062,10 +1078,10 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
             push_violation(
                 &mut violations,
                 Some(StageId::Stage01),
-                "stage_01_live_boot.required_kernel_cmdline",
+                LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
                 ViolationCode::MissingValue,
                 format!(
-                    "stage_01_live_boot.required_kernel_cmdline must include '{}'",
+                    "{LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD} must include '{}'",
                     token
                 ),
             );
@@ -1080,10 +1096,10 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
             push_violation(
                 &mut violations,
                 Some(StageId::Stage01),
-                "stage_01_live_boot.required_live_services",
+                LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingValue,
                 format!(
-                    "stage_01_live_boot.required_live_services must include '{}'",
+                    "{LIVE_BOOT_REQUIRED_SERVICES_FIELD} must include '{}'",
                     service
                 ),
             );
@@ -1432,8 +1448,7 @@ mod tests {
         let report = validate_contract(&contract);
         assert!(!report.passed());
         assert!(report.violations.iter().any(|v| {
-            v.field == "stage_00_build.required_build_tools"
-                && v.code == ViolationCode::InvalidToken
+            v.field == BUILD_REQUIRED_TOOLS_FIELD && v.code == ViolationCode::InvalidToken
         }));
     }
 
@@ -1460,7 +1475,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_00_build.non_kernel_inputs.required_for_00build"));
+            .any(|v| v.field == BUILD_RUNTIME_REQUIRED_INPUTS_FIELD));
     }
 
     #[test]
@@ -1473,7 +1488,7 @@ mod tests {
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_00_build.non_kernel_inputs.required_for_00build"));
+            .any(|v| v.field == BUILD_RUNTIME_REQUIRED_INPUTS_FIELD));
     }
 
     #[test]
@@ -1484,7 +1499,7 @@ mod tests {
         let report = validate_contract(&contract);
         assert!(!report.passed());
         assert!(report.violations.iter().any(|v| {
-            v.field == "stage_00_build.iso_assembly.live_uki_filename"
+            v.field == LIVE_UKI_PRIMARY_OUTPUT_FIELD
                 && v.code == ViolationCode::InvalidPathDeclaration
         }));
     }

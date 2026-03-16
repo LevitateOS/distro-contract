@@ -1,5 +1,9 @@
 //! Legacy stage-shaped compatibility types and facades.
 
+use std::path::Path;
+
+use crate::error::{ConformanceError, ConformanceReport};
+use crate::runtime::BuildRuntimeArtifacts;
 use crate::schema::{
     AutomatedLoginStage, BootStage, ConformanceContract, InstallStage, ReleaseStage,
     RuntimePolicyStage, ScriptEvidence, ToolsStage,
@@ -152,4 +156,111 @@ impl ConformanceContract {
     pub fn compatibility_stage_view(&self) -> StageContract {
         stage_view(self)
     }
+}
+
+#[deprecated(note = "use crate::runtime::BuildRuntimeArtifacts")]
+pub type Stage00RuntimeArtifacts = BuildRuntimeArtifacts;
+
+#[deprecated(note = "use crate::runtime::validate_build_runtime")]
+pub fn validate_stage_00_runtime(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    artifact_dir: &Path,
+) -> ConformanceReport {
+    crate::runtime::validate_build_runtime(contract, variant_dir, artifact_dir)
+}
+
+#[deprecated(note = "use crate::runtime::validate_build_runtime_with_stage_dirs")]
+pub fn validate_stage_00_runtime_with_stage_dirs(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    stage_artifact_dir: &Path,
+) -> ConformanceReport {
+    crate::runtime::validate_build_runtime_with_stage_dirs(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        stage_artifact_dir,
+    )
+}
+
+#[deprecated(note = "use crate::runtime::validate_build_runtime_with_artifacts")]
+pub fn validate_stage_00_runtime_with_artifacts(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    artifacts: &BuildRuntimeArtifacts,
+) -> ConformanceReport {
+    crate::runtime::validate_build_runtime_with_artifacts(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        artifacts,
+    )
+}
+
+#[deprecated(note = "use crate::runtime::require_valid_build_runtime")]
+pub fn require_valid_stage_00_runtime(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    artifact_dir: &Path,
+) -> Result<(), ConformanceError> {
+    crate::runtime::require_valid_build_runtime(contract, variant_dir, artifact_dir)
+}
+
+#[deprecated(note = "use crate::runtime::require_valid_build_runtime_with_artifacts")]
+pub fn require_valid_stage_00_runtime_with_artifacts(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    artifacts: &BuildRuntimeArtifacts,
+) -> Result<(), ConformanceError> {
+    crate::runtime::require_valid_build_runtime_with_artifacts(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        artifacts,
+    )
+}
+
+#[deprecated(note = "use crate::runtime::require_valid_build_runtime_with_stage_dirs")]
+pub fn require_valid_stage_00_runtime_with_stage_dirs(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    stage_artifact_dir: &Path,
+) -> Result<(), ConformanceError> {
+    crate::runtime::require_valid_build_runtime_with_stage_dirs(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        stage_artifact_dir,
+    )
+}
+
+#[deprecated(note = "use crate::runtime::validate_live_boot_runtime_with_stage_dir")]
+pub fn validate_stage_01_runtime(
+    contract: &ConformanceContract,
+    stage_artifact_dir: &Path,
+    stage_artifact_tag: &str,
+) -> ConformanceReport {
+    crate::runtime::validate_live_boot_runtime_with_stage_dir(
+        contract,
+        stage_artifact_dir,
+        stage_artifact_tag,
+    )
+}
+
+#[deprecated(note = "use crate::runtime::require_valid_live_boot_runtime_with_stage_dir")]
+pub fn require_valid_stage_01_runtime(
+    contract: &ConformanceContract,
+    stage_artifact_dir: &Path,
+    stage_artifact_tag: &str,
+) -> Result<(), ConformanceError> {
+    crate::runtime::require_valid_live_boot_runtime_with_stage_dir(
+        contract,
+        stage_artifact_dir,
+        stage_artifact_tag,
+    )
 }
