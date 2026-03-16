@@ -17,12 +17,11 @@ use crate::build_host_legacy::{REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE
 use crate::error::{StageId, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage,
-    BuildCapabilityStage, BuildContract, ConformanceContract, DistroIdentity, InstallStage,
-    KernelBuildContract, ProductContract, ProductDecl, ReleaseContract, ReleaseStage,
-    RootfsMutability, RuntimePolicyStage, ScenarioContract, ScriptEvidence, Stage00IsoAssembly,
-    Stage00NonKernelInputs, StageContract, ToolsStage, TransformContract,
-    STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage, BuildContract,
+    ConformanceContract, DistroIdentity, InstallStage, KernelBuildContract, ProductContract,
+    ProductDecl, ReleaseContract, RootfsMutability, RuntimePolicyStage, ScenarioContract,
+    ScriptEvidence, ToolsStage, TransformContract, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
+    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
@@ -363,7 +362,6 @@ fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> Confo
     let scenarios = scenario_contract_from_ring_manifest(&ring.scenarios.scenarios);
     let release = release_contract_from_ring_manifest(&ring.ring0_release.ring0_release.release);
     let artifacts = artifact_identity_from_transforms(&transforms);
-    let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
 
     ConformanceContract {
         schema_version: ring.build_host.schema_version,
@@ -374,7 +372,6 @@ fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> Confo
         scenarios,
         release,
         artifacts,
-        stages,
     }
 }
 
@@ -622,71 +619,6 @@ fn release_contract_from_ring_manifest(release: &VariantReleaseDecl) -> ReleaseC
         supporting_artifacts: release.supporting_artifacts.clone(),
         metadata_outputs: release.metadata_outputs.clone(),
         metadata_facts: release.metadata_facts.clone(),
-    }
-}
-
-fn stage_contract_from_model(
-    build: &BuildContract,
-    transforms: &TransformContract,
-    scenarios: &ScenarioContract,
-    release: &ReleaseContract,
-) -> StageContract {
-    StageContract {
-        stage_00_build: BuildCapabilityStage {
-            required_build_tools: build.required_build_tools.clone(),
-            kernel_kconfig_path: build.kernel.kconfig_path.clone(),
-            recipe_kernel_script: build.kernel.recipe_script.clone(),
-            recipe_kernel_invocation: build.kernel.recipe_invocation.clone(),
-            kernel_release_path: build.kernel.release_path.clone(),
-            kernel_image_path: build.kernel.image_path.clone(),
-            kernel_modules_path: build.kernel.modules_path.clone(),
-            kernel_version: build.kernel.version.clone(),
-            kernel_sha256: build.kernel.sha256.clone(),
-            kernel_localversion: build.kernel.localversion.clone(),
-            module_install_path: build.kernel.module_install_path.clone(),
-            non_kernel_inputs: Stage00NonKernelInputs {
-                required_for_00build: vec![
-                    transforms.rootfs_image.output_names[0].clone(),
-                    transforms.initramfs_live.output_names[0].clone(),
-                    transforms.overlay_image.output_names[0].clone(),
-                ],
-                deferred_to_01boot: vec![],
-                deferred_to_02livetools: vec![],
-                deferred_to_03install_plus: vec![],
-            },
-            iso_assembly: Stage00IsoAssembly {
-                live_uki_filename: transforms.live_uki.output_names[0].clone(),
-                emergency_uki_filename: transforms.live_uki.output_names[1].clone(),
-                debug_uki_filename: transforms.live_uki.output_names[2].clone(),
-                live_cmdline: transforms
-                    .live_uki
-                    .extra_cmdline
-                    .clone()
-                    .unwrap_or_default(),
-            },
-            evidence: build.evidence.clone(),
-        },
-        stage_01_live_boot: scenarios.live_boot.clone(),
-        stage_02_live_tools: scenarios.live_tools.clone(),
-        stage_03_install: scenarios.install.clone(),
-        stage_04_installed_boot: scenarios.installed_boot.clone(),
-        stage_05_automated_login: scenarios.automated_login.clone(),
-        stage_06_installed_tools: scenarios.installed_tools.clone(),
-        stage_07_runtime_policy: scenarios.runtime_policy.clone(),
-        stage_08_release: ReleaseStage {
-            required_artifacts: release
-                .primary_outputs
-                .iter()
-                .chain(release.supporting_artifacts.iter())
-                .cloned()
-                .collect(),
-            required_metadata: release
-                .metadata_outputs
-                .iter()
-                .chain(release.metadata_facts.iter())
-                .cloned()
-                .collect(),
-        },
     }
 }
 
@@ -1965,8 +1897,35 @@ immutable_required_ro_paths = []
             metadata_outputs: vec![],
             metadata_facts: vec![],
         };
-
-        let stages = stage_contract_from_model(&build, &transforms, &scenarios, &release);
+        let product = |logical_name: &str| ProductDecl {
+            logical_name: logical_name.to_string(),
+            description: logical_name.to_string(),
+            extends: None,
+        };
+        let contract = ConformanceContract {
+            schema_version: CONTRACT_SCHEMA_VERSION,
+            identity: DistroIdentity {
+                os_name: "ExampleOS".to_string(),
+                os_id: "exampleos".to_string(),
+                iso_label: "EXAMPLEOS".to_string(),
+                os_version: "1.0".to_string(),
+                default_hostname: "example".to_string(),
+            },
+            build,
+            products: ProductContract {
+                rootfs_base: product("product.rootfs.base"),
+                live_overlay: product("product.payload.live_overlay"),
+                boot_live: product("product.payload.boot.live"),
+                live_tools: product("product.payload.live_tools"),
+                boot_installed: None,
+                kernel_staging: product("product.kernel.staging"),
+            },
+            artifacts: artifact_identity_from_transforms(&transforms),
+            transforms,
+            scenarios,
+            release,
+        };
+        let stages = contract.compatibility_stage_view();
         assert_eq!(
             stages.stage_01_live_boot.evidence.script_path,
             "live-boot.sh"

@@ -293,5 +293,86 @@ pub struct ConformanceContract {
     pub scenarios: ScenarioContract,
     pub release: ReleaseContract,
     pub artifacts: ArtifactIdentity,
-    pub stages: StageContract,
+}
+
+impl ConformanceContract {
+    /// Derive the legacy stage-shaped compatibility view from canonical owners.
+    pub fn compatibility_stage_view(&self) -> StageContract {
+        let mut required_for_00build = Vec::new();
+        for outputs in [
+            &self.transforms.rootfs_image.output_names,
+            &self.transforms.initramfs_live.output_names,
+            &self.transforms.overlay_image.output_names,
+        ] {
+            if let Some(output) = outputs.first() {
+                required_for_00build.push(output.clone());
+            }
+        }
+
+        let live_uki_output = |index: usize| {
+            self.transforms
+                .live_uki
+                .output_names
+                .get(index)
+                .cloned()
+                .unwrap_or_default()
+        };
+
+        StageContract {
+            stage_00_build: BuildCapabilityStage {
+                required_build_tools: self.build.required_build_tools.clone(),
+                kernel_kconfig_path: self.build.kernel.kconfig_path.clone(),
+                recipe_kernel_script: self.build.kernel.recipe_script.clone(),
+                recipe_kernel_invocation: self.build.kernel.recipe_invocation.clone(),
+                kernel_release_path: self.build.kernel.release_path.clone(),
+                kernel_image_path: self.build.kernel.image_path.clone(),
+                kernel_modules_path: self.build.kernel.modules_path.clone(),
+                kernel_version: self.build.kernel.version.clone(),
+                kernel_sha256: self.build.kernel.sha256.clone(),
+                kernel_localversion: self.build.kernel.localversion.clone(),
+                module_install_path: self.build.kernel.module_install_path.clone(),
+                non_kernel_inputs: Stage00NonKernelInputs {
+                    required_for_00build,
+                    deferred_to_01boot: vec![],
+                    deferred_to_02livetools: vec![],
+                    deferred_to_03install_plus: vec![],
+                },
+                iso_assembly: Stage00IsoAssembly {
+                    live_uki_filename: live_uki_output(0),
+                    emergency_uki_filename: live_uki_output(1),
+                    debug_uki_filename: live_uki_output(2),
+                    live_cmdline: self
+                        .transforms
+                        .live_uki
+                        .extra_cmdline
+                        .clone()
+                        .unwrap_or_default(),
+                },
+                evidence: self.build.evidence.clone(),
+            },
+            stage_01_live_boot: self.scenarios.live_boot.clone(),
+            stage_02_live_tools: self.scenarios.live_tools.clone(),
+            stage_03_install: self.scenarios.install.clone(),
+            stage_04_installed_boot: self.scenarios.installed_boot.clone(),
+            stage_05_automated_login: self.scenarios.automated_login.clone(),
+            stage_06_installed_tools: self.scenarios.installed_tools.clone(),
+            stage_07_runtime_policy: self.scenarios.runtime_policy.clone(),
+            stage_08_release: ReleaseStage {
+                required_artifacts: self
+                    .release
+                    .primary_outputs
+                    .iter()
+                    .chain(self.release.supporting_artifacts.iter())
+                    .cloned()
+                    .collect(),
+                required_metadata: self
+                    .release
+                    .metadata_outputs
+                    .iter()
+                    .chain(self.release.metadata_facts.iter())
+                    .cloned()
+                    .collect(),
+            },
+        }
+    }
 }
