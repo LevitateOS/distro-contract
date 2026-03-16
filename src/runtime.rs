@@ -1,7 +1,7 @@
-//! Runtime Stage 00 provenance checks against real build outputs.
+//! Runtime provenance and live-boot conformance checks against real outputs.
 //!
-//! Unlike declaration-only validation, this verifies that declared Stage 00
-//! invariants match on-disk artifacts (kconfig + kernel build outputs).
+//! Unlike declaration-only validation, this verifies that canonical build and
+//! live-boot invariants match on-disk artifacts.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -21,13 +21,14 @@ const LEGACY_ROOTFS_COMPONENT_SEQUENCES: &[&[&str]] = &[
 ];
 
 #[derive(Debug, Clone)]
-pub struct Stage00RuntimeArtifacts {
+pub struct BuildRuntimeArtifacts {
     pub rootfs_image: PathBuf,
     pub initramfs_live: PathBuf,
     pub overlay_image: PathBuf,
 }
 
-pub type BuildRuntimeArtifacts = Stage00RuntimeArtifacts;
+#[deprecated(note = "use BuildRuntimeArtifacts")]
+pub type Stage00RuntimeArtifacts = BuildRuntimeArtifacts;
 
 #[derive(Debug, Clone)]
 pub struct LiveBootRuntimeArtifacts {
@@ -72,7 +73,7 @@ fn read_trimmed(path: &Path) -> Option<String> {
 fn stage00_runtime_artifacts_from_contract(
     contract: &ConformanceContract,
     stage_artifact_dir: &Path,
-) -> Stage00RuntimeArtifacts {
+) -> BuildRuntimeArtifacts {
     let rootfs_name = contract
         .transforms
         .rootfs_image
@@ -95,7 +96,7 @@ fn stage00_runtime_artifacts_from_contract(
         .map(String::as_str)
         .unwrap_or("overlayfs.erofs");
 
-    Stage00RuntimeArtifacts {
+    BuildRuntimeArtifacts {
         rootfs_image: stage_artifact_dir.join(rootfs_name),
         initramfs_live: stage_artifact_dir.join(initramfs_live),
         overlay_image: stage_artifact_dir.join(overlay_name),
@@ -366,6 +367,7 @@ pub fn validate_build_runtime_with_artifacts(
 }
 
 /// Validate Stage 00 runtime/provenance invariants against on-disk files.
+#[deprecated(note = "use validate_build_runtime")]
 pub fn validate_stage_00_runtime(
     contract: &ConformanceContract,
     variant_dir: &Path,
@@ -375,6 +377,7 @@ pub fn validate_stage_00_runtime(
 }
 
 /// Validate Stage 00 runtime/provenance with split kernel + stage artifact roots.
+#[deprecated(note = "use validate_build_runtime_with_stage_dirs")]
 pub fn validate_stage_00_runtime_with_stage_dirs(
     contract: &ConformanceContract,
     variant_dir: &Path,
@@ -390,11 +393,12 @@ pub fn validate_stage_00_runtime_with_stage_dirs(
 }
 
 /// Validate Stage 00 runtime/provenance using explicit artifact paths.
+#[deprecated(note = "use validate_build_runtime_with_artifacts")]
 pub fn validate_stage_00_runtime_with_artifacts(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
-    artifacts: &Stage00RuntimeArtifacts,
+    artifacts: &BuildRuntimeArtifacts,
 ) -> ConformanceReport {
     validate_build_runtime_with_artifacts(contract, variant_dir, kernel_artifact_dir, artifacts)
 }
@@ -453,6 +457,7 @@ pub fn require_valid_build_runtime_with_stage_dirs(
 }
 
 /// Require Stage 00 runtime checks to pass.
+#[deprecated(note = "use require_valid_build_runtime")]
 pub fn require_valid_stage_00_runtime(
     contract: &ConformanceContract,
     variant_dir: &Path,
@@ -461,11 +466,12 @@ pub fn require_valid_stage_00_runtime(
     require_valid_build_runtime(contract, variant_dir, artifact_dir)
 }
 
+#[deprecated(note = "use require_valid_build_runtime_with_artifacts")]
 pub fn require_valid_stage_00_runtime_with_artifacts(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
-    artifacts: &Stage00RuntimeArtifacts,
+    artifacts: &BuildRuntimeArtifacts,
 ) -> Result<(), ConformanceError> {
     require_valid_build_runtime_with_artifacts(
         contract,
@@ -476,6 +482,7 @@ pub fn require_valid_stage_00_runtime_with_artifacts(
 }
 
 /// Require Stage 00 runtime checks to pass with split kernel + stage roots.
+#[deprecated(note = "use require_valid_build_runtime_with_stage_dirs")]
 pub fn require_valid_stage_00_runtime_with_stage_dirs(
     contract: &ConformanceContract,
     variant_dir: &Path,
@@ -500,6 +507,27 @@ fn stage01_overlay_dir_name(stage_artifact_tag: &str) -> String {
 
 fn stage_rootfs_source_pointer_name(stage_artifact_tag: &str) -> String {
     format!(".{stage_artifact_tag}-live-rootfs-source.path")
+}
+
+fn live_boot_runtime_artifacts_from_stage_dir(
+    stage_artifact_dir: &Path,
+    stage_artifact_tag: &str,
+) -> LiveBootRuntimeArtifacts {
+    LiveBootRuntimeArtifacts {
+        rootfs_image: stage_artifact_dir.join(stage01_artifact_name(
+            stage_artifact_tag,
+            "filesystem.erofs",
+        )),
+        initramfs_live: stage_artifact_dir.join(stage01_artifact_name(
+            stage_artifact_tag,
+            "initramfs-live.cpio.gz",
+        )),
+        overlay_image: stage_artifact_dir
+            .join(stage01_artifact_name(stage_artifact_tag, "overlayfs.erofs")),
+        live_overlay_dir: stage_artifact_dir.join(stage01_overlay_dir_name(stage_artifact_tag)),
+        rootfs_source_pointer: stage_artifact_dir
+            .join(stage_rootfs_source_pointer_name(stage_artifact_tag)),
+    }
 }
 
 fn has_file(path: &Path) -> bool {
@@ -1199,42 +1227,49 @@ pub fn validate_live_boot_runtime(
     }
 }
 
+/// Validate live-boot runtime using stage-scoped compatibility artifacts.
+pub fn validate_live_boot_runtime_with_stage_dir(
+    contract: &ConformanceContract,
+    stage_artifact_dir: &Path,
+    stage_artifact_tag: &str,
+) -> ConformanceReport {
+    let artifacts =
+        live_boot_runtime_artifacts_from_stage_dir(stage_artifact_dir, stage_artifact_tag);
+    validate_live_boot_runtime(contract, &artifacts)
+}
+
 /// Validate Stage 01 runtime SSH/service wiring against stage-scoped compatibility artifacts.
+#[deprecated(note = "use validate_live_boot_runtime_with_stage_dir")]
 pub fn validate_stage_01_runtime(
     contract: &ConformanceContract,
     stage_artifact_dir: &Path,
     stage_artifact_tag: &str,
 ) -> ConformanceReport {
-    let artifacts = LiveBootRuntimeArtifacts {
-        rootfs_image: stage_artifact_dir.join(stage01_artifact_name(
-            stage_artifact_tag,
-            "filesystem.erofs",
-        )),
-        initramfs_live: stage_artifact_dir.join(stage01_artifact_name(
-            stage_artifact_tag,
-            "initramfs-live.cpio.gz",
-        )),
-        overlay_image: stage_artifact_dir
-            .join(stage01_artifact_name(stage_artifact_tag, "overlayfs.erofs")),
-        live_overlay_dir: stage_artifact_dir.join(stage01_overlay_dir_name(stage_artifact_tag)),
-        rootfs_source_pointer: stage_artifact_dir
-            .join(stage_rootfs_source_pointer_name(stage_artifact_tag)),
-    };
-    validate_live_boot_runtime(contract, &artifacts)
+    validate_live_boot_runtime_with_stage_dir(contract, stage_artifact_dir, stage_artifact_tag)
 }
 
-/// Require Stage 01 runtime checks to pass for stage-scoped artifacts.
-pub fn require_valid_stage_01_runtime(
+pub fn require_valid_live_boot_runtime_with_stage_dir(
     contract: &ConformanceContract,
     stage_artifact_dir: &Path,
     stage_artifact_tag: &str,
 ) -> Result<(), ConformanceError> {
-    let report = validate_stage_01_runtime(contract, stage_artifact_dir, stage_artifact_tag);
+    let report =
+        validate_live_boot_runtime_with_stage_dir(contract, stage_artifact_dir, stage_artifact_tag);
     if report.passed() {
         Ok(())
     } else {
         Err(ConformanceError { report })
     }
+}
+
+/// Require Stage 01 runtime checks to pass for stage-scoped artifacts.
+#[deprecated(note = "use require_valid_live_boot_runtime_with_stage_dir")]
+pub fn require_valid_stage_01_runtime(
+    contract: &ConformanceContract,
+    stage_artifact_dir: &Path,
+    stage_artifact_tag: &str,
+) -> Result<(), ConformanceError> {
+    require_valid_live_boot_runtime_with_stage_dir(contract, stage_artifact_dir, stage_artifact_tag)
 }
 
 pub fn require_valid_live_boot_runtime(
@@ -1703,7 +1738,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_runtime_passes_when_kconfig_and_outputs_match() {
+    fn build_runtime_passes_when_kconfig_and_outputs_match() {
         let variant_dir = temp_dir("runtime-ok-variant");
         let artifact_dir = temp_dir("runtime-ok-artifacts");
         let contract = valid_contract();
@@ -1726,7 +1761,7 @@ mod tests {
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-levitate"))
             .expect("create modules dir");
 
-        let report = validate_stage_00_runtime(&contract, &variant_dir, &artifact_dir);
+        let report = validate_build_runtime(&contract, &variant_dir, &artifact_dir);
         assert!(report.passed(), "{:#?}", report.violations);
 
         fs::remove_dir_all(variant_dir).expect("cleanup variant");
@@ -1734,7 +1769,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_runtime_fails_on_localversion_mismatch() {
+    fn build_runtime_fails_on_localversion_mismatch() {
         let variant_dir = temp_dir("runtime-mismatch-variant");
         let artifact_dir = temp_dir("runtime-mismatch-artifacts");
         let contract = valid_contract();
@@ -1757,7 +1792,7 @@ mod tests {
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-other"))
             .expect("create modules dir");
 
-        let report = validate_stage_00_runtime(&contract, &variant_dir, &artifact_dir);
+        let report = validate_build_runtime(&contract, &variant_dir, &artifact_dir);
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1769,26 +1804,25 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_passes_for_systemd_ssh_wiring() {
+    fn live_boot_runtime_passes_for_systemd_ssh_wiring() {
         let stage_dir = temp_dir("stage01-runtime-ok");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, true);
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(report.passed(), "{:#?}", report.violations);
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_anaconda_sshd_present_without_inst_sshd_zero() {
+    fn live_boot_runtime_fails_when_anaconda_sshd_present_without_inst_sshd_zero() {
         let stage_dir = temp_dir("stage01-runtime-anaconda-missing-cmdline");
         let mut contract = valid_contract();
-        contract.stages.stage_01_live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
         contract.scenarios.live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
         write_stage01_systemd_artifacts(&stage_dir, true);
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1799,7 +1833,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_rootfs_source_points_to_legacy_path() {
+    fn live_boot_runtime_fails_when_rootfs_source_points_to_legacy_path() {
         let stage_dir = temp_dir("stage01-runtime-legacy-rootfs");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, false);
@@ -1831,7 +1865,7 @@ mod tests {
             &format!("{}\n", legacy_rootfs.display()),
         );
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report.violations.iter().any(|v| {
             v.field == "stage_01_live_boot.rootfs_source_path"
@@ -1842,7 +1876,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_locale_config_missing() {
+    fn live_boot_runtime_fails_when_locale_config_missing() {
         let stage_dir = temp_dir("stage01-runtime-missing-locale-conf");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, false);
@@ -1852,7 +1886,7 @@ mod tests {
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("etc/locale.conf")).expect("remove locale.conf");
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1863,7 +1897,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_locale_payload_missing() {
+    fn live_boot_runtime_fails_when_locale_payload_missing() {
         let stage_dir = temp_dir("stage01-runtime-missing-locale-payload");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, false);
@@ -1874,7 +1908,7 @@ mod tests {
         fs::remove_file(rootfs_source.join("usr/lib/locale/C.utf8/LC_CTYPE"))
             .expect("remove locale payload");
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1885,7 +1919,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_sshd_config_missing() {
+    fn live_boot_runtime_fails_when_sshd_config_missing() {
         let stage_dir = temp_dir("stage01-runtime-missing-sshd-config");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, false);
@@ -1895,7 +1929,7 @@ mod tests {
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("etc/ssh/sshd_config")).expect("remove sshd_config");
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1906,7 +1940,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_empty_sshd_missing() {
+    fn live_boot_runtime_fails_when_empty_sshd_missing() {
         let stage_dir = temp_dir("stage01-runtime-missing-empty-sshd");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, false);
@@ -1916,7 +1950,7 @@ mod tests {
             .expect("rootfs source path");
         fs::remove_dir_all(rootfs_source.join("usr/share/empty.sshd")).expect("remove empty.sshd");
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1927,7 +1961,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_01_runtime_fails_when_usrmerge_symlink_missing() {
+    fn live_boot_runtime_fails_when_usrmerge_symlink_missing() {
         let stage_dir = temp_dir("stage01-runtime-missing-usrmerge-symlink");
         let contract = valid_contract();
         write_stage01_systemd_artifacts(&stage_dir, false);
@@ -1938,7 +1972,7 @@ mod tests {
         fs::remove_file(rootfs_source.join("lib64")).expect("remove lib64 symlink");
         fs::create_dir_all(rootfs_source.join("lib64")).expect("create wrong lib64 directory");
 
-        let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
         assert!(!report.passed());
         assert!(report
             .violations

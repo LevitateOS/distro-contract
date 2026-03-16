@@ -31,6 +31,7 @@ builder/component/disk interfaces.
 - `validate_build_runtime(&ConformanceContract, &Path, &Path) -> ConformanceReport`
 - `require_valid_build_runtime(&ConformanceContract, &Path, &Path) -> Result<(), ConformanceError>`
 - `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts) -> ConformanceReport`
+- `validate_live_boot_runtime_with_stage_dir(&ConformanceContract, &Path, &str) -> ConformanceReport`
 
 ## Schema Version
 
