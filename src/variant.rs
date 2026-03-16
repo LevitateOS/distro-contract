@@ -1059,7 +1059,7 @@ pass_marker = "BUILD CAPABILITY PASSED"
 
 [ring3_sources.rootfs_source]
 kind = "recipe_rpm_dvd"
-recipe_script = "distro-builder/recipes/fedora-stage01-rootfs.rhai"
+recipe_script = "distro-builder/recipes/fedora-dvd-source-rootfs.rhai"
 preseed_recipe_script = "distro-builder/recipes/fedora-preseed-iso.rhai"
 "#;
 
@@ -1120,7 +1120,7 @@ ux_docs_frontend = "bun_bundle"
 [ring2_runtime_profiles.live_tools_ux]
 [[ring2_runtime_profiles.live_tools_ux.actions]]
 kind = "rootfs_workspace_binary"
-package = "stage02-split-pane"
+package = "install-split-pane"
 binary = "levitate-install-docs-split"
 destination = "usr/local/bin/levitate-install-docs-split"
 
@@ -1484,7 +1484,7 @@ immutable_required_ro_paths = []
                 .ring3_sources
                 .rootfs_source
                 .recipe_script,
-            "distro-builder/recipes/fedora-stage01-rootfs.rhai"
+            "distro-builder/recipes/fedora-dvd-source-rootfs.rhai"
         );
         assert_eq!(
             ring_bundle
@@ -1556,7 +1556,7 @@ immutable_required_ro_paths = []
         assert_eq!(loaded.contract.identity.os_name, "LevitateOS");
         assert_eq!(
             loaded.contract.sources.rootfs_source.recipe_script,
-            "distro-builder/recipes/fedora-stage01-rootfs.rhai"
+            "distro-builder/recipes/fedora-dvd-source-rootfs.rhai"
         );
         assert_eq!(
             loaded.contract.transforms.iso.output_names,
@@ -1961,7 +1961,8 @@ immutable_required_ro_paths = []
             sources: SourceContract {
                 rootfs_source: RootfsSourceContract {
                     kind: RootfsSourceKind::RecipeRpmDvd,
-                    recipe_script: "distro-builder/recipes/fedora-stage01-rootfs.rhai".to_string(),
+                    recipe_script: "distro-builder/recipes/fedora-dvd-source-rootfs.rhai"
+                        .to_string(),
                     preseed_recipe_script: Some(
                         "distro-builder/recipes/fedora-preseed-iso.rhai".to_string(),
                     ),

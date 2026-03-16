@@ -1250,7 +1250,8 @@ mod tests {
             sources: SourceContract {
                 rootfs_source: RootfsSourceContract {
                     kind: RootfsSourceKind::RecipeRpmDvd,
-                    recipe_script: "distro-builder/recipes/fedora-stage01-rootfs.rhai".to_string(),
+                    recipe_script: "distro-builder/recipes/fedora-dvd-source-rootfs.rhai"
+                        .to_string(),
                     preseed_recipe_script: Some(
                         "distro-builder/recipes/fedora-preseed-iso.rhai".to_string(),
                     ),
