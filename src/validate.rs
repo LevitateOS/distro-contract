@@ -4,7 +4,7 @@
 //! Stage 01-Stage 08 declarations may exist in the schema, but this validator only
 //! executes Stage 00 build-capability conformance checks.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::build_host_legacy::{
     EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE, REQUIRED_KERNEL_IMAGE_PATH,
@@ -108,6 +108,24 @@ fn first_transform_output<'a>(
             field,
             ViolationCode::MissingValue,
             format!("{field} must contain at least one output name"),
+        );
+        None
+    })
+}
+
+fn live_uki_output<'a>(
+    violations: &mut Vec<Violation>,
+    field: &'static str,
+    outputs: &'a [String],
+    index: usize,
+) -> Option<&'a str> {
+    outputs.get(index).map(String::as_str).or_else(|| {
+        push_violation(
+            violations,
+            Some(StageId::Stage00),
+            field,
+            ViolationCode::MissingValue,
+            format!("{field} must mirror transforms.live_uki.output_names[{index}]"),
         );
         None
     })
@@ -293,64 +311,6 @@ fn validate_release_mirrors_stage_08(
             format!(
                 "release.primary_outputs must mirror Ring 0 final outputs ({:?})",
                 expected_primary_outputs
-            ),
-        );
-    }
-
-    let expected_artifacts: Vec<String> = contract
-        .release
-        .primary_outputs
-        .iter()
-        .chain(contract.release.supporting_artifacts.iter())
-        .cloned()
-        .collect();
-    let declared_artifacts: HashSet<&str> = contract
-        .stages
-        .stage_08_release
-        .required_artifacts
-        .iter()
-        .map(String::as_str)
-        .collect();
-    let expected_artifact_set: HashSet<&str> =
-        expected_artifacts.iter().map(String::as_str).collect();
-    if declared_artifacts != expected_artifact_set {
-        push_violation(
-            violations,
-            Some(StageId::Stage08),
-            "stages.stage_08_release.required_artifacts",
-            ViolationCode::InvalidPathDeclaration,
-            format!(
-                "stage_08_release.required_artifacts must mirror release.primary_outputs + release.supporting_artifacts ({:?})",
-                expected_artifacts
-            ),
-        );
-    }
-
-    let expected_metadata: Vec<String> = contract
-        .release
-        .metadata_outputs
-        .iter()
-        .chain(contract.release.metadata_facts.iter())
-        .cloned()
-        .collect();
-    let declared_metadata: HashSet<&str> = contract
-        .stages
-        .stage_08_release
-        .required_metadata
-        .iter()
-        .map(String::as_str)
-        .collect();
-    let expected_metadata_set: HashSet<&str> =
-        expected_metadata.iter().map(String::as_str).collect();
-    if declared_metadata != expected_metadata_set {
-        push_violation(
-            violations,
-            Some(StageId::Stage08),
-            "stages.stage_08_release.required_metadata",
-            ViolationCode::InvalidPathDeclaration,
-            format!(
-                "stage_08_release.required_metadata must mirror release.metadata_outputs + release.metadata_facts ({:?})",
-                expected_metadata
             ),
         );
     }
@@ -632,142 +592,55 @@ fn validate_stage_00_non_kernel_inputs(
     violations: &mut Vec<Violation>,
     contract: &ConformanceContract,
 ) {
-    let stage_00 = &contract.stages.stage_00_build;
     let kernel = &contract.build.kernel;
-    let groups = &stage_00.non_kernel_inputs;
-
     let required_field = "stage_00_build.non_kernel_inputs.required_for_00build";
     let stage01_field = "stage_00_build.non_kernel_inputs.deferred_to_01boot";
     let stage02_field = "stage_00_build.non_kernel_inputs.deferred_to_02livetools";
     let stage03_field = "stage_00_build.non_kernel_inputs.deferred_to_03install_plus";
+    let required_for_00build: Vec<String> = expected_stage_00_required_inputs(violations, contract)
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    let empty_group: Vec<String> = Vec::new();
 
-    if groups.required_for_00build.is_empty() {
+    if required_for_00build.len() != 3 {
         push_violation(
             violations,
             Some(StageId::Stage00),
             required_field,
-            ViolationCode::MissingValue,
-            format!("{required_field} must be non-empty"),
+            ViolationCode::MissingBaselineArtifact,
+            format!(
+                "{required_field} must derive exactly three Stage 00 artifacts from Ring 1 transforms (rootfs, initramfs_live, overlay_image)"
+            ),
         );
     }
 
-    validate_relative_paths_allow_empty(violations, required_field, &groups.required_for_00build);
-    validate_relative_paths_allow_empty(violations, stage01_field, &groups.deferred_to_01boot);
-    validate_relative_paths_allow_empty(violations, stage02_field, &groups.deferred_to_02livetools);
-    validate_relative_paths_allow_empty(
-        violations,
-        stage03_field,
-        &groups.deferred_to_03install_plus,
-    );
-
-    let required: HashSet<&str> = groups
-        .required_for_00build
-        .iter()
-        .map(String::as_str)
-        .collect();
-    let expected_required_values = expected_stage_00_required_inputs(violations, contract);
-    let expected_required: HashSet<&str> = expected_required_values.iter().copied().collect();
-    for required_item in &expected_required_values {
-        if !required.contains(required_item) {
-            push_violation(
-                violations,
-                Some(StageId::Stage00),
-                required_field,
-                ViolationCode::MissingBaselineArtifact,
-                format!(
-                    "{required_field} must mirror Stage 00 transform outputs and include '{}'",
-                    required_item
-                ),
-            );
-        }
-    }
-    for item in &groups.required_for_00build {
-        if !expected_required.contains(item.as_str()) {
-            push_violation(
-                violations,
-                Some(StageId::Stage00),
-                required_field,
-                ViolationCode::MissingBaselineArtifact,
-                format!(
-                    "{required_field} contains unexpected compatibility artifact '{item}'; only transform-derived Stage 00 inputs are allowed"
-                ),
-            );
-        }
-    }
-
-    for (field, values) in [
-        (stage01_field, groups.deferred_to_01boot.as_slice()),
-        (stage02_field, groups.deferred_to_02livetools.as_slice()),
-        (stage03_field, groups.deferred_to_03install_plus.as_slice()),
-    ] {
-        if !values.is_empty() {
-            push_violation(
-                violations,
-                Some(StageId::Stage00),
-                field,
-                ViolationCode::MissingBaselineArtifact,
-                format!(
-                    "{field} is compatibility-only and must be empty; explicit ownership now belongs in product/transform declarations"
-                ),
-            );
-        }
-    }
-
-    let all_groups = [
-        (required_field, groups.required_for_00build.as_slice()),
-        (stage01_field, groups.deferred_to_01boot.as_slice()),
-        (stage02_field, groups.deferred_to_02livetools.as_slice()),
-        (stage03_field, groups.deferred_to_03install_plus.as_slice()),
-    ];
-    let mut owners: HashMap<&str, &str> = HashMap::new();
-    for (field, values) in all_groups {
-        for value in values {
-            let key = value.as_str();
-            if let Some(prev) = owners.insert(key, field) {
-                if prev != field {
-                    push_violation(
-                        violations,
-                        Some(StageId::Stage00),
-                        field,
-                        ViolationCode::DuplicateEntry,
-                        format!(
-                            "'{key}' is declared in both '{prev}' and '{field}'; compatibility buckets must not overlap"
-                        ),
-                    );
-                }
-            }
-        }
-    }
+    validate_relative_paths_allow_empty(violations, required_field, &required_for_00build);
+    validate_relative_paths_allow_empty(violations, stage01_field, &empty_group);
+    validate_relative_paths_allow_empty(violations, stage02_field, &empty_group);
+    validate_relative_paths_allow_empty(violations, stage03_field, &empty_group);
 
     let kernel_paths = [
         kernel.release_path.as_str(),
         kernel.image_path.as_str(),
         kernel.modules_path.as_str(),
     ];
-    for (field, values) in [
-        (required_field, groups.required_for_00build.as_slice()),
-        (stage01_field, groups.deferred_to_01boot.as_slice()),
-        (stage02_field, groups.deferred_to_02livetools.as_slice()),
-        (stage03_field, groups.deferred_to_03install_plus.as_slice()),
-    ] {
-        for value in values {
-            if kernel_paths.contains(&value.as_str()) {
-                push_violation(
-                    violations,
-                    Some(StageId::Stage00),
-                    field,
-                    ViolationCode::InvalidPathDeclaration,
-                    format!(
-                        "'{value}' is a kernel artifact path and must not be declared in stage_00 non-kernel input buckets"
-                    ),
-                );
-            }
+    for value in &required_for_00build {
+        if kernel_paths.contains(&value.as_str()) {
+            push_violation(
+                violations,
+                Some(StageId::Stage00),
+                required_field,
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "'{value}' is a kernel artifact path and must not be declared in stage_00 non-kernel input buckets"
+                ),
+            );
         }
     }
 }
 
 fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
-    let stage_00 = &contract.stages.stage_00_build;
     let build = &contract.build;
     let kernel = &build.kernel;
 
@@ -975,20 +848,19 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         EVIDENCE_SCRIPT_PREFIX,
     );
 
-    for (field, value) in [
-        (
-            "stage_00_build.iso_assembly.live_uki_filename",
-            stage_00.iso_assembly.live_uki_filename.as_str(),
-        ),
-        (
-            "stage_00_build.iso_assembly.emergency_uki_filename",
-            stage_00.iso_assembly.emergency_uki_filename.as_str(),
-        ),
-        (
-            "stage_00_build.iso_assembly.debug_uki_filename",
-            stage_00.iso_assembly.debug_uki_filename.as_str(),
-        ),
+    for (index, field) in [
+        (0usize, "stage_00_build.iso_assembly.live_uki_filename"),
+        (1usize, "stage_00_build.iso_assembly.emergency_uki_filename"),
+        (2usize, "stage_00_build.iso_assembly.debug_uki_filename"),
     ] {
+        let Some(value) = live_uki_output(
+            violations,
+            field,
+            &contract.transforms.live_uki.output_names,
+            index,
+        ) else {
+            continue;
+        };
         if !validate_non_empty_trimmed(violations, Some(StageId::Stage00), field, value) {
             continue;
         }
@@ -1011,7 +883,12 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             );
         }
     }
-    let live_cmdline = &stage_00.iso_assembly.live_cmdline;
+    let live_cmdline = contract
+        .transforms
+        .live_uki
+        .extra_cmdline
+        .as_deref()
+        .unwrap_or_default();
     if live_cmdline != live_cmdline.trim() {
         push_violation(
             violations,
@@ -1606,7 +1483,6 @@ mod tests {
     #[test]
     fn stage_00_evidence_accepts_build_capability_pass_marker() {
         let mut contract = valid_contract();
-        contract.stages.stage_00_build.evidence.pass_marker = "BUILD CAPABILITY PASSED".to_string();
         contract.build.evidence.pass_marker = "BUILD CAPABILITY PASSED".to_string();
 
         let report = validate_contract(&contract);
@@ -1659,11 +1535,6 @@ mod tests {
     fn stage_00_rejects_squashfs_rootfs_name() {
         let mut contract = valid_contract();
         contract.artifacts.rootfs_name = "exampleos.squashfs".to_string();
-        contract
-            .stages
-            .stage_00_build
-            .non_kernel_inputs
-            .required_for_00build[0] = "exampleos.squashfs".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -1704,48 +1575,7 @@ mod tests {
     #[test]
     fn stage_00_requires_minimal_non_kernel_input_baseline() {
         let mut contract = valid_contract();
-        contract
-            .stages
-            .stage_00_build
-            .non_kernel_inputs
-            .required_for_00build
-            .retain(|v| v != "s00-overlayfs.erofs");
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::MissingBaselineArtifact));
-    }
-
-    #[test]
-    fn stage_00_non_kernel_inputs_must_be_partitioned_without_overlap() {
-        let mut contract = valid_contract();
-        contract
-            .stages
-            .stage_00_build
-            .non_kernel_inputs
-            .deferred_to_01boot
-            .push("s00-overlayfs.erofs".to_string());
-
-        let report = validate_contract(&contract);
-        assert!(!report.passed());
-        assert!(report
-            .violations
-            .iter()
-            .any(|v| v.code == ViolationCode::DuplicateEntry));
-    }
-
-    #[test]
-    fn stage_00_non_kernel_inputs_reject_unexpected_required_entries() {
-        let mut contract = valid_contract();
-        contract
-            .stages
-            .stage_00_build
-            .non_kernel_inputs
-            .required_for_00build
-            .push("s00-initramfs-installed.img".to_string());
+        contract.transforms.overlay_image.output_names.clear();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -1756,31 +1586,22 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_non_kernel_inputs_require_empty_deferred_buckets() {
+    fn stage_00_non_kernel_inputs_reject_kernel_paths_in_transform_outputs() {
         let mut contract = valid_contract();
-        contract
-            .stages
-            .stage_00_build
-            .non_kernel_inputs
-            .deferred_to_03install_plus
-            .push("s00-initramfs-installed.img".to_string());
+        contract.transforms.overlay_image.output_names[0] = "staging/boot/vmlinuz".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
         assert!(report
             .violations
             .iter()
-            .any(|v| v.field == "stage_00_build.non_kernel_inputs.deferred_to_03install_plus"));
+            .any(|v| v.field == "stage_00_build.non_kernel_inputs.required_for_00build"));
     }
 
     #[test]
     fn stage_00_iso_assembly_rejects_non_filename_paths() {
         let mut contract = valid_contract();
-        contract
-            .stages
-            .stage_00_build
-            .iso_assembly
-            .live_uki_filename = "efi/live.efi".to_string();
+        contract.transforms.live_uki.output_names[0] = "efi/live.efi".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -1793,7 +1614,7 @@ mod tests {
     #[test]
     fn stage_00_iso_assembly_allows_empty_live_cmdline() {
         let mut contract = valid_contract();
-        contract.stages.stage_00_build.iso_assembly.live_cmdline = String::new();
+        contract.transforms.live_uki.extra_cmdline = None;
 
         let report = validate_contract(&contract);
         assert!(report.passed(), "violations: {:#?}", report.violations);
