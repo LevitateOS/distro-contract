@@ -7,6 +7,7 @@
 //! - Produces deterministic violation reports
 
 mod build_host_legacy;
+pub mod compatibility;
 pub mod error;
 pub mod fs_layout;
 pub mod runtime;
@@ -24,11 +25,10 @@ pub use runtime::{
     LiveBootRuntimeArtifacts,
 };
 pub use schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage,
-    BuildCapabilityStage, BuildContract, ConformanceContract, DistroIdentity, InstallStage,
-    KernelBuildContract, ProductContract, ProductDecl, ReleaseContract, ReleaseStage,
-    RootfsMutability, RuntimePolicyStage, ScenarioContract, ScriptEvidence, Stage00IsoAssembly,
-    Stage00NonKernelInputs, StageContract, ToolsStage, TransformContract, CONTRACT_SCHEMA_VERSION,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage, BuildContract,
+    ConformanceContract, DistroIdentity, InstallStage, KernelBuildContract, ProductContract,
+    ProductDecl, ReleaseContract, ReleaseStage, RootfsMutability, RuntimePolicyStage,
+    ScenarioContract, ScriptEvidence, ToolsStage, TransformContract, CONTRACT_SCHEMA_VERSION,
     STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 pub use validate::{require_valid_contract, validate_contract};

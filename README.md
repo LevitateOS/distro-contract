@@ -25,6 +25,7 @@ builder/component/disk interfaces.
 ## Public API
 
 - `ConformanceContract`: full declaration schema
+- `distro_contract::compatibility`: legacy stage-shaped compatibility types and helpers
 - `load_variant_contract_bundle_for_distro_from(&Path, &str) -> Result<LoadedVariantContract, VariantContractLoadError>`
 - `validate_contract(&ConformanceContract) -> ConformanceReport`
 - `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`
@@ -35,4 +36,4 @@ builder/component/disk interfaces.
 
 ## Schema Version
 
-Current contract schema version: `4` (`CONTRACT_SCHEMA_VERSION`).
+Current contract schema version: `6` (`CONTRACT_SCHEMA_VERSION`).
