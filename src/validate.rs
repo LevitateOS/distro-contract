@@ -13,8 +13,8 @@ use crate::build_host_legacy::{
 };
 use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
 use crate::schema::{
-    ConformanceContract, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
-    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ConformanceContract, RootfsSourceKind, CONTRACT_SCHEMA_VERSION,
+    STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const PLACEHOLDER_TOKENS: &[&str] = &[
@@ -41,6 +41,11 @@ const BUILD_KERNEL_SHA256_FIELD: &str = "build.kernel.sha256";
 const BUILD_KERNEL_LOCALVERSION_FIELD: &str = "build.kernel.localversion";
 const BUILD_KERNEL_MODULE_INSTALL_FIELD: &str = "build.kernel.module_install_path";
 const BUILD_EVIDENCE_FIELD: &str = "build.evidence";
+const ROOTFS_SOURCE_KIND_FIELD: &str = "sources.rootfs_source.kind";
+const ROOTFS_SOURCE_RECIPE_SCRIPT_FIELD: &str = "sources.rootfs_source.recipe_script";
+const ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD: &str =
+    "sources.rootfs_source.preseed_recipe_script";
+const ROOTFS_SOURCE_DEFINES_FIELD: &str = "sources.rootfs_source.defines";
 const BUILD_RUNTIME_REQUIRED_INPUTS_FIELD: &str = "transforms.build_runtime.required_inputs";
 const BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD: &str =
     "compatibility.build_runtime.deferred_live_boot_inputs";
@@ -918,6 +923,111 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
     validate_stage_00_non_kernel_inputs(violations, contract);
 }
 
+fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
+    let rootfs_source = &contract.sources.rootfs_source;
+
+    if validate_non_empty_trimmed(
+        violations,
+        None,
+        ROOTFS_SOURCE_RECIPE_SCRIPT_FIELD,
+        &rootfs_source.recipe_script,
+    ) && !is_relative_contract_path(&rootfs_source.recipe_script)
+    {
+        push_violation(
+            violations,
+            None,
+            ROOTFS_SOURCE_RECIPE_SCRIPT_FIELD,
+            ViolationCode::InvalidPathDeclaration,
+            format!("{ROOTFS_SOURCE_RECIPE_SCRIPT_FIELD} must be a relative normalized path"),
+        );
+    }
+
+    match rootfs_source.kind {
+        RootfsSourceKind::RecipeRpmDvd => {
+            if let Some(preseed_recipe_script) = rootfs_source.preseed_recipe_script.as_deref() {
+                if validate_non_empty_trimmed(
+                    violations,
+                    None,
+                    ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+                    preseed_recipe_script,
+                ) && !is_relative_contract_path(preseed_recipe_script)
+                {
+                    push_violation(
+                        violations,
+                        None,
+                        ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+                        ViolationCode::InvalidPathDeclaration,
+                        format!(
+                            "{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} must be a relative normalized path"
+                        ),
+                    );
+                }
+            } else {
+                push_violation(
+                    violations,
+                    None,
+                    ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+                    ViolationCode::MissingValue,
+                    format!(
+                        "{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} is required for {} = 'recipe_rpm_dvd'",
+                        ROOTFS_SOURCE_KIND_FIELD
+                    ),
+                );
+            }
+            if !rootfs_source.defines.is_empty() {
+                push_violation(
+                    violations,
+                    None,
+                    ROOTFS_SOURCE_DEFINES_FIELD,
+                    ViolationCode::InvalidToken,
+                    format!(
+                        "{ROOTFS_SOURCE_DEFINES_FIELD} must be empty when {} = 'recipe_rpm_dvd'",
+                        ROOTFS_SOURCE_KIND_FIELD
+                    ),
+                );
+            }
+        }
+        RootfsSourceKind::RecipeCustom => {
+            if rootfs_source.preseed_recipe_script.is_some() {
+                push_violation(
+                    violations,
+                    None,
+                    ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+                    ViolationCode::InvalidToken,
+                    format!(
+                        "{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} must be omitted when {} = 'recipe_custom'",
+                        ROOTFS_SOURCE_KIND_FIELD
+                    ),
+                );
+            }
+        }
+    }
+
+    for (key, value) in &rootfs_source.defines {
+        let key_ok = validate_non_empty_trimmed(violations, None, ROOTFS_SOURCE_DEFINES_FIELD, key);
+        let field = format!("{ROOTFS_SOURCE_DEFINES_FIELD}.{key}");
+        let value_ok = validate_non_empty_trimmed(violations, None, &field, value);
+        if key_ok
+            && !key
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        {
+            push_violation(
+                violations,
+                None,
+                ROOTFS_SOURCE_DEFINES_FIELD,
+                ViolationCode::InvalidToken,
+                format!(
+                    "{ROOTFS_SOURCE_DEFINES_FIELD} key '{key}' must use ASCII uppercase, digits, or underscore"
+                ),
+            );
+        }
+        if !value_ok {
+            continue;
+        }
+    }
+}
+
 fn validate_stage_00_erofs_boundary(
     violations: &mut Vec<Violation>,
     contract: &ConformanceContract,
@@ -1053,6 +1163,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     }
 
     validate_stage_00_erofs_boundary(&mut violations, contract);
+    validate_ring3_sources(&mut violations, contract);
     validate_artifact_identity_mirrors(&mut violations, contract);
     validate_release_mirrors_stage_08(&mut violations, contract);
     validate_stage_00_build(&mut violations, contract);
@@ -1127,6 +1238,7 @@ pub fn require_valid_contract(contract: &ConformanceContract) -> Result<(), Conf
 mod tests {
     use super::*;
     use crate::schema::*;
+    use std::collections::BTreeMap;
 
     fn valid_contract() -> ConformanceContract {
         ConformanceContract {
@@ -1169,6 +1281,16 @@ mod tests {
                 evidence: ScriptEvidence {
                     script_path: "build-capability.sh".to_string(),
                     pass_marker: "STAGE 00 PASSED".to_string(),
+                },
+            },
+            sources: SourceContract {
+                rootfs_source: RootfsSourceContract {
+                    kind: RootfsSourceKind::RecipeRpmDvd,
+                    recipe_script: "distro-builder/recipes/fedora-stage01-rootfs.rhai".to_string(),
+                    preseed_recipe_script: Some(
+                        "distro-builder/recipes/fedora-preseed-iso.rhai".to_string(),
+                    ),
+                    defines: BTreeMap::new(),
                 },
             },
             products: ProductContract {
@@ -1394,6 +1516,32 @@ mod tests {
             .violations
             .iter()
             .any(|v| v.field == "release.primary_outputs"));
+    }
+
+    #[test]
+    fn ring3_rpm_dvd_requires_preseed_recipe_script() {
+        let mut contract = valid_contract();
+        contract.sources.rootfs_source.preseed_recipe_script = None;
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.field == "sources.rootfs_source.preseed_recipe_script"));
+    }
+
+    #[test]
+    fn ring3_custom_source_rejects_preseed_recipe_script() {
+        let mut contract = valid_contract();
+        contract.sources.rootfs_source.kind = RootfsSourceKind::RecipeCustom;
+
+        let report = validate_contract(&contract);
+        assert!(!report.passed());
+        assert!(report
+            .violations
+            .iter()
+            .any(|v| v.field == "sources.rootfs_source.preseed_recipe_script"));
     }
 
     #[test]

@@ -1,5 +1,7 @@
 //! Conformance contract schema for distro stage declarations.
 
+use std::collections::BTreeMap;
+
 /// Contract schema version enforced by validators.
 pub const CONTRACT_SCHEMA_VERSION: u32 = 6;
 
@@ -82,6 +84,28 @@ pub struct KernelBuildContract {
     pub sha256: String,
     pub localversion: String,
     pub module_install_path: String,
+}
+
+/// Ring 3 source acquisition kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RootfsSourceKind {
+    RecipeRpmDvd,
+    RecipeCustom,
+}
+
+/// Canonical rootfs source policy declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootfsSourceContract {
+    pub kind: RootfsSourceKind,
+    pub recipe_script: String,
+    pub preseed_recipe_script: Option<String>,
+    pub defines: BTreeMap<String, String>,
+}
+
+/// Canonical source ownership.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceContract {
+    pub rootfs_source: RootfsSourceContract,
 }
 
 /// Product declaration with a stable logical identity.
@@ -211,6 +235,7 @@ pub struct ConformanceContract {
     pub schema_version: u32,
     pub identity: DistroIdentity,
     pub build: BuildContract,
+    pub sources: SourceContract,
     pub products: ProductContract,
     pub transforms: TransformContract,
     pub scenarios: ScenarioContract,

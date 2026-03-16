@@ -1200,6 +1200,7 @@ pub fn require_valid_live_boot_runtime(
 mod tests {
     use super::*;
     use crate::schema::*;
+    use std::collections::BTreeMap;
     use std::os::unix::fs::symlink;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1244,6 +1245,16 @@ mod tests {
                 evidence: ScriptEvidence {
                     script_path: "build-capability.sh".to_string(),
                     pass_marker: "STAGE 00 PASSED".to_string(),
+                },
+            },
+            sources: SourceContract {
+                rootfs_source: RootfsSourceContract {
+                    kind: RootfsSourceKind::RecipeRpmDvd,
+                    recipe_script: "distro-builder/recipes/fedora-stage01-rootfs.rhai".to_string(),
+                    preseed_recipe_script: Some(
+                        "distro-builder/recipes/fedora-preseed-iso.rhai".to_string(),
+                    ),
+                    defines: BTreeMap::new(),
                 },
             },
             products: ProductContract {

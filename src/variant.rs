@@ -19,9 +19,9 @@ use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage, BuildContract,
     ConformanceContract, DistroIdentity, InstallStage, KernelBuildContract, ProductContract,
-    ProductDecl, ReleaseContract, RootfsMutability, RuntimePolicyStage, ScenarioContract,
-    ScriptEvidence, ToolsStage, TransformContract, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
-    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ProductDecl, ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
+    RuntimePolicyStage, ScenarioContract, ScriptEvidence, SourceContract, ToolsStage,
+    TransformContract, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
@@ -325,6 +325,7 @@ fn validate_recipe_declaration_content(
 fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> ConformanceContract {
     let identity = identity_from_manifest(&ring.identity.identity);
     let build = build_contract_from_ring_manifest(&ring.build_host.build_host);
+    let sources = source_contract_from_ring_manifest(&ring.ring3_sources.ring3_sources);
     let products = product_contract_from_ring_manifest(&ring.ring2_products.ring2_products);
     let transforms = TransformContract {
         rootfs_image: artifact_transform_from_ring_manifest(
@@ -367,6 +368,7 @@ fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> Confo
         schema_version: ring.build_host.schema_version,
         identity,
         build,
+        sources,
         products,
         transforms,
         scenarios,
@@ -502,6 +504,24 @@ fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) ->
             logical_name: ring2_products.kernel_staging.logical_name.clone(),
             description: ring2_products.kernel_staging.description.clone(),
             extends: ring2_products.kernel_staging.extends.clone(),
+        },
+    }
+}
+
+fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> SourceContract {
+    SourceContract {
+        rootfs_source: RootfsSourceContract {
+            kind: match ring3_sources.rootfs_source.kind {
+                VariantRootfsSourceKind::RecipeRpmDvd => RootfsSourceKind::RecipeRpmDvd,
+                VariantRootfsSourceKind::RecipeCustom => RootfsSourceKind::RecipeCustom,
+            },
+            recipe_script: ring3_sources.rootfs_source.recipe_script.clone(),
+            preseed_recipe_script: ring3_sources.rootfs_source.preseed_recipe_script.clone(),
+            defines: ring3_sources
+                .rootfs_source
+                .defines
+                .clone()
+                .unwrap_or_default(),
         },
     }
 }
@@ -729,10 +749,17 @@ struct VariantRing3Sources {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantRootfsSource {
-    kind: String,
+    kind: VariantRootfsSourceKind,
     recipe_script: String,
     preseed_recipe_script: Option<String>,
     defines: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VariantRootfsSourceKind {
+    RecipeRpmDvd,
+    RecipeCustom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1528,6 +1555,10 @@ immutable_required_ro_paths = []
         );
         assert_eq!(loaded.contract.identity.os_name, "LevitateOS");
         assert_eq!(
+            loaded.contract.sources.rootfs_source.recipe_script,
+            "distro-builder/recipes/fedora-stage01-rootfs.rhai"
+        );
+        assert_eq!(
             loaded.contract.transforms.iso.output_names,
             vec!["levitateos-x86_64.iso".to_string()]
         );
@@ -1639,6 +1670,21 @@ immutable_required_ro_paths = []
                 loaded.contract.build.kernel.module_install_path,
                 "/usr/lib/modules"
             );
+            match distro_id {
+                "levitate" | "ralph" => {
+                    assert_eq!(
+                        loaded.contract.sources.rootfs_source.kind,
+                        RootfsSourceKind::RecipeRpmDvd
+                    );
+                }
+                "acorn" | "iuppiter" => {
+                    assert_eq!(
+                        loaded.contract.sources.rootfs_source.kind,
+                        RootfsSourceKind::RecipeCustom
+                    );
+                }
+                _ => unreachable!(),
+            }
             match distro_id {
                 "levitate" => {
                     assert_eq!(
@@ -1912,6 +1958,16 @@ immutable_required_ro_paths = []
                 default_hostname: "example".to_string(),
             },
             build,
+            sources: SourceContract {
+                rootfs_source: RootfsSourceContract {
+                    kind: RootfsSourceKind::RecipeRpmDvd,
+                    recipe_script: "distro-builder/recipes/fedora-stage01-rootfs.rhai".to_string(),
+                    preseed_recipe_script: Some(
+                        "distro-builder/recipes/fedora-preseed-iso.rhai".to_string(),
+                    ),
+                    defines: BTreeMap::new(),
+                },
+            },
             products: ProductContract {
                 rootfs_base: product("product.rootfs.base"),
                 live_overlay: product("product.payload.live_overlay"),
