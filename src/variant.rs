@@ -1134,25 +1134,25 @@ description = "Kernel image and modules staging product"
 [ring1_transforms.rootfs_image]
 logical_name = "artifact.rootfs.erofs"
 dependencies = ["product.rootfs.base"]
-output_names = ["s00-filesystem.erofs"]
+output_names = ["filesystem.erofs"]
 format = "erofs"
 
 [ring1_transforms.overlay_image]
 logical_name = "artifact.overlay.erofs"
 dependencies = ["product.payload.live_overlay"]
-output_names = ["s00-overlayfs.erofs"]
+output_names = ["overlayfs.erofs"]
 format = "erofs"
 
 [ring1_transforms.initramfs_live]
 logical_name = "artifact.initramfs.live"
 dependencies = ["product.payload.boot.live", "product.kernel.staging"]
-output_names = ["s00-initramfs-live.cpio.gz"]
+output_names = ["initramfs-live.cpio.gz"]
 format = "cpio.gz"
 
 [ring1_transforms.initramfs_installed]
 logical_name = "artifact.initramfs.installed"
 dependencies = ["product.payload.boot.installed", "product.kernel.staging"]
-output_names = ["s00-initramfs-installed.img"]
+output_names = ["initramfs-installed.img"]
 format = "img"
 
 [ring1_transforms.live_uki]
@@ -1179,7 +1179,7 @@ format = "iso"
 
 [ring0_release.release]
 primary_outputs = ["levitateos-x86_64.iso"]
-supporting_artifacts = ["s00-filesystem.erofs", "s00-initramfs-live.cpio.gz", "s00-initramfs-installed.img"]
+supporting_artifacts = ["filesystem.erofs", "initramfs-live.cpio.gz", "initramfs-installed.img"]
 metadata_outputs = []
 metadata_facts = ["kernel_source.version", "kernel_source.sha256", "kernel_source.localversion", "artifact.rootfs_name", "artifact.iso_filename"]
 "#;
@@ -1354,9 +1354,9 @@ immutable_required_ro_paths = []
         assert_eq!(
             contract.release.supporting_artifacts,
             vec![
-                "s00-filesystem.erofs".to_string(),
-                "s00-initramfs-live.cpio.gz".to_string(),
-                "s00-initramfs-installed.img".to_string(),
+                "filesystem.erofs".to_string(),
+                "initramfs-live.cpio.gz".to_string(),
+                "initramfs-installed.img".to_string(),
             ]
         );
         assert!(contract.release.metadata_outputs.is_empty());
@@ -1424,9 +1424,9 @@ immutable_required_ro_paths = []
                 .collect::<Vec<_>>(),
             vec![
                 "levitateos-x86_64.iso".to_string(),
-                "s00-filesystem.erofs".to_string(),
-                "s00-initramfs-live.cpio.gz".to_string(),
-                "s00-initramfs-installed.img".to_string(),
+                "filesystem.erofs".to_string(),
+                "initramfs-live.cpio.gz".to_string(),
+                "initramfs-installed.img".to_string(),
             ]
         );
         assert_eq!(

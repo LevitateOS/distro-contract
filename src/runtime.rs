@@ -1293,14 +1293,14 @@ mod tests {
                 rootfs_image: ArtifactTransform {
                     logical_name: "artifact.rootfs.erofs".to_string(),
                     dependencies: vec!["product.rootfs.base".to_string()],
-                    output_names: vec!["s00-filesystem.erofs".to_string()],
+                    output_names: vec!["filesystem.erofs".to_string()],
                     format: "erofs".to_string(),
                     extra_cmdline: None,
                 },
                 overlay_image: ArtifactTransform {
                     logical_name: "artifact.overlay.erofs".to_string(),
                     dependencies: vec!["product.payload.live_overlay".to_string()],
-                    output_names: vec!["s00-overlayfs.erofs".to_string()],
+                    output_names: vec!["overlayfs.erofs".to_string()],
                     format: "erofs".to_string(),
                     extra_cmdline: None,
                 },
@@ -1310,7 +1310,7 @@ mod tests {
                         "product.payload.boot.live".to_string(),
                         "product.kernel.staging".to_string(),
                     ],
-                    output_names: vec!["s00-initramfs-live.cpio.gz".to_string()],
+                    output_names: vec!["initramfs-live.cpio.gz".to_string()],
                     format: "cpio.gz".to_string(),
                     extra_cmdline: None,
                 },
@@ -1320,7 +1320,7 @@ mod tests {
                         "product.payload.boot.installed".to_string(),
                         "product.kernel.staging".to_string(),
                     ],
-                    output_names: vec!["s00-initramfs-installed.img".to_string()],
+                    output_names: vec!["initramfs-installed.img".to_string()],
                     format: "img".to_string(),
                     extra_cmdline: None,
                 }),
@@ -1427,9 +1427,9 @@ mod tests {
             release: ReleaseContract {
                 primary_outputs: vec!["levitateos-x86_64.iso".to_string()],
                 supporting_artifacts: vec![
-                    "s00-filesystem.erofs".to_string(),
-                    "s00-initramfs-live.cpio.gz".to_string(),
-                    "s00-initramfs-installed.img".to_string(),
+                    "filesystem.erofs".to_string(),
+                    "initramfs-live.cpio.gz".to_string(),
+                    "initramfs-installed.img".to_string(),
                 ],
                 metadata_outputs: vec![],
                 metadata_facts: vec![
@@ -1441,10 +1441,10 @@ mod tests {
                 ],
             },
             artifacts: ArtifactIdentity {
-                rootfs_name: "s00-filesystem.erofs".to_string(),
-                initramfs_live_output: "s00-initramfs-live.cpio.gz".to_string(),
+                rootfs_name: "filesystem.erofs".to_string(),
+                initramfs_live_output: "initramfs-live.cpio.gz".to_string(),
                 iso_filename: "levitateos-x86_64.iso".to_string(),
-                initramfs_installed_output: Some("s00-initramfs-installed.img".to_string()),
+                initramfs_installed_output: Some("initramfs-installed.img".to_string()),
                 installed_uki_outputs: vec![
                     "levitateos.efi".to_string(),
                     "levitateos-recovery.efi".to_string(),
@@ -1553,12 +1553,12 @@ mod tests {
             "6.12.71-levitate\n",
         );
         write_file(&artifact_dir.join("staging/boot/vmlinuz"), "kernel");
-        write_file(&artifact_dir.join("s00-filesystem.erofs"), "rootfs");
+        write_file(&artifact_dir.join("filesystem.erofs"), "rootfs");
         write_file(
-            &artifact_dir.join("s00-initramfs-live.cpio.gz"),
+            &artifact_dir.join("initramfs-live.cpio.gz"),
             "initramfs-live",
         );
-        write_file(&artifact_dir.join("s00-overlayfs.erofs"), "overlay");
+        write_file(&artifact_dir.join("overlayfs.erofs"), "overlay");
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-levitate"))
             .expect("create modules dir");
 
@@ -1584,12 +1584,12 @@ mod tests {
             "6.12.71-other\n",
         );
         write_file(&artifact_dir.join("staging/boot/vmlinuz"), "kernel");
-        write_file(&artifact_dir.join("s00-filesystem.erofs"), "rootfs");
+        write_file(&artifact_dir.join("filesystem.erofs"), "rootfs");
         write_file(
-            &artifact_dir.join("s00-initramfs-live.cpio.gz"),
+            &artifact_dir.join("initramfs-live.cpio.gz"),
             "initramfs-live",
         );
-        write_file(&artifact_dir.join("s00-overlayfs.erofs"), "overlay");
+        write_file(&artifact_dir.join("overlayfs.erofs"), "overlay");
         fs::create_dir_all(&artifact_dir.join("staging/usr/lib/modules/6.12.71-other"))
             .expect("create modules dir");
 

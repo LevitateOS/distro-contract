@@ -1336,7 +1336,7 @@ mod tests {
                 overlay_image: ArtifactTransform {
                     logical_name: "artifact.overlay.erofs".to_string(),
                     dependencies: vec!["product.payload.live_overlay".to_string()],
-                    output_names: vec!["s00-overlayfs.erofs".to_string()],
+                    output_names: vec!["overlayfs.erofs".to_string()],
                     format: "erofs".to_string(),
                     extra_cmdline: None,
                 },
@@ -1356,7 +1356,7 @@ mod tests {
                         "product.payload.boot.installed".to_string(),
                         "product.kernel.staging".to_string(),
                     ],
-                    output_names: vec!["s00-initramfs-installed.img".to_string()],
+                    output_names: vec!["initramfs-installed.img".to_string()],
                     format: "img".to_string(),
                     extra_cmdline: None,
                 }),
@@ -1465,7 +1465,7 @@ mod tests {
                 supporting_artifacts: vec![
                     "exampleos.erofs".to_string(),
                     "initramfs-live.cpio.gz".to_string(),
-                    "s00-initramfs-installed.img".to_string(),
+                    "initramfs-installed.img".to_string(),
                 ],
                 metadata_outputs: vec![],
                 metadata_facts: vec![
@@ -1480,7 +1480,7 @@ mod tests {
                 rootfs_name: "exampleos.erofs".to_string(),
                 initramfs_live_output: "initramfs-live.cpio.gz".to_string(),
                 iso_filename: "exampleos.iso".to_string(),
-                initramfs_installed_output: Some("s00-initramfs-installed.img".to_string()),
+                initramfs_installed_output: Some("initramfs-installed.img".to_string()),
                 installed_uki_outputs: vec![
                     "exampleos.efi".to_string(),
                     "exampleos-recovery.efi".to_string(),
