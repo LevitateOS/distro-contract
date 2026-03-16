@@ -547,22 +547,72 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
     );
 
     ScenarioContract {
-        live_boot: Some(BootStage {
-            success_patterns: vec![],
-            fatal_patterns: vec![],
+        live_boot: BootStage {
+            success_patterns: scenarios.live_boot.success_patterns.clone(),
+            fatal_patterns: scenarios.live_boot.fatal_patterns.clone(),
             required_kernel_cmdline,
             required_live_services,
             evidence: ScriptEvidence {
                 script_path: scenarios.live_boot.evidence.script_path.clone(),
                 pass_marker: scenarios.live_boot.evidence.pass_marker.clone(),
             },
-        }),
-        live_tools: None,
-        install: None,
-        installed_boot: None,
-        automated_login: None,
-        installed_tools: None,
-        runtime_policy: None,
+        },
+        live_tools: ToolsStage {
+            required_tools: scenarios.live_tools.required_tools.clone(),
+            evidence: ScriptEvidence {
+                script_path: scenarios.live_tools.evidence.script_path.clone(),
+                pass_marker: scenarios.live_tools.evidence.pass_marker.clone(),
+            },
+        },
+        install: InstallStage {
+            required_tools: scenarios.install.required_tools.clone(),
+            required_services: scenarios.install.required_services.clone(),
+            evidence: ScriptEvidence {
+                script_path: scenarios.install.evidence.script_path.clone(),
+                pass_marker: scenarios.install.evidence.pass_marker.clone(),
+            },
+        },
+        installed_boot: BootStage {
+            success_patterns: scenarios.installed_boot.success_patterns.clone(),
+            fatal_patterns: scenarios.installed_boot.fatal_patterns.clone(),
+            required_kernel_cmdline: scenarios.installed_boot.required_kernel_cmdline.clone(),
+            required_live_services: scenarios.installed_boot.required_live_services.clone(),
+            evidence: ScriptEvidence {
+                script_path: scenarios.installed_boot.evidence.script_path.clone(),
+                pass_marker: scenarios.installed_boot.evidence.pass_marker.clone(),
+            },
+        },
+        automated_login: AutomatedLoginStage {
+            auth_mode: match scenarios.automated_login.auth_mode {
+                VariantAuthMode::DefaultPasswordLogin => AuthMode::DefaultPasswordLogin,
+                VariantAuthMode::ProvisionedCredentials => AuthMode::ProvisionedCredentials,
+            },
+            default_username: scenarios.automated_login.default_username.clone(),
+            default_password: scenarios.automated_login.default_password.clone(),
+            login_prompt_pattern: scenarios.automated_login.login_prompt_pattern.clone(),
+            evidence: ScriptEvidence {
+                script_path: scenarios.automated_login.evidence.script_path.clone(),
+                pass_marker: scenarios.automated_login.evidence.pass_marker.clone(),
+            },
+        },
+        installed_tools: ToolsStage {
+            required_tools: scenarios.installed_tools.required_tools.clone(),
+            evidence: ScriptEvidence {
+                script_path: scenarios.installed_tools.evidence.script_path.clone(),
+                pass_marker: scenarios.installed_tools.evidence.pass_marker.clone(),
+            },
+        },
+        runtime_policy: RuntimePolicyStage {
+            rootfs_mutability: match scenarios.runtime_policy.rootfs_mutability {
+                VariantRootfsMutability::Mutable => RootfsMutability::Mutable,
+                VariantRootfsMutability::Immutable => RootfsMutability::Immutable,
+            },
+            mutable_required_rw_paths: scenarios.runtime_policy.mutable_required_rw_paths.clone(),
+            immutable_required_ro_paths: scenarios
+                .runtime_policy
+                .immutable_required_ro_paths
+                .clone(),
+        },
     }
 }
 
@@ -616,34 +666,13 @@ fn stage_contract_from_model(
             },
             evidence: build.evidence.clone(),
         },
-        stage_01_live_boot: scenarios
-            .live_boot
-            .clone()
-            .unwrap_or_else(compat_default_live_boot_stage),
-        stage_02_live_tools: scenarios
-            .live_tools
-            .clone()
-            .unwrap_or_else(compat_default_live_tools_stage),
-        stage_03_install: scenarios
-            .install
-            .clone()
-            .unwrap_or_else(compat_default_install_stage),
-        stage_04_installed_boot: scenarios
-            .installed_boot
-            .clone()
-            .unwrap_or_else(compat_default_installed_boot_stage),
-        stage_05_automated_login: scenarios
-            .automated_login
-            .clone()
-            .unwrap_or_else(compat_default_automated_login_stage),
-        stage_06_installed_tools: scenarios
-            .installed_tools
-            .clone()
-            .unwrap_or_else(compat_default_installed_tools_stage),
-        stage_07_runtime_policy: scenarios
-            .runtime_policy
-            .clone()
-            .unwrap_or_else(compat_default_runtime_policy_stage),
+        stage_01_live_boot: scenarios.live_boot.clone(),
+        stage_02_live_tools: scenarios.live_tools.clone(),
+        stage_03_install: scenarios.install.clone(),
+        stage_04_installed_boot: scenarios.installed_boot.clone(),
+        stage_05_automated_login: scenarios.automated_login.clone(),
+        stage_06_installed_tools: scenarios.installed_tools.clone(),
+        stage_07_runtime_policy: scenarios.runtime_policy.clone(),
         stage_08_release: ReleaseStage {
             required_artifacts: release
                 .primary_outputs
@@ -658,84 +687,6 @@ fn stage_contract_from_model(
                 .cloned()
                 .collect(),
         },
-    }
-}
-
-fn compat_default_live_boot_stage() -> BootStage {
-    BootStage {
-        success_patterns: vec![],
-        fatal_patterns: vec![],
-        required_kernel_cmdline: vec![],
-        required_live_services: vec![],
-        evidence: ScriptEvidence {
-            script_path: "live-boot.sh".to_string(),
-            pass_marker: "STAGE 01 PASSED".to_string(),
-        },
-    }
-}
-
-fn compat_default_live_tools_stage() -> ToolsStage {
-    ToolsStage {
-        required_tools: vec![],
-        evidence: ScriptEvidence {
-            script_path: "live-tools.sh".to_string(),
-            pass_marker: "STAGE 02 PASSED".to_string(),
-        },
-    }
-}
-
-fn compat_default_install_stage() -> InstallStage {
-    InstallStage {
-        required_tools: vec![],
-        required_services: vec![],
-        evidence: ScriptEvidence {
-            script_path: "install.sh".to_string(),
-            pass_marker: "STAGE 03 PASSED".to_string(),
-        },
-    }
-}
-
-fn compat_default_installed_boot_stage() -> BootStage {
-    BootStage {
-        success_patterns: vec![],
-        fatal_patterns: vec![],
-        required_kernel_cmdline: vec![],
-        required_live_services: vec![],
-        evidence: ScriptEvidence {
-            script_path: "installed-boot.sh".to_string(),
-            pass_marker: "STAGE 04 PASSED".to_string(),
-        },
-    }
-}
-
-fn compat_default_automated_login_stage() -> AutomatedLoginStage {
-    AutomatedLoginStage {
-        auth_mode: AuthMode::DefaultPasswordLogin,
-        default_username: None,
-        default_password: None,
-        login_prompt_pattern: String::new(),
-        evidence: ScriptEvidence {
-            script_path: "automated-login.sh".to_string(),
-            pass_marker: "STAGE 05 PASSED".to_string(),
-        },
-    }
-}
-
-fn compat_default_installed_tools_stage() -> ToolsStage {
-    ToolsStage {
-        required_tools: vec![],
-        evidence: ScriptEvidence {
-            script_path: "installed-tools.sh".to_string(),
-            pass_marker: "STAGE 06 PASSED".to_string(),
-        },
-    }
-}
-
-fn compat_default_runtime_policy_stage() -> RuntimePolicyStage {
-    RuntimePolicyStage {
-        rootfs_mutability: RootfsMutability::Mutable,
-        mutable_required_rw_paths: vec![],
-        immutable_required_ro_paths: vec![],
     }
 }
 
@@ -1027,14 +978,21 @@ struct VariantScenariosManifest {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantScenarios {
-    live_boot: VariantLiveBootScenario,
+    live_boot: VariantBootScenario,
     live_environment: VariantLiveEnvironmentScenario,
     live_tools: VariantLiveToolsScenario,
+    install: VariantInstallScenario,
+    installed_boot: VariantBootScenario,
+    automated_login: VariantAutomatedLoginScenario,
+    installed_tools: VariantInstalledToolsScenario,
+    runtime_policy: VariantRuntimePolicyScenario,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct VariantLiveBootScenario {
+struct VariantBootScenario {
+    success_patterns: Vec<String>,
+    fatal_patterns: Vec<String>,
     required_kernel_cmdline: Vec<String>,
     required_live_services: Vec<String>,
     evidence: VariantEvidence,
@@ -1049,8 +1007,56 @@ struct VariantLiveEnvironmentScenario {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantLiveToolsScenario {
+    required_tools: Vec<String>,
     install_experience: String,
     evidence: VariantEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantInstallScenario {
+    required_tools: Vec<String>,
+    required_services: Vec<String>,
+    evidence: VariantEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantAutomatedLoginScenario {
+    auth_mode: VariantAuthMode,
+    default_username: Option<String>,
+    default_password: Option<String>,
+    login_prompt_pattern: String,
+    evidence: VariantEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantInstalledToolsScenario {
+    required_tools: Vec<String>,
+    evidence: VariantEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VariantAuthMode {
+    DefaultPasswordLogin,
+    ProvisionedCredentials,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRuntimePolicyScenario {
+    rootfs_mutability: VariantRootfsMutability,
+    mutable_required_rw_paths: Vec<String>,
+    immutable_required_ro_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VariantRootfsMutability {
+    Mutable,
+    Immutable,
 }
 
 #[cfg(test)]
@@ -1222,6 +1228,8 @@ metadata_facts = ["kernel_source.version", "kernel_source.sha256", "kernel_sourc
     const VALID_SCENARIOS_MANIFEST: &str = r#"schema_version = 6
 
 [scenarios.live_boot]
+success_patterns = []
+fatal_patterns = []
 required_kernel_cmdline = ["audit=1"]
 required_live_services = ["sshd"]
 
@@ -1233,11 +1241,52 @@ pass_marker = "STAGE 01 PASSED"
 required_services = ["sshd", "auditd"]
 
 [scenarios.live_tools]
+required_tools = ["bash"]
 install_experience = "ux"
 
 [scenarios.live_tools.evidence]
 script_path = "live-tools.sh"
 pass_marker = "STAGE 02 PASSED"
+
+[scenarios.install]
+required_tools = ["recstrap"]
+required_services = ["sshd", "auditd"]
+
+[scenarios.install.evidence]
+script_path = "install.sh"
+pass_marker = "STAGE 03 PASSED"
+
+[scenarios.installed_boot]
+success_patterns = ["example login:"]
+fatal_patterns = []
+required_kernel_cmdline = []
+required_live_services = []
+
+[scenarios.installed_boot.evidence]
+script_path = "installed-boot.sh"
+pass_marker = "STAGE 04 PASSED"
+
+[scenarios.automated_login]
+auth_mode = "default_password_login"
+default_username = "example"
+default_password = "example"
+login_prompt_pattern = "example login:"
+
+[scenarios.automated_login.evidence]
+script_path = "automated-login.sh"
+pass_marker = "STAGE 05 PASSED"
+
+[scenarios.installed_tools]
+required_tools = ["sudo"]
+
+[scenarios.installed_tools.evidence]
+script_path = "installed-tools.sh"
+pass_marker = "STAGE 06 PASSED"
+
+[scenarios.runtime_policy]
+rootfs_mutability = "mutable"
+mutable_required_rw_paths = []
+immutable_required_ro_paths = []
 "#;
 
     fn temp_repo_root(test_name: &str) -> PathBuf {
@@ -1362,13 +1411,33 @@ pass_marker = "STAGE 02 PASSED"
                 "artifact.iso_filename".to_string(),
             ]
         );
-        let live_boot = contract
-            .scenarios
-            .live_boot
-            .as_ref()
-            .expect("live boot scenario should exist");
+        let live_boot = &contract.scenarios.live_boot;
         assert!(live_boot.success_patterns.is_empty());
         assert!(live_boot.fatal_patterns.is_empty());
+        assert_eq!(
+            contract.stages.stage_02_live_tools.required_tools,
+            vec!["bash".to_string()]
+        );
+        assert_eq!(
+            contract.stages.stage_03_install.required_services,
+            vec!["sshd".to_string(), "auditd".to_string()]
+        );
+        assert_eq!(
+            contract.stages.stage_04_installed_boot.success_patterns,
+            vec!["example login:".to_string()]
+        );
+        assert_eq!(
+            contract.stages.stage_05_automated_login.default_username,
+            Some("example".to_string())
+        );
+        assert_eq!(
+            contract.stages.stage_06_installed_tools.required_tools,
+            vec!["sudo".to_string()]
+        );
+        assert_eq!(
+            contract.stages.stage_07_runtime_policy.rootfs_mutability,
+            RootfsMutability::Mutable
+        );
         assert_eq!(
             contract.stages.stage_00_build.kernel_localversion,
             "-levitate"
@@ -1482,12 +1551,32 @@ pass_marker = "STAGE 02 PASSED"
             vec!["levitateos-x86_64.iso".to_string()]
         );
         assert_eq!(
+            ring_bundle.scenarios.scenarios.live_tools.required_tools,
+            vec!["bash".to_string()]
+        );
+        assert_eq!(
             ring_bundle
                 .scenarios
                 .scenarios
                 .live_tools
                 .install_experience,
             "ux"
+        );
+        assert_eq!(
+            ring_bundle
+                .scenarios
+                .scenarios
+                .automated_login
+                .login_prompt_pattern,
+            "example login:"
+        );
+        assert_eq!(
+            ring_bundle
+                .scenarios
+                .scenarios
+                .runtime_policy
+                .rootfs_mutability,
+            VariantRootfsMutability::Mutable
         );
 
         let loaded = load_variant_contract_bundle_for_distro_from(&repo_root, "levitate")
@@ -1737,7 +1826,7 @@ pass_marker = "STAGE 02 PASSED"
     }
 
     #[test]
-    fn stage_view_uses_defaults_for_absent_scenarios() {
+    fn stage_view_uses_canonical_scenarios_without_fallback() {
         let build = BuildContract {
             required_build_tools: vec![],
             kernel: KernelBuildContract {
@@ -1810,7 +1899,7 @@ pass_marker = "STAGE 02 PASSED"
             disk_image: None,
         };
         let scenarios = ScenarioContract {
-            live_boot: Some(BootStage {
+            live_boot: BootStage {
                 success_patterns: vec!["boot complete".to_string()],
                 fatal_patterns: vec![],
                 required_kernel_cmdline: vec![],
@@ -1819,13 +1908,54 @@ pass_marker = "STAGE 02 PASSED"
                     script_path: "live-boot.sh".to_string(),
                     pass_marker: "STAGE 01 PASSED".to_string(),
                 },
-            }),
-            live_tools: None,
-            install: None,
-            installed_boot: None,
-            automated_login: None,
-            installed_tools: None,
-            runtime_policy: None,
+            },
+            live_tools: ToolsStage {
+                required_tools: vec!["bash".to_string()],
+                evidence: ScriptEvidence {
+                    script_path: "live-tools.sh".to_string(),
+                    pass_marker: "STAGE 02 PASSED".to_string(),
+                },
+            },
+            install: InstallStage {
+                required_tools: vec!["recstrap".to_string()],
+                required_services: vec!["sshd".to_string()],
+                evidence: ScriptEvidence {
+                    script_path: "install.sh".to_string(),
+                    pass_marker: "STAGE 03 PASSED".to_string(),
+                },
+            },
+            installed_boot: BootStage {
+                success_patterns: vec!["example login:".to_string()],
+                fatal_patterns: vec![],
+                required_kernel_cmdline: vec![],
+                required_live_services: vec![],
+                evidence: ScriptEvidence {
+                    script_path: "installed-boot.sh".to_string(),
+                    pass_marker: "STAGE 04 PASSED".to_string(),
+                },
+            },
+            automated_login: AutomatedLoginStage {
+                auth_mode: AuthMode::DefaultPasswordLogin,
+                default_username: Some("example".to_string()),
+                default_password: Some("example".to_string()),
+                login_prompt_pattern: "example login:".to_string(),
+                evidence: ScriptEvidence {
+                    script_path: "automated-login.sh".to_string(),
+                    pass_marker: "STAGE 05 PASSED".to_string(),
+                },
+            },
+            installed_tools: ToolsStage {
+                required_tools: vec!["sudo".to_string()],
+                evidence: ScriptEvidence {
+                    script_path: "installed-tools.sh".to_string(),
+                    pass_marker: "STAGE 06 PASSED".to_string(),
+                },
+            },
+            runtime_policy: RuntimePolicyStage {
+                rootfs_mutability: RootfsMutability::Mutable,
+                mutable_required_rw_paths: vec![],
+                immutable_required_ro_paths: vec![],
+            },
         };
         let release = ReleaseContract {
             primary_outputs: vec!["example.iso".to_string()],
@@ -1842,6 +1972,14 @@ pass_marker = "STAGE 02 PASSED"
         assert_eq!(
             stages.stage_02_live_tools.evidence.script_path,
             "live-tools.sh"
+        );
+        assert_eq!(
+            stages.stage_04_installed_boot.success_patterns,
+            vec!["example login:".to_string()]
+        );
+        assert_eq!(
+            stages.stage_05_automated_login.default_username,
+            Some("example".to_string())
         );
     }
 }

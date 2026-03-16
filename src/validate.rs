@@ -633,6 +633,7 @@ fn validate_stage_00_non_kernel_inputs(
     contract: &ConformanceContract,
 ) {
     let stage_00 = &contract.stages.stage_00_build;
+    let kernel = &contract.build.kernel;
     let groups = &stage_00.non_kernel_inputs;
 
     let required_field = "stage_00_build.non_kernel_inputs.required_for_00build";
@@ -739,9 +740,9 @@ fn validate_stage_00_non_kernel_inputs(
     }
 
     let kernel_paths = [
-        stage_00.kernel_release_path.as_str(),
-        stage_00.kernel_image_path.as_str(),
-        stage_00.kernel_modules_path.as_str(),
+        kernel.release_path.as_str(),
+        kernel.image_path.as_str(),
+        kernel.modules_path.as_str(),
     ];
     for (field, values) in [
         (required_field, groups.required_for_00build.as_slice()),
@@ -767,14 +768,16 @@ fn validate_stage_00_non_kernel_inputs(
 
 fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let stage_00 = &contract.stages.stage_00_build;
+    let build = &contract.build;
+    let kernel = &build.kernel;
 
     validate_command_entries(
         violations,
         Some(StageId::Stage00),
         "stage_00_build.required_build_tools",
-        &stage_00.required_build_tools,
+        &build.required_build_tools,
     );
-    let stage_00_tools: HashSet<&str> = stage_00
+    let stage_00_tools: HashSet<&str> = build
         .required_build_tools
         .iter()
         .map(String::as_str)
@@ -796,8 +799,8 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         violations,
         Some(StageId::Stage00),
         kconfig_field,
-        &stage_00.kernel_kconfig_path,
-    ) && stage_00.kernel_kconfig_path != REQUIRED_VARIANT_KCONFIG
+        &kernel.kconfig_path,
+    ) && kernel.kconfig_path != REQUIRED_VARIANT_KCONFIG
     {
         push_violation(
             violations,
@@ -814,23 +817,23 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
     for (field, value) in [
         (
             "stage_00_build.recipe_kernel_script",
-            stage_00.recipe_kernel_script.as_str(),
+            kernel.recipe_script.as_str(),
         ),
         (
             "stage_00_build.recipe_kernel_invocation",
-            stage_00.recipe_kernel_invocation.as_str(),
+            kernel.recipe_invocation.as_str(),
         ),
         (
             "stage_00_build.kernel_release_path",
-            stage_00.kernel_release_path.as_str(),
+            kernel.release_path.as_str(),
         ),
         (
             "stage_00_build.kernel_image_path",
-            stage_00.kernel_image_path.as_str(),
+            kernel.image_path.as_str(),
         ),
         (
             "stage_00_build.kernel_modules_path",
-            stage_00.kernel_modules_path.as_str(),
+            kernel.modules_path.as_str(),
         ),
     ] {
         if validate_non_empty_trimmed(violations, Some(StageId::Stage00), field, value)
@@ -846,7 +849,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         }
     }
 
-    if stage_00.recipe_kernel_invocation != REQUIRED_RECIPE_INVOCATION {
+    if kernel.recipe_invocation != REQUIRED_RECIPE_INVOCATION {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -859,7 +862,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         );
     }
 
-    if stage_00.kernel_release_path != REQUIRED_KERNEL_RELEASE_PATH {
+    if kernel.release_path != REQUIRED_KERNEL_RELEASE_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -871,7 +874,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ),
         );
     }
-    if stage_00.kernel_image_path != REQUIRED_KERNEL_IMAGE_PATH {
+    if kernel.image_path != REQUIRED_KERNEL_IMAGE_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -883,7 +886,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
             ),
         );
     }
-    if stage_00.kernel_modules_path != REQUIRED_KERNEL_MODULES_PATH {
+    if kernel.modules_path != REQUIRED_KERNEL_MODULES_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -896,7 +899,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         );
     }
 
-    if stage_00.module_install_path != REQUIRED_MODULE_INSTALL_PATH {
+    if kernel.module_install_path != REQUIRED_MODULE_INSTALL_PATH {
         push_violation(
             violations,
             Some(StageId::Stage00),
@@ -913,8 +916,8 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         violations,
         Some(StageId::Stage00),
         "stage_00_build.kernel_version",
-        &stage_00.kernel_version,
-    ) && !is_kernel_version_token(&stage_00.kernel_version)
+        &kernel.version,
+    ) && !is_kernel_version_token(&kernel.version)
     {
         push_violation(
             violations,
@@ -929,8 +932,8 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         violations,
         Some(StageId::Stage00),
         "stage_00_build.kernel_sha256",
-        &stage_00.kernel_sha256,
-    ) && !is_sha256_hex(&stage_00.kernel_sha256)
+        &kernel.sha256,
+    ) && !is_sha256_hex(&kernel.sha256)
     {
         push_violation(
             violations,
@@ -945,11 +948,11 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         violations,
         Some(StageId::Stage00),
         "stage_00_build.kernel_localversion",
-        &stage_00.kernel_localversion,
-    ) && (stage_00.kernel_localversion.len() < 2
-        || !stage_00.kernel_localversion.starts_with('-')
-        || stage_00
-            .kernel_localversion
+        &kernel.localversion,
+    ) && (kernel.localversion.len() < 2
+        || !kernel.localversion.starts_with('-')
+        || kernel
+            .localversion
             .chars()
             .skip(1)
             .any(|c| !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '_'))
@@ -967,8 +970,8 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         violations,
         StageId::Stage00,
         "stage_00_build.evidence",
-        &stage_00.evidence.script_path,
-        &stage_00.evidence.pass_marker,
+        &build.evidence.script_path,
+        &build.evidence.pass_marker,
         EVIDENCE_SCRIPT_PREFIX,
     );
 
@@ -1072,7 +1075,7 @@ fn validate_stage_00_erofs_boundary(
     }
 
     let required_tools_field = "stage_00_build.required_build_tools";
-    for tool in &contract.stages.stage_00_build.required_build_tools {
+    for tool in &contract.build.required_build_tools {
         if contains_forbidden_stage00_rootfs_token(tool) {
             push_violation(
                 violations,
@@ -1160,22 +1163,21 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     validate_artifact_identity_mirrors(&mut violations, contract);
     validate_release_mirrors_stage_08(&mut violations, contract);
     validate_stage_00_build(&mut violations, contract);
+    let live_boot = &contract.scenarios.live_boot;
     validate_kernel_cmdline_tokens(
         &mut violations,
         StageId::Stage01,
         "stage_01_live_boot.required_kernel_cmdline",
-        &contract.stages.stage_01_live_boot.required_kernel_cmdline,
+        &live_boot.required_kernel_cmdline,
     );
     validate_command_entries(
         &mut violations,
         Some(StageId::Stage01),
         "stage_01_live_boot.required_live_services",
-        &contract.stages.stage_01_live_boot.required_live_services,
+        &live_boot.required_live_services,
     );
     for token in STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE {
-        if !contract
-            .stages
-            .stage_01_live_boot
+        if !live_boot
             .required_kernel_cmdline
             .iter()
             .any(|candidate| candidate == token)
@@ -1193,9 +1195,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         }
     }
     for service in STAGE_01_REQUIRED_LIVE_SERVICES_BASE {
-        if !contract
-            .stages
-            .stage_01_live_boot
+        if !live_boot
             .required_live_services
             .iter()
             .any(|candidate| candidate == service)
@@ -1387,7 +1387,7 @@ mod tests {
                 disk_image: None,
             },
             scenarios: ScenarioContract {
-                live_boot: Some(BootStage {
+                live_boot: BootStage {
                     success_patterns: vec!["Boot complete".to_string()],
                     fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
@@ -1396,23 +1396,23 @@ mod tests {
                         script_path: "live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
                     },
-                }),
-                live_tools: Some(ToolsStage {
+                },
+                live_tools: ToolsStage {
                     required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "live-tools.sh".to_string(),
                         pass_marker: "STAGE 02 PASSED".to_string(),
                     },
-                }),
-                install: Some(InstallStage {
+                },
+                install: InstallStage {
                     required_tools: vec!["recstrap".to_string()],
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "install.sh".to_string(),
                         pass_marker: "STAGE 03 PASSED".to_string(),
                     },
-                }),
-                installed_boot: Some(BootStage {
+                },
+                installed_boot: BootStage {
                     success_patterns: vec!["example login:".to_string()],
                     fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec![],
@@ -1421,8 +1421,8 @@ mod tests {
                         script_path: "installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
                     },
-                }),
-                automated_login: Some(AutomatedLoginStage {
+                },
+                automated_login: AutomatedLoginStage {
                     auth_mode: AuthMode::DefaultPasswordLogin,
                     default_username: Some("example".to_string()),
                     default_password: Some("example".to_string()),
@@ -1431,19 +1431,19 @@ mod tests {
                         script_path: "automated-login.sh".to_string(),
                         pass_marker: "STAGE 05 PASSED".to_string(),
                     },
-                }),
-                installed_tools: Some(ToolsStage {
+                },
+                installed_tools: ToolsStage {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "installed-tools.sh".to_string(),
                         pass_marker: "STAGE 06 PASSED".to_string(),
                     },
-                }),
-                runtime_policy: Some(RuntimePolicyStage {
+                },
+                runtime_policy: RuntimePolicyStage {
                     rootfs_mutability: RootfsMutability::Mutable,
                     mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],
-                }),
+                },
             },
             release: ReleaseContract {
                 primary_outputs: vec!["exampleos.iso".to_string()],
@@ -1629,7 +1629,7 @@ mod tests {
     #[test]
     fn stage_00_requires_recipe_lifecycle_invocation() {
         let mut contract = valid_contract();
-        contract.stages.stage_00_build.recipe_kernel_invocation = "recipe run".to_string();
+        contract.build.kernel.recipe_invocation = "recipe run".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());
@@ -1643,8 +1643,7 @@ mod tests {
     fn stage_00_requires_baseline_build_tools() {
         let mut contract = valid_contract();
         contract
-            .stages
-            .stage_00_build
+            .build
             .required_build_tools
             .retain(|tool| tool != "xorriso");
 
@@ -1677,8 +1676,7 @@ mod tests {
     fn stage_00_rejects_squashfs_tools() {
         let mut contract = valid_contract();
         contract
-            .stages
-            .stage_00_build
+            .build
             .required_build_tools
             .push("mksquashfs".to_string());
 
@@ -1693,7 +1691,7 @@ mod tests {
     #[test]
     fn stage_00_requires_usrmerge_module_install_path() {
         let mut contract = valid_contract();
-        contract.stages.stage_00_build.module_install_path = "/lib/modules".to_string();
+        contract.build.kernel.module_install_path = "/lib/modules".to_string();
 
         let report = validate_contract(&contract);
         assert!(!report.passed());

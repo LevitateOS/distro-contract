@@ -135,13 +135,13 @@ pub struct TransformContract {
 /// These are validation/runtime scenarios, not build-graph owners.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScenarioContract {
-    pub live_boot: Option<BootStage>,
-    pub live_tools: Option<ToolsStage>,
-    pub install: Option<InstallStage>,
-    pub installed_boot: Option<BootStage>,
-    pub automated_login: Option<AutomatedLoginStage>,
-    pub installed_tools: Option<ToolsStage>,
-    pub runtime_policy: Option<RuntimePolicyStage>,
+    pub live_boot: BootStage,
+    pub live_tools: ToolsStage,
+    pub install: InstallStage,
+    pub installed_boot: BootStage,
+    pub automated_login: AutomatedLoginStage,
+    pub installed_tools: ToolsStage,
+    pub runtime_policy: RuntimePolicyStage,
 }
 
 /// Release ownership.

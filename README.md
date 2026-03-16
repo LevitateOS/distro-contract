@@ -28,8 +28,9 @@ builder/component/disk interfaces.
 - `load_variant_contract_bundle_for_distro_from(&Path, &str) -> Result<LoadedVariantContract, VariantContractLoadError>`
 - `validate_contract(&ConformanceContract) -> ConformanceReport`
 - `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`
-- `validate_stage_00_runtime(&ConformanceContract, &Path, &Path) -> ConformanceReport`
-- `require_valid_stage_00_runtime(&ConformanceContract, &Path, &Path) -> Result<(), ConformanceError>`
+- `validate_build_runtime(&ConformanceContract, &Path, &Path) -> ConformanceReport`
+- `require_valid_build_runtime(&ConformanceContract, &Path, &Path) -> Result<(), ConformanceError>`
+- `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts) -> ConformanceReport`
 
 ## Schema Version
 

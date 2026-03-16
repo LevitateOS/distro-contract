@@ -27,6 +27,8 @@ pub struct Stage00RuntimeArtifacts {
     pub overlay_image: PathBuf,
 }
 
+pub type BuildRuntimeArtifacts = Stage00RuntimeArtifacts;
+
 #[derive(Debug, Clone)]
 pub struct LiveBootRuntimeArtifacts {
     pub rootfs_image: PathBuf,
@@ -101,11 +103,7 @@ fn stage00_runtime_artifacts_from_contract(
 }
 
 fn live_boot_scenario<'a>(contract: &'a ConformanceContract) -> &'a crate::schema::BootStage {
-    contract
-        .scenarios
-        .live_boot
-        .as_ref()
-        .unwrap_or(&contract.stages.stage_01_live_boot)
+    &contract.scenarios.live_boot
 }
 
 fn parse_kconfig_localversion(raw: &str) -> Option<String> {
@@ -136,33 +134,28 @@ fn is_real_directory(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Validate Stage 00 runtime/provenance invariants against on-disk files.
-pub fn validate_stage_00_runtime(
+/// Validate build-runtime provenance invariants against on-disk files.
+pub fn validate_build_runtime(
     contract: &ConformanceContract,
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> ConformanceReport {
     let runtime_artifacts = stage00_runtime_artifacts_from_contract(contract, artifact_dir);
-    validate_stage_00_runtime_with_artifacts(
-        contract,
-        variant_dir,
-        artifact_dir,
-        &runtime_artifacts,
-    )
+    validate_build_runtime_with_artifacts(contract, variant_dir, artifact_dir, &runtime_artifacts)
 }
 
-/// Validate Stage 00 runtime/provenance with split kernel + stage artifact roots.
+/// Validate build-runtime provenance with split kernel + stage artifact roots.
 ///
 /// Use `kernel_artifact_dir` for kernel provenance outputs and
 /// `stage_artifact_dir` for stage-scoped non-kernel artifacts.
-pub fn validate_stage_00_runtime_with_stage_dirs(
+pub fn validate_build_runtime_with_stage_dirs(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
     stage_artifact_dir: &Path,
 ) -> ConformanceReport {
     let runtime_artifacts = stage00_runtime_artifacts_from_contract(contract, stage_artifact_dir);
-    validate_stage_00_runtime_with_artifacts(
+    validate_build_runtime_with_artifacts(
         contract,
         variant_dir,
         kernel_artifact_dir,
@@ -170,14 +163,15 @@ pub fn validate_stage_00_runtime_with_stage_dirs(
     )
 }
 
-/// Validate Stage 00 runtime/provenance using explicit artifact paths.
-pub fn validate_stage_00_runtime_with_artifacts(
+/// Validate build-runtime provenance using explicit artifact paths.
+pub fn validate_build_runtime_with_artifacts(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
-    artifacts: &Stage00RuntimeArtifacts,
+    artifacts: &BuildRuntimeArtifacts,
 ) -> ConformanceReport {
-    let stage_00 = &contract.stages.stage_00_build;
+    let build = &contract.build;
+    let kernel = &build.kernel;
     let mut violations = Vec::new();
 
     let variant_layout = validate_layout(
@@ -185,7 +179,7 @@ pub fn validate_stage_00_runtime_with_artifacts(
         variant_dir,
         &[LayoutRequirement::file(
             "stage_00_build.kernel_kconfig_path",
-            &stage_00.kernel_kconfig_path,
+            &kernel.kconfig_path,
             ViolationCode::MissingRequiredKernelOutput,
             "declared kernel kconfig path",
         )],
@@ -199,13 +193,13 @@ pub fn validate_stage_00_runtime_with_artifacts(
         &[
             LayoutRequirement::file(
                 "stage_00_build.kernel_release_path",
-                &stage_00.kernel_release_path,
+                &kernel.release_path,
                 ViolationCode::MissingRequiredKernelOutput,
                 "kernel.release output",
             ),
             LayoutRequirement::file(
                 "stage_00_build.kernel_image_path",
-                &stage_00.kernel_image_path,
+                &kernel.image_path,
                 ViolationCode::MissingRequiredKernelOutput,
                 "kernel image output",
             ),
@@ -241,19 +235,19 @@ pub fn validate_stage_00_runtime_with_artifacts(
         }
     }
 
-    let kconfig_path = variant_dir.join(&stage_00.kernel_kconfig_path);
+    let kconfig_path = variant_dir.join(&kernel.kconfig_path);
     if !kconfig_missing {
         match fs::read_to_string(&kconfig_path) {
             Ok(raw) => match parse_kconfig_localversion(&raw) {
                 Some(localversion) => {
-                    if localversion != stage_00.kernel_localversion {
+                    if localversion != kernel.localversion {
                         push_violation(
                             &mut violations,
                             "stage_00_build.kernel_localversion",
                             ViolationCode::InvalidKernelProvenance,
                             format!(
                                 "kconfig CONFIG_LOCALVERSION='{}' does not match declared '{}'",
-                                localversion, stage_00.kernel_localversion
+                                localversion, kernel.localversion
                             ),
                         );
                     }
@@ -285,32 +279,32 @@ pub fn validate_stage_00_runtime_with_artifacts(
         }
     }
 
-    let release_path = kernel_artifact_dir.join(&stage_00.kernel_release_path);
+    let release_path = kernel_artifact_dir.join(&kernel.release_path);
     let kernel_release = match if release_missing {
         None
     } else {
         read_trimmed(&release_path)
     } {
         Some(value) => {
-            if !value.starts_with(&stage_00.kernel_version) {
+            if !value.starts_with(&kernel.version) {
                 push_violation(
                     &mut violations,
                     "stage_00_build.kernel_release_path",
                     ViolationCode::InvalidKernelProvenance,
                     format!(
                         "kernel.release '{}' does not start with declared kernel_version '{}'",
-                        value, stage_00.kernel_version
+                        value, kernel.version
                     ),
                 );
             }
-            if !value.ends_with(&stage_00.kernel_localversion) {
+            if !value.ends_with(&kernel.localversion) {
                 push_violation(
                     &mut violations,
                     "stage_00_build.kernel_release_path",
                     ViolationCode::InvalidKernelProvenance,
                     format!(
                         "kernel.release '{}' does not end with declared kernel_localversion '{}'",
-                        value, stage_00.kernel_localversion
+                        value, kernel.localversion
                     ),
                 );
             }
@@ -333,8 +327,8 @@ pub fn validate_stage_00_runtime_with_artifacts(
     };
 
     if let Some(kernel_release) = kernel_release {
-        let expanded_modules_rel = stage_00
-            .kernel_modules_path
+        let expanded_modules_rel = kernel
+            .modules_path
             .replace("<kernel.release>", &kernel_release);
         let modules_layout = validate_layout(
             Some(StageId::Stage00),
@@ -371,13 +365,47 @@ pub fn validate_stage_00_runtime_with_artifacts(
     }
 }
 
-/// Require Stage 00 runtime checks to pass.
-pub fn require_valid_stage_00_runtime(
+/// Validate Stage 00 runtime/provenance invariants against on-disk files.
+pub fn validate_stage_00_runtime(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    artifact_dir: &Path,
+) -> ConformanceReport {
+    validate_build_runtime(contract, variant_dir, artifact_dir)
+}
+
+/// Validate Stage 00 runtime/provenance with split kernel + stage artifact roots.
+pub fn validate_stage_00_runtime_with_stage_dirs(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    stage_artifact_dir: &Path,
+) -> ConformanceReport {
+    validate_build_runtime_with_stage_dirs(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        stage_artifact_dir,
+    )
+}
+
+/// Validate Stage 00 runtime/provenance using explicit artifact paths.
+pub fn validate_stage_00_runtime_with_artifacts(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    artifacts: &Stage00RuntimeArtifacts,
+) -> ConformanceReport {
+    validate_build_runtime_with_artifacts(contract, variant_dir, kernel_artifact_dir, artifacts)
+}
+
+/// Require build-runtime checks to pass.
+pub fn require_valid_build_runtime(
     contract: &ConformanceContract,
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> Result<(), ConformanceError> {
-    let report = validate_stage_00_runtime(contract, variant_dir, artifact_dir);
+    let report = validate_build_runtime(contract, variant_dir, artifact_dir);
     if report.passed() {
         Ok(())
     } else {
@@ -385,13 +413,13 @@ pub fn require_valid_stage_00_runtime(
     }
 }
 
-pub fn require_valid_stage_00_runtime_with_artifacts(
+pub fn require_valid_build_runtime_with_artifacts(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
-    artifacts: &Stage00RuntimeArtifacts,
+    artifacts: &BuildRuntimeArtifacts,
 ) -> Result<(), ConformanceError> {
-    let report = validate_stage_00_runtime_with_artifacts(
+    let report = validate_build_runtime_with_artifacts(
         contract,
         variant_dir,
         kernel_artifact_dir,
@@ -404,14 +432,14 @@ pub fn require_valid_stage_00_runtime_with_artifacts(
     }
 }
 
-/// Require Stage 00 runtime checks to pass with split kernel + stage roots.
-pub fn require_valid_stage_00_runtime_with_stage_dirs(
+/// Require build-runtime checks to pass with split kernel + stage roots.
+pub fn require_valid_build_runtime_with_stage_dirs(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
     stage_artifact_dir: &Path,
 ) -> Result<(), ConformanceError> {
-    let report = validate_stage_00_runtime_with_stage_dirs(
+    let report = validate_build_runtime_with_stage_dirs(
         contract,
         variant_dir,
         kernel_artifact_dir,
@@ -422,6 +450,44 @@ pub fn require_valid_stage_00_runtime_with_stage_dirs(
     } else {
         Err(ConformanceError { report })
     }
+}
+
+/// Require Stage 00 runtime checks to pass.
+pub fn require_valid_stage_00_runtime(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    artifact_dir: &Path,
+) -> Result<(), ConformanceError> {
+    require_valid_build_runtime(contract, variant_dir, artifact_dir)
+}
+
+pub fn require_valid_stage_00_runtime_with_artifacts(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    artifacts: &Stage00RuntimeArtifacts,
+) -> Result<(), ConformanceError> {
+    require_valid_build_runtime_with_artifacts(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        artifacts,
+    )
+}
+
+/// Require Stage 00 runtime checks to pass with split kernel + stage roots.
+pub fn require_valid_stage_00_runtime_with_stage_dirs(
+    contract: &ConformanceContract,
+    variant_dir: &Path,
+    kernel_artifact_dir: &Path,
+    stage_artifact_dir: &Path,
+) -> Result<(), ConformanceError> {
+    require_valid_build_runtime_with_stage_dirs(
+        contract,
+        variant_dir,
+        kernel_artifact_dir,
+        stage_artifact_dir,
+    )
 }
 
 fn stage01_artifact_name(tag: &str, suffix: &str) -> String {
@@ -1342,7 +1408,7 @@ mod tests {
                 disk_image: None,
             },
             scenarios: ScenarioContract {
-                live_boot: Some(BootStage {
+                live_boot: BootStage {
                     success_patterns: vec!["LevitateOS".to_string()],
                     fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
@@ -1351,23 +1417,23 @@ mod tests {
                         script_path: "live-boot.sh".to_string(),
                         pass_marker: "STAGE 01 PASSED".to_string(),
                     },
-                }),
-                live_tools: Some(ToolsStage {
+                },
+                live_tools: ToolsStage {
                     required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "live-tools.sh".to_string(),
                         pass_marker: "STAGE 02 PASSED".to_string(),
                     },
-                }),
-                install: Some(InstallStage {
+                },
+                install: InstallStage {
                     required_tools: vec!["recstrap".to_string()],
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "install.sh".to_string(),
                         pass_marker: "STAGE 03 PASSED".to_string(),
                     },
-                }),
-                installed_boot: Some(BootStage {
+                },
+                installed_boot: BootStage {
                     success_patterns: vec!["levitateos login:".to_string()],
                     fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec![],
@@ -1376,8 +1442,8 @@ mod tests {
                         script_path: "installed-boot.sh".to_string(),
                         pass_marker: "STAGE 04 PASSED".to_string(),
                     },
-                }),
-                automated_login: Some(AutomatedLoginStage {
+                },
+                automated_login: AutomatedLoginStage {
                     auth_mode: AuthMode::DefaultPasswordLogin,
                     default_username: Some("levitate".to_string()),
                     default_password: Some("levitate".to_string()),
@@ -1386,19 +1452,19 @@ mod tests {
                         script_path: "automated-login.sh".to_string(),
                         pass_marker: "STAGE 05 PASSED".to_string(),
                     },
-                }),
-                installed_tools: Some(ToolsStage {
+                },
+                installed_tools: ToolsStage {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "installed-tools.sh".to_string(),
                         pass_marker: "STAGE 06 PASSED".to_string(),
                     },
-                }),
-                runtime_policy: Some(RuntimePolicyStage {
+                },
+                runtime_policy: RuntimePolicyStage {
                     rootfs_mutability: RootfsMutability::Mutable,
                     mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],
-                }),
+                },
             },
             release: ReleaseContract {
                 primary_outputs: vec!["levitateos-x86_64.iso".to_string()],
@@ -1719,9 +1785,7 @@ mod tests {
         let stage_dir = temp_dir("stage01-runtime-anaconda-missing-cmdline");
         let mut contract = valid_contract();
         contract.stages.stage_01_live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
-        if let Some(live_boot) = contract.scenarios.live_boot.as_mut() {
-            live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
-        }
+        contract.scenarios.live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
         write_stage01_systemd_artifacts(&stage_dir, true);
 
         let report = validate_stage_01_runtime(&contract, &stage_dir, "s01");
