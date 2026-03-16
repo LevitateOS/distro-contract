@@ -1244,7 +1244,7 @@ mod tests {
                 },
                 evidence: ScriptEvidence {
                     script_path: "build-capability.sh".to_string(),
-                    pass_marker: "STAGE 00 PASSED".to_string(),
+                    pass_marker: "BUILD CAPABILITY PASSED".to_string(),
                 },
             },
             sources: SourceContract {
@@ -1373,14 +1373,14 @@ mod tests {
                     required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "live-boot.sh".to_string(),
-                        pass_marker: "STAGE 01 PASSED".to_string(),
+                        pass_marker: "LIVE BOOT PASSED".to_string(),
                     },
                 },
                 live_tools: ToolsStage {
                     required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "live-tools.sh".to_string(),
-                        pass_marker: "STAGE 02 PASSED".to_string(),
+                        pass_marker: "LIVE TOOLS PASSED".to_string(),
                     },
                 },
                 install: InstallStage {
@@ -1388,7 +1388,7 @@ mod tests {
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "install.sh".to_string(),
-                        pass_marker: "STAGE 03 PASSED".to_string(),
+                        pass_marker: "INSTALL PASSED".to_string(),
                     },
                 },
                 installed_boot: BootStage {
@@ -1398,7 +1398,7 @@ mod tests {
                     required_live_services: vec![],
                     evidence: ScriptEvidence {
                         script_path: "installed-boot.sh".to_string(),
-                        pass_marker: "STAGE 04 PASSED".to_string(),
+                        pass_marker: "INSTALLED BOOT PASSED".to_string(),
                     },
                 },
                 automated_login: AutomatedLoginStage {
@@ -1408,14 +1408,14 @@ mod tests {
                     login_prompt_pattern: "levitateos login:".to_string(),
                     evidence: ScriptEvidence {
                         script_path: "automated-login.sh".to_string(),
-                        pass_marker: "STAGE 05 PASSED".to_string(),
+                        pass_marker: "AUTOMATED LOGIN PASSED".to_string(),
                     },
                 },
                 installed_tools: ToolsStage {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "installed-tools.sh".to_string(),
-                        pass_marker: "STAGE 06 PASSED".to_string(),
+                        pass_marker: "INSTALLED TOOLS PASSED".to_string(),
                     },
                 },
                 runtime_policy: RuntimePolicyStage {

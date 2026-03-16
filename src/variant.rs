@@ -1194,7 +1194,7 @@ required_live_services = ["sshd"]
 
 [scenarios.live_boot.evidence]
 script_path = "live-boot.sh"
-pass_marker = "STAGE 01 PASSED"
+pass_marker = "LIVE BOOT PASSED"
 
 [scenarios.live_environment]
 required_services = ["sshd", "auditd"]
@@ -1205,7 +1205,7 @@ install_experience = "ux"
 
 [scenarios.live_tools.evidence]
 script_path = "live-tools.sh"
-pass_marker = "STAGE 02 PASSED"
+pass_marker = "LIVE TOOLS PASSED"
 
 [scenarios.install]
 required_tools = ["recstrap"]
@@ -1213,7 +1213,7 @@ required_services = ["sshd", "auditd"]
 
 [scenarios.install.evidence]
 script_path = "install.sh"
-pass_marker = "STAGE 03 PASSED"
+pass_marker = "INSTALL PASSED"
 
 [scenarios.installed_boot]
 success_patterns = ["example login:"]
@@ -1223,7 +1223,7 @@ required_live_services = []
 
 [scenarios.installed_boot.evidence]
 script_path = "installed-boot.sh"
-pass_marker = "STAGE 04 PASSED"
+pass_marker = "INSTALLED BOOT PASSED"
 
 [scenarios.automated_login]
 auth_mode = "default_password_login"
@@ -1233,14 +1233,14 @@ login_prompt_pattern = "example login:"
 
 [scenarios.automated_login.evidence]
 script_path = "automated-login.sh"
-pass_marker = "STAGE 05 PASSED"
+pass_marker = "AUTOMATED LOGIN PASSED"
 
 [scenarios.installed_tools]
 required_tools = ["sudo"]
 
 [scenarios.installed_tools.evidence]
 script_path = "installed-tools.sh"
-pass_marker = "STAGE 06 PASSED"
+pass_marker = "INSTALLED TOOLS PASSED"
 
 [scenarios.runtime_policy]
 rootfs_mutability = "mutable"
@@ -1822,8 +1822,8 @@ immutable_required_ro_paths = []
                 module_install_path: "usr/lib/modules".to_string(),
             },
             evidence: ScriptEvidence {
-                script_path: "stage-00.sh".to_string(),
-                pass_marker: "STAGE 00 PASSED".to_string(),
+                script_path: "build-capability.sh".to_string(),
+                pass_marker: "BUILD CAPABILITY PASSED".to_string(),
             },
         };
         let transforms = TransformContract {
@@ -1886,14 +1886,14 @@ immutable_required_ro_paths = []
                 required_live_services: vec![],
                 evidence: ScriptEvidence {
                     script_path: "live-boot.sh".to_string(),
-                    pass_marker: "STAGE 01 PASSED".to_string(),
+                    pass_marker: "LIVE BOOT PASSED".to_string(),
                 },
             },
             live_tools: ToolsStage {
                 required_tools: vec!["bash".to_string()],
                 evidence: ScriptEvidence {
                     script_path: "live-tools.sh".to_string(),
-                    pass_marker: "STAGE 02 PASSED".to_string(),
+                    pass_marker: "LIVE TOOLS PASSED".to_string(),
                 },
             },
             install: InstallStage {
@@ -1901,7 +1901,7 @@ immutable_required_ro_paths = []
                 required_services: vec!["sshd".to_string()],
                 evidence: ScriptEvidence {
                     script_path: "install.sh".to_string(),
-                    pass_marker: "STAGE 03 PASSED".to_string(),
+                    pass_marker: "INSTALL PASSED".to_string(),
                 },
             },
             installed_boot: BootStage {
@@ -1911,7 +1911,7 @@ immutable_required_ro_paths = []
                 required_live_services: vec![],
                 evidence: ScriptEvidence {
                     script_path: "installed-boot.sh".to_string(),
-                    pass_marker: "STAGE 04 PASSED".to_string(),
+                    pass_marker: "INSTALLED BOOT PASSED".to_string(),
                 },
             },
             automated_login: AutomatedLoginStage {
@@ -1921,14 +1921,14 @@ immutable_required_ro_paths = []
                 login_prompt_pattern: "example login:".to_string(),
                 evidence: ScriptEvidence {
                     script_path: "automated-login.sh".to_string(),
-                    pass_marker: "STAGE 05 PASSED".to_string(),
+                    pass_marker: "AUTOMATED LOGIN PASSED".to_string(),
                 },
             },
             installed_tools: ToolsStage {
                 required_tools: vec!["sudo".to_string()],
                 evidence: ScriptEvidence {
                     script_path: "installed-tools.sh".to_string(),
-                    pass_marker: "STAGE 06 PASSED".to_string(),
+                    pass_marker: "INSTALLED TOOLS PASSED".to_string(),
                 },
             },
             runtime_policy: RuntimePolicyStage {

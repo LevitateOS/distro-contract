@@ -57,8 +57,14 @@ const LIVE_UKI_PRIMARY_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[0]
 const LIVE_UKI_EMERGENCY_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[1]";
 const LIVE_UKI_DEBUG_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[2]";
 const LIVE_UKI_EXTRA_CMDLINE_FIELD: &str = "transforms.live_uki.extra_cmdline";
+const LIVE_BOOT_EVIDENCE_FIELD: &str = "scenarios.live_boot.evidence";
 const LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD: &str = "scenarios.live_boot.required_kernel_cmdline";
 const LIVE_BOOT_REQUIRED_SERVICES_FIELD: &str = "scenarios.live_boot.required_live_services";
+const LIVE_TOOLS_EVIDENCE_FIELD: &str = "scenarios.live_tools.evidence";
+const INSTALL_EVIDENCE_FIELD: &str = "scenarios.install.evidence";
+const INSTALLED_BOOT_EVIDENCE_FIELD: &str = "scenarios.installed_boot.evidence";
+const AUTOMATED_LOGIN_EVIDENCE_FIELD: &str = "scenarios.automated_login.evidence";
+const INSTALLED_TOOLS_EVIDENCE_FIELD: &str = "scenarios.installed_tools.evidence";
 
 fn push_violation(
     violations: &mut Vec<Violation>,
@@ -528,27 +534,37 @@ fn validate_evidence(
 
     if marker_ok {
         let lowered = pass_marker.to_ascii_uppercase();
-        let has_pass = lowered.contains("PASS");
-        let marker_valid = if stage == StageId::Stage00 {
-            has_pass && (lowered.contains("STAGE") || lowered.contains("BUILD"))
-        } else {
-            has_pass && lowered.contains("STAGE")
-        };
-        if !marker_valid {
-            let requirement = if stage == StageId::Stage00 {
-                "BUILD or STAGE, plus PASS"
-            } else {
-                "STAGE and PASS"
-            };
+        if !lowered.contains("PASS") {
             push_violation(
                 violations,
                 Some(stage),
                 &marker_field,
                 ViolationCode::InvalidEvidenceDeclaration,
-                format!("{marker_field} must contain {requirement} tokens"),
+                format!("{marker_field} must contain PASS"),
             );
+        } else if script_ok {
+            let expected_marker = canonical_pass_marker_for_script(script_path);
+            if pass_marker != expected_marker {
+                push_violation(
+                    violations,
+                    Some(stage),
+                    &marker_field,
+                    ViolationCode::InvalidEvidenceDeclaration,
+                    format!("{marker_field} must equal '{expected_marker}'"),
+                );
+            }
         }
     }
+}
+
+fn canonical_pass_marker_for_script(script_path: &str) -> String {
+    let stem = script_path.strip_suffix(".sh").unwrap_or(script_path);
+    let tokens: Vec<String> = stem
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_uppercase())
+        .collect();
+    format!("{} PASSED", tokens.join(" "))
 }
 
 fn is_relative_contract_path(value: &str) -> bool {
@@ -1168,6 +1184,14 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     validate_release_mirrors_stage_08(&mut violations, contract);
     validate_stage_00_build(&mut violations, contract);
     let live_boot = &contract.scenarios.live_boot;
+    validate_evidence(
+        &mut violations,
+        StageId::Stage01,
+        LIVE_BOOT_EVIDENCE_FIELD,
+        &live_boot.evidence.script_path,
+        &live_boot.evidence.pass_marker,
+        "live-",
+    );
     validate_kernel_cmdline_tokens(
         &mut violations,
         StageId::Stage01,
@@ -1198,6 +1222,46 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
             );
         }
     }
+    validate_evidence(
+        &mut violations,
+        StageId::Stage02,
+        LIVE_TOOLS_EVIDENCE_FIELD,
+        &contract.scenarios.live_tools.evidence.script_path,
+        &contract.scenarios.live_tools.evidence.pass_marker,
+        "live-",
+    );
+    validate_evidence(
+        &mut violations,
+        StageId::Stage03,
+        INSTALL_EVIDENCE_FIELD,
+        &contract.scenarios.install.evidence.script_path,
+        &contract.scenarios.install.evidence.pass_marker,
+        "install",
+    );
+    validate_evidence(
+        &mut violations,
+        StageId::Stage04,
+        INSTALLED_BOOT_EVIDENCE_FIELD,
+        &contract.scenarios.installed_boot.evidence.script_path,
+        &contract.scenarios.installed_boot.evidence.pass_marker,
+        "installed-",
+    );
+    validate_evidence(
+        &mut violations,
+        StageId::Stage05,
+        AUTOMATED_LOGIN_EVIDENCE_FIELD,
+        &contract.scenarios.automated_login.evidence.script_path,
+        &contract.scenarios.automated_login.evidence.pass_marker,
+        "automated-",
+    );
+    validate_evidence(
+        &mut violations,
+        StageId::Stage06,
+        INSTALLED_TOOLS_EVIDENCE_FIELD,
+        &contract.scenarios.installed_tools.evidence.script_path,
+        &contract.scenarios.installed_tools.evidence.pass_marker,
+        "installed-",
+    );
     for service in STAGE_01_REQUIRED_LIVE_SERVICES_BASE {
         if !live_boot
             .required_live_services
@@ -1280,7 +1344,7 @@ mod tests {
                 },
                 evidence: ScriptEvidence {
                     script_path: "build-capability.sh".to_string(),
-                    pass_marker: "STAGE 00 PASSED".to_string(),
+                    pass_marker: "BUILD CAPABILITY PASSED".to_string(),
                 },
             },
             sources: SourceContract {
@@ -1409,14 +1473,14 @@ mod tests {
                     required_live_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "live-boot.sh".to_string(),
-                        pass_marker: "STAGE 01 PASSED".to_string(),
+                        pass_marker: "LIVE BOOT PASSED".to_string(),
                     },
                 },
                 live_tools: ToolsStage {
                     required_tools: vec!["bash".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "live-tools.sh".to_string(),
-                        pass_marker: "STAGE 02 PASSED".to_string(),
+                        pass_marker: "LIVE TOOLS PASSED".to_string(),
                     },
                 },
                 install: InstallStage {
@@ -1424,7 +1488,7 @@ mod tests {
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "install.sh".to_string(),
-                        pass_marker: "STAGE 03 PASSED".to_string(),
+                        pass_marker: "INSTALL PASSED".to_string(),
                     },
                 },
                 installed_boot: BootStage {
@@ -1434,7 +1498,7 @@ mod tests {
                     required_live_services: vec![],
                     evidence: ScriptEvidence {
                         script_path: "installed-boot.sh".to_string(),
-                        pass_marker: "STAGE 04 PASSED".to_string(),
+                        pass_marker: "INSTALLED BOOT PASSED".to_string(),
                     },
                 },
                 automated_login: AutomatedLoginStage {
@@ -1444,14 +1508,14 @@ mod tests {
                     login_prompt_pattern: "example login:".to_string(),
                     evidence: ScriptEvidence {
                         script_path: "automated-login.sh".to_string(),
-                        pass_marker: "STAGE 05 PASSED".to_string(),
+                        pass_marker: "AUTOMATED LOGIN PASSED".to_string(),
                     },
                 },
                 installed_tools: ToolsStage {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "installed-tools.sh".to_string(),
-                        pass_marker: "STAGE 06 PASSED".to_string(),
+                        pass_marker: "INSTALLED TOOLS PASSED".to_string(),
                     },
                 },
                 runtime_policy: RuntimePolicyStage {
@@ -1497,7 +1561,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_evidence_accepts_build_capability_pass_marker() {
+    fn build_evidence_accepts_build_capability_pass_marker() {
         let mut contract = valid_contract();
         contract.build.evidence.pass_marker = "BUILD CAPABILITY PASSED".to_string();
 
