@@ -1,7 +1,7 @@
 //! Distro conformance contract schema and validators.
 //!
 //! This crate is intentionally **conformance-only**:
-//! - Defines Stage 00..Stage 08 declaration schema
+//! - Defines the canonical conformance declaration schema
 //! - Loads canonical variant declarations from the ring/owner manifest family
 //! - Validates declaration integrity and anti-gaming rules
 //! - Produces deterministic violation reports
@@ -28,8 +28,8 @@ pub use schema::{
     ConformanceContract, DistroIdentity, InstallStage, KernelBuildContract, ProductContract,
     ProductDecl, ReleaseContract, ReleaseStage, RootfsMutability, RootfsSourceContract,
     RootfsSourceKind, RuntimePolicyStage, ScenarioContract, ScriptEvidence, SourceContract,
-    ToolsStage, TransformContract, CONTRACT_SCHEMA_VERSION, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
-    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ToolsStage, TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
+    BOOT_REQUIRED_LIVE_SERVICES_BASE, CONTRACT_SCHEMA_VERSION,
 };
 pub use validate::{require_valid_contract, validate_contract};
 pub use variant::{

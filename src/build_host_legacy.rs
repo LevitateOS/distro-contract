@@ -1,18 +1,18 @@
-//! Canonical Stage 00 (00Build) declaration constants.
+//! Canonical build-contract declaration constants.
 //!
-//! This module is the single source of truth for Stage 00 filenames, required
-//! paths, and required declaration values used by loaders and validators.
+//! This module is the single source of truth for required filenames, paths,
+//! and declaration values used by loaders and validators.
 
 /// Build-host evidence script required filename prefix.
 pub const EVIDENCE_SCRIPT_PREFIX: &str = "build-capability";
 
-/// Required variant-local kconfig path for Stage 00.
+/// Required variant-local kconfig path for the build contract.
 pub const REQUIRED_VARIANT_KCONFIG: &str = "kconfig";
 
-/// Required variant-local recipe declaration path for Stage 00.
+/// Required variant-local recipe declaration path for the build contract.
 pub const REQUIRED_VARIANT_RECIPE_DECL: &str = "recipes/kernel.rhai";
 
-/// Baseline required build tools for Stage 00 declaration.
+/// Baseline required build tools for the build contract.
 /// human: this doesn't make sense to me: if each distro needs these build tools.. then why put it in the contract?? isn't that just a distro-builder concern??
 pub const REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
     "recipe",

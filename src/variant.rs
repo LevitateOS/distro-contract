@@ -21,7 +21,7 @@ use crate::schema::{
     ConformanceContract, DistroIdentity, InstallStage, KernelBuildContract, ProductContract,
     ProductDecl, ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
     RuntimePolicyStage, ScenarioContract, ScriptEvidence, SourceContract, ToolsStage,
-    TransformContract, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro-variants";
@@ -558,7 +558,7 @@ fn artifact_identity_from_transforms(transforms: &TransformContract) -> Artifact
 }
 
 fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> ScenarioContract {
-    let (required_kernel_cmdline, required_live_services) = stage01_defaults_from_values(
+    let (required_kernel_cmdline, required_live_services) = merge_live_boot_required_defaults(
         scenarios.live_boot.required_kernel_cmdline.clone(),
         scenarios.live_boot.required_live_services.clone(),
     );
@@ -642,17 +642,17 @@ fn release_contract_from_ring_manifest(release: &VariantReleaseDecl) -> ReleaseC
     }
 }
 
-fn stage01_defaults_from_values(
+fn merge_live_boot_required_defaults(
     mut required_kernel_cmdline: Vec<String>,
     mut required_live_services: Vec<String>,
 ) -> (Vec<String>, Vec<String>) {
     merge_required_strings(
         &mut required_kernel_cmdline,
-        STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
+        BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
     );
     merge_required_strings(
         &mut required_live_services,
-        STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+        BOOT_REQUIRED_LIVE_SERVICES_BASE,
     );
 
     (required_kernel_cmdline, required_live_services)

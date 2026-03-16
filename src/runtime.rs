@@ -9,8 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
-    ConformanceContract, STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE,
-    STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ConformanceContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const LEGACY_ROOTFS_COMPONENT_SEQUENCES: &[&[&str]] = &[
@@ -80,7 +79,7 @@ fn read_trimmed(path: &Path) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn stage00_runtime_artifacts_from_contract(
+fn build_runtime_artifacts_from_contract(
     contract: &ConformanceContract,
     stage_artifact_dir: &Path,
 ) -> BuildRuntimeArtifacts {
@@ -151,7 +150,7 @@ pub fn validate_build_runtime(
     variant_dir: &Path,
     artifact_dir: &Path,
 ) -> ConformanceReport {
-    let runtime_artifacts = stage00_runtime_artifacts_from_contract(contract, artifact_dir);
+    let runtime_artifacts = build_runtime_artifacts_from_contract(contract, artifact_dir);
     validate_build_runtime_with_artifacts(contract, variant_dir, artifact_dir, &runtime_artifacts)
 }
 
@@ -165,7 +164,7 @@ pub fn validate_build_runtime_with_stage_dirs(
     kernel_artifact_dir: &Path,
     stage_artifact_dir: &Path,
 ) -> ConformanceReport {
-    let runtime_artifacts = stage00_runtime_artifacts_from_contract(contract, stage_artifact_dir);
+    let runtime_artifacts = build_runtime_artifacts_from_contract(contract, stage_artifact_dir);
     validate_build_runtime_with_artifacts(
         contract,
         variant_dir,
@@ -222,17 +221,17 @@ pub fn validate_build_runtime_with_artifacts(
     for (field, expectation, path) in [
         (
             "transforms.rootfs_image.output_names",
-            "required Stage 00 rootfs image",
+            "required build-runtime rootfs image",
             &artifacts.rootfs_image,
         ),
         (
             "transforms.initramfs_live.output_names",
-            "required Stage 00 live initramfs",
+            "required build-runtime initramfs",
             &artifacts.initramfs_live,
         ),
         (
             "transforms.overlay_image.output_names",
-            "required Stage 00 overlay image",
+            "required build-runtime overlay image",
             &artifacts.overlay_image,
         ),
     ] {
@@ -429,36 +428,38 @@ pub fn require_valid_build_runtime_with_stage_dirs(
     }
 }
 
-fn stage01_artifact_name(tag: &str, suffix: &str) -> String {
+fn tagged_live_boot_artifact_name(tag: &str, suffix: &str) -> String {
     format!("{tag}-{suffix}")
 }
 
-fn stage01_overlay_dir_name(stage_artifact_tag: &str) -> String {
-    stage01_artifact_name(stage_artifact_tag, "live-overlay")
+fn tagged_live_boot_overlay_dir_name(artifact_tag: &str) -> String {
+    tagged_live_boot_artifact_name(artifact_tag, "live-overlay")
 }
 
-fn stage_rootfs_source_pointer_name(stage_artifact_tag: &str) -> String {
-    format!(".{stage_artifact_tag}-live-rootfs-source.path")
+fn tagged_live_boot_rootfs_source_pointer_name(artifact_tag: &str) -> String {
+    format!(".{artifact_tag}-live-rootfs-source.path")
 }
 
-fn live_boot_runtime_artifacts_from_stage_dir(
+fn live_boot_runtime_artifacts_from_tagged_artifact_dir(
     stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
+    artifact_tag: &str,
 ) -> LiveBootRuntimeArtifacts {
     LiveBootRuntimeArtifacts {
-        rootfs_image: stage_artifact_dir.join(stage01_artifact_name(
-            stage_artifact_tag,
+        rootfs_image: stage_artifact_dir.join(tagged_live_boot_artifact_name(
+            artifact_tag,
             "filesystem.erofs",
         )),
-        initramfs_live: stage_artifact_dir.join(stage01_artifact_name(
-            stage_artifact_tag,
+        initramfs_live: stage_artifact_dir.join(tagged_live_boot_artifact_name(
+            artifact_tag,
             "initramfs-live.cpio.gz",
         )),
-        overlay_image: stage_artifact_dir
-            .join(stage01_artifact_name(stage_artifact_tag, "overlayfs.erofs")),
-        live_overlay_dir: stage_artifact_dir.join(stage01_overlay_dir_name(stage_artifact_tag)),
+        overlay_image: stage_artifact_dir.join(tagged_live_boot_artifact_name(
+            artifact_tag,
+            "overlayfs.erofs",
+        )),
+        live_overlay_dir: stage_artifact_dir.join(tagged_live_boot_overlay_dir_name(artifact_tag)),
         rootfs_source_pointer: stage_artifact_dir
-            .join(stage_rootfs_source_pointer_name(stage_artifact_tag)),
+            .join(tagged_live_boot_rootfs_source_pointer_name(artifact_tag)),
     }
 }
 
@@ -493,7 +494,7 @@ fn resolve_live_boot_rootfs_source_dir(
             LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing Stage 01 rootfs source pointer '{}'",
+                "missing live-boot rootfs source pointer '{}'",
                 rootfs_source_pointer.display()
             ),
         );
@@ -517,7 +518,7 @@ fn resolve_live_boot_rootfs_source_dir(
             LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::InvalidPathDeclaration,
             format!(
-                "policy violation: legacy rootfs source '{}' is forbidden for Stage 01 runtime",
+                "policy violation: legacy rootfs source '{}' is forbidden for live-boot runtime",
                 resolved.display()
             ),
         );
@@ -531,7 +532,7 @@ fn resolve_live_boot_rootfs_source_dir(
             LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "Stage 01 rootfs source directory does not exist: '{}'",
+                "live-boot rootfs source directory does not exist: '{}'",
                 resolved.display()
             ),
         );
@@ -565,11 +566,11 @@ fn contains_component_sequence(haystack: &[String], needle: &[&str]) -> bool {
         .any(|window| window.iter().map(String::as_str).eq(needle.iter().copied()))
 }
 
-fn validate_stage01_shared_contract_requirements(
+fn validate_live_boot_contract_requirements(
     live_boot: &crate::schema::BootStage,
     violations: &mut Vec<Violation>,
 ) {
-    for token in STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE {
+    for token in BOOT_REQUIRED_KERNEL_CMDLINE_BASE {
         if live_boot
             .required_kernel_cmdline
             .iter()
@@ -583,13 +584,13 @@ fn validate_stage01_shared_contract_requirements(
             LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
             ViolationCode::MissingValue,
             format!(
-                "Stage 01 required kernel cmdline token '{}' is missing from contract",
+                "live-boot required kernel cmdline token '{}' is missing from contract",
                 token
             ),
         );
     }
 
-    for service in STAGE_01_REQUIRED_LIVE_SERVICES_BASE {
+    for service in BOOT_REQUIRED_LIVE_SERVICES_BASE {
         if live_boot
             .required_live_services
             .iter()
@@ -603,22 +604,22 @@ fn validate_stage01_shared_contract_requirements(
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingValue,
             format!(
-                "Stage 01 required live service '{}' is missing from contract",
+                "live-boot required live service '{}' is missing from contract",
                 service
             ),
         );
     }
 }
 
-fn validate_stage01_systemd_ssh(
+fn validate_systemd_live_boot_ssh(
     live_boot: &crate::schema::BootStage,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
 ) {
-    validate_stage01_usrmerge_symlinks(rootfs_dir, violations);
-    validate_stage01_locale_completeness(rootfs_dir, violations);
-    validate_stage01_required_ssh_artifacts(rootfs_dir, violations);
+    validate_live_boot_usrmerge_symlinks(rootfs_dir, violations);
+    validate_systemd_live_boot_locale_completeness(rootfs_dir, violations);
+    validate_live_boot_required_ssh_artifacts(rootfs_dir, violations);
 
     let rootfs_layout = validate_layout(
         Some(StageId::Stage01),
@@ -661,7 +662,7 @@ fn validate_stage01_systemd_ssh(
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing systemd Stage 01 sshd enablement symlink '{}'",
+                "missing systemd live-boot sshd enablement symlink '{}'",
                 wants_link.display()
             ),
         );
@@ -703,10 +704,10 @@ fn validate_stage01_systemd_ssh(
         );
     }
 
-    validate_stage01_forbidden_tool_leaks(rootfs_dir, violations);
+    validate_forbidden_installed_tool_leaks(rootfs_dir, violations);
 }
 
-fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+fn validate_live_boot_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
     for (rel, expected_target) in [
         ("bin", "usr/bin"),
         ("sbin", "usr/sbin"),
@@ -721,7 +722,7 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
                 LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "missing required Stage 01 merged-usr symlink '{}'; expected '{}' -> '{}'",
+                    "missing required live-boot merged-usr symlink '{}'; expected '{}' -> '{}'",
                     path.display(),
                     rel,
                     expected_target
@@ -736,7 +737,7 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
                 LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "invalid Stage 01 merged-usr symlink '{}'; expected target '{}'",
+                    "invalid live-boot merged-usr symlink '{}'; expected target '{}'",
                     path.display(),
                     expected_target
                 ),
@@ -745,14 +746,14 @@ fn validate_stage01_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<Vi
     }
 }
 
-fn validate_stage01_openrc_ssh(
+fn validate_openrc_live_boot_ssh(
     live_boot: &crate::schema::BootStage,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
 ) {
-    validate_stage01_openrc_locale_completeness(rootfs_dir, violations);
-    validate_stage01_required_ssh_artifacts(rootfs_dir, violations);
+    validate_openrc_live_boot_locale_completeness(rootfs_dir, violations);
+    validate_live_boot_required_ssh_artifacts(rootfs_dir, violations);
 
     let rootfs_layout = validate_layout(
         Some(StageId::Stage01),
@@ -782,7 +783,7 @@ fn validate_stage01_openrc_ssh(
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing OpenRC Stage 01 sshd runlevel symlink '{}'",
+                "missing OpenRC live-boot sshd runlevel symlink '{}'",
                 runlevel_link.display()
             ),
         );
@@ -829,7 +830,7 @@ fn validate_stage01_openrc_ssh(
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "missing OpenRC Stage 01 networking runlevel symlink '{}'",
+                    "missing OpenRC live-boot networking runlevel symlink '{}'",
                     networking_boot_link.display()
                 ),
             );
@@ -863,17 +864,20 @@ fn validate_stage01_openrc_ssh(
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "missing OpenRC Stage 01 dhcpcd runlevel symlink '{}'",
+                    "missing OpenRC live-boot dhcpcd runlevel symlink '{}'",
                     dhcpcd_link.display()
                 ),
             );
         }
     }
 
-    validate_stage01_forbidden_tool_leaks(rootfs_dir, violations);
+    validate_forbidden_installed_tool_leaks(rootfs_dir, violations);
 }
 
-fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+fn validate_openrc_live_boot_locale_completeness(
+    rootfs_dir: &Path,
+    violations: &mut Vec<Violation>,
+) {
     let locale_conf = rootfs_dir.join("etc/locale.conf");
     if !has_file(&locale_conf) {
         push_stage_violation(
@@ -882,7 +886,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing Stage 01 locale config '{}'; expected canonical LANG=C.UTF-8",
+                "missing live-boot locale config '{}'; expected canonical LANG=C.UTF-8",
                 locale_conf.display()
             ),
         );
@@ -900,7 +904,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
                         LIVE_BOOT_LOCALE_FIELD,
                         ViolationCode::MissingValue,
                         format!(
-                            "invalid Stage 01 locale config '{}': expected line 'LANG=C.UTF-8'",
+                            "invalid live-boot locale config '{}': expected line 'LANG=C.UTF-8'",
                             locale_conf.display()
                         ),
                     );
@@ -913,7 +917,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
                     LIVE_BOOT_LOCALE_FIELD,
                     ViolationCode::MissingBaselineArtifact,
                     format!(
-                        "failed reading Stage 01 locale config '{}': {}",
+                        "failed reading live-boot locale config '{}': {}",
                         locale_conf.display(),
                         err
                     ),
@@ -939,7 +943,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing Stage 01 locale payload under '{}'; expected one of glibc paths [{}] or musl path 'usr/share/i18n/locales/musl/en_US.UTF-8'",
+                "missing live-boot locale payload under '{}'; expected one of glibc paths [{}] or musl path 'usr/share/i18n/locales/musl/en_US.UTF-8'",
                 rootfs_dir.display(),
                 glibc_locale_payload_candidates.join(", ")
             ),
@@ -947,7 +951,7 @@ fn validate_stage01_openrc_locale_completeness(rootfs_dir: &Path, violations: &m
     }
 }
 
-fn validate_stage01_forbidden_tool_leaks(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+fn validate_forbidden_installed_tool_leaks(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
     for rel in ["usr/bin/recstrap", "usr/bin/recfstab", "usr/bin/recchroot"] {
         let path = rootfs_dir.join(rel);
         if has_file(&path) {
@@ -957,7 +961,7 @@ fn validate_stage01_forbidden_tool_leaks(rootfs_dir: &Path, violations: &mut Vec
                 LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
-                    "forbidden Stage 02 payload leaked into Stage 01 rootfs: '{}'",
+                    "forbidden installed-tools payload leaked into live-boot rootfs: '{}'",
                     path.display()
                 ),
             );
@@ -965,7 +969,7 @@ fn validate_stage01_forbidden_tool_leaks(rootfs_dir: &Path, violations: &mut Vec
     }
 }
 
-fn validate_stage01_required_ssh_artifacts(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+fn validate_live_boot_required_ssh_artifacts(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
     let ssh_layout = validate_layout(
         Some(StageId::Stage01),
         rootfs_dir,
@@ -974,20 +978,23 @@ fn validate_stage01_required_ssh_artifacts(rootfs_dir: &Path, violations: &mut V
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "etc/ssh/sshd_config",
                 ViolationCode::MissingBaselineArtifact,
-                "canonical Stage 01 sshd config",
+                "canonical live-boot sshd config",
             ),
             LayoutRequirement::directory(
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 "usr/share/empty.sshd",
                 ViolationCode::MissingBaselineArtifact,
-                "Stage 01 empty sshd directory",
+                "live-boot empty sshd directory",
             ),
         ],
     );
     violations.extend(ssh_layout.violations);
 }
 
-fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
+fn validate_systemd_live_boot_locale_completeness(
+    rootfs_dir: &Path,
+    violations: &mut Vec<Violation>,
+) {
     let locale_conf = rootfs_dir.join("etc/locale.conf");
     if !has_file(&locale_conf) {
         push_stage_violation(
@@ -996,7 +1003,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing Stage 01 locale config '{}'; expected canonical LANG=C.UTF-8",
+                "missing live-boot locale config '{}'; expected canonical LANG=C.UTF-8",
                 locale_conf.display()
             ),
         );
@@ -1014,7 +1021,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
                         LIVE_BOOT_LOCALE_FIELD,
                         ViolationCode::MissingValue,
                         format!(
-                            "invalid Stage 01 locale config '{}': expected line 'LANG=C.UTF-8'",
+                            "invalid live-boot locale config '{}': expected line 'LANG=C.UTF-8'",
                             locale_conf.display()
                         ),
                     );
@@ -1027,7 +1034,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
                     LIVE_BOOT_LOCALE_FIELD,
                     ViolationCode::MissingBaselineArtifact,
                     format!(
-                        "failed reading Stage 01 locale config '{}': {}",
+                        "failed reading live-boot locale config '{}': {}",
                         locale_conf.display(),
                         err
                     ),
@@ -1052,7 +1059,7 @@ fn validate_stage01_locale_completeness(rootfs_dir: &Path, violations: &mut Vec<
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "missing Stage 01 UTF-8 locale payload under '{}'; expected one of: {}",
+                "missing live-boot UTF-8 locale payload under '{}'; expected one of: {}",
                 rootfs_dir.display(),
                 locale_payload_candidates.join(", ")
             ),
@@ -1067,30 +1074,30 @@ pub fn validate_live_boot_runtime(
 ) -> ConformanceReport {
     let mut violations = Vec::new();
     let live_boot = live_boot_scenario(contract);
-    validate_stage01_shared_contract_requirements(live_boot, &mut violations);
+    validate_live_boot_contract_requirements(live_boot, &mut violations);
 
     for (field, expectation, path, is_dir) in [
         (
             LIVE_BOOT_ARTIFACTS_FIELD,
-            "Stage 01 rootfs image",
+            "live-boot rootfs image",
             artifacts.rootfs_image.as_path(),
             false,
         ),
         (
             LIVE_BOOT_ARTIFACTS_FIELD,
-            "Stage 01 live initramfs",
+            "live-boot initramfs",
             artifacts.initramfs_live.as_path(),
             false,
         ),
         (
             LIVE_BOOT_ARTIFACTS_FIELD,
-            "Stage 01 live overlay image",
+            "live-boot overlay image",
             artifacts.overlay_image.as_path(),
             false,
         ),
         (
             LIVE_BOOT_ARTIFACTS_FIELD,
-            "Stage 01 live overlay source directory",
+            "live-boot overlay source directory",
             artifacts.live_overlay_dir.as_path(),
             true,
         ),
@@ -1125,14 +1132,14 @@ pub fn validate_live_boot_runtime(
     let has_systemd_unit = has_file(&rootfs_source_dir.join("usr/lib/systemd/system/sshd.service"));
     let has_openrc_script = has_file(&rootfs_source_dir.join("etc/init.d/sshd"));
     if has_systemd_unit {
-        validate_stage01_systemd_ssh(
+        validate_systemd_live_boot_ssh(
             live_boot,
             &rootfs_source_dir,
             live_overlay_dir,
             &mut violations,
         );
     } else if has_openrc_script {
-        validate_stage01_openrc_ssh(
+        validate_openrc_live_boot_ssh(
             live_boot,
             &rootfs_source_dir,
             live_overlay_dir,
@@ -1145,7 +1152,7 @@ pub fn validate_live_boot_runtime(
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "unable to locate Stage 01 ssh service wiring under '{}': \
+                "unable to locate live-boot ssh service wiring under '{}': \
                  expected systemd unit 'usr/lib/systemd/system/sshd.service' or OpenRC script 'etc/init.d/sshd'",
                 rootfs_source_dir.display()
             ),
@@ -1165,8 +1172,10 @@ pub fn validate_live_boot_runtime_with_stage_dir(
     stage_artifact_dir: &Path,
     stage_artifact_tag: &str,
 ) -> ConformanceReport {
-    let artifacts =
-        live_boot_runtime_artifacts_from_stage_dir(stage_artifact_dir, stage_artifact_tag);
+    let artifacts = live_boot_runtime_artifacts_from_tagged_artifact_dir(
+        stage_artifact_dir,
+        stage_artifact_tag,
+    );
     validate_live_boot_runtime(contract, &artifacts)
 }
 
@@ -1475,15 +1484,15 @@ mod tests {
         fs::write(path, content).expect("write file");
     }
 
-    fn write_stage01_systemd_artifacts(stage_dir: &Path, include_anaconda_sshd: bool) {
-        write_file(&stage_dir.join("s01-filesystem.erofs"), "rootfs");
-        write_file(&stage_dir.join("s01-initramfs-live.cpio.gz"), "initramfs");
-        write_file(&stage_dir.join("s01-overlayfs.erofs"), "overlay");
+    fn write_systemd_live_boot_artifacts(stage_dir: &Path, include_anaconda_sshd: bool) {
+        write_file(&stage_dir.join("boot-filesystem.erofs"), "rootfs");
+        write_file(&stage_dir.join("boot-initramfs-live.cpio.gz"), "initramfs");
+        write_file(&stage_dir.join("boot-overlayfs.erofs"), "overlay");
 
-        let rootfs_source = stage_dir.join("s01-rootfs-source-test");
+        let rootfs_source = stage_dir.join("boot-rootfs-source-test");
         fs::create_dir_all(&rootfs_source).expect("create rootfs source");
         write_file(
-            &stage_dir.join(".s01-live-rootfs-source.path"),
+            &stage_dir.join(".boot-live-rootfs-source.path"),
             &format!("{}\n", rootfs_source.display()),
         );
         symlink("usr/bin", rootfs_source.join("bin")).expect("create bin symlink");
@@ -1526,7 +1535,7 @@ mod tests {
         }
 
         let wants_dir =
-            stage_dir.join("s01-live-overlay/etc/systemd/system/multi-user.target.wants");
+            stage_dir.join("boot-live-overlay/etc/systemd/system/multi-user.target.wants");
         fs::create_dir_all(&wants_dir).expect("create wants dir");
         symlink(
             "/usr/lib/systemd/system/sshd.service",
@@ -1534,7 +1543,7 @@ mod tests {
         )
         .expect("create sshd wants symlink");
         write_file(
-            &stage_dir.join("s01-live-overlay/etc/tmpfiles.d/sshd-local.conf"),
+            &stage_dir.join("boot-live-overlay/etc/tmpfiles.d/sshd-local.conf"),
             "d /run/sshd 0755 root root -\n",
         );
     }
@@ -1607,11 +1616,11 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_passes_for_systemd_ssh_wiring() {
-        let stage_dir = temp_dir("stage01-runtime-ok");
+        let stage_dir = temp_dir("live-boot-runtime-ok");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, true);
+        write_systemd_live_boot_artifacts(&stage_dir, true);
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(report.passed(), "{:#?}", report.violations);
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
@@ -1619,12 +1628,12 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_anaconda_sshd_present_without_inst_sshd_zero() {
-        let stage_dir = temp_dir("stage01-runtime-anaconda-missing-cmdline");
+        let stage_dir = temp_dir("live-boot-runtime-anaconda-missing-cmdline");
         let mut contract = valid_contract();
         contract.scenarios.live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
-        write_stage01_systemd_artifacts(&stage_dir, true);
+        write_systemd_live_boot_artifacts(&stage_dir, true);
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1636,9 +1645,9 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_rootfs_source_points_to_legacy_path() {
-        let stage_dir = temp_dir("stage01-runtime-legacy-rootfs");
+        let stage_dir = temp_dir("live-boot-runtime-legacy-rootfs");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, false);
+        write_systemd_live_boot_artifacts(&stage_dir, false);
 
         let mut legacy_rootfs = stage_dir.clone();
         for component in ["leviso", "downloads", "rootfs"] {
@@ -1663,11 +1672,11 @@ mod tests {
             "d /run/sshd 0755 root root -\n",
         );
         write_file(
-            &stage_dir.join(".s01-live-rootfs-source.path"),
+            &stage_dir.join(".boot-live-rootfs-source.path"),
             &format!("{}\n", legacy_rootfs.display()),
         );
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report.violations.iter().any(|v| {
             v.field == LIVE_BOOT_ROOTFS_SOURCE_FIELD
@@ -1679,16 +1688,16 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_locale_config_missing() {
-        let stage_dir = temp_dir("stage01-runtime-missing-locale-conf");
+        let stage_dir = temp_dir("live-boot-runtime-missing-locale-conf");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, false);
+        write_systemd_live_boot_artifacts(&stage_dir, false);
 
-        let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
+        let rootfs_source = read_trimmed(&stage_dir.join(".boot-live-rootfs-source.path"))
             .map(PathBuf::from)
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("etc/locale.conf")).expect("remove locale.conf");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1700,17 +1709,17 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_locale_payload_missing() {
-        let stage_dir = temp_dir("stage01-runtime-missing-locale-payload");
+        let stage_dir = temp_dir("live-boot-runtime-missing-locale-payload");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, false);
+        write_systemd_live_boot_artifacts(&stage_dir, false);
 
-        let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
+        let rootfs_source = read_trimmed(&stage_dir.join(".boot-live-rootfs-source.path"))
             .map(PathBuf::from)
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("usr/lib/locale/C.utf8/LC_CTYPE"))
             .expect("remove locale payload");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1722,16 +1731,16 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_sshd_config_missing() {
-        let stage_dir = temp_dir("stage01-runtime-missing-sshd-config");
+        let stage_dir = temp_dir("live-boot-runtime-missing-sshd-config");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, false);
+        write_systemd_live_boot_artifacts(&stage_dir, false);
 
-        let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
+        let rootfs_source = read_trimmed(&stage_dir.join(".boot-live-rootfs-source.path"))
             .map(PathBuf::from)
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("etc/ssh/sshd_config")).expect("remove sshd_config");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1743,16 +1752,16 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_empty_sshd_missing() {
-        let stage_dir = temp_dir("stage01-runtime-missing-empty-sshd");
+        let stage_dir = temp_dir("live-boot-runtime-missing-empty-sshd");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, false);
+        write_systemd_live_boot_artifacts(&stage_dir, false);
 
-        let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
+        let rootfs_source = read_trimmed(&stage_dir.join(".boot-live-rootfs-source.path"))
             .map(PathBuf::from)
             .expect("rootfs source path");
         fs::remove_dir_all(rootfs_source.join("usr/share/empty.sshd")).expect("remove empty.sshd");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1764,17 +1773,17 @@ mod tests {
 
     #[test]
     fn live_boot_runtime_fails_when_usrmerge_symlink_missing() {
-        let stage_dir = temp_dir("stage01-runtime-missing-usrmerge-symlink");
+        let stage_dir = temp_dir("live-boot-runtime-missing-usrmerge-symlink");
         let contract = valid_contract();
-        write_stage01_systemd_artifacts(&stage_dir, false);
+        write_systemd_live_boot_artifacts(&stage_dir, false);
 
-        let rootfs_source = read_trimmed(&stage_dir.join(".s01-live-rootfs-source.path"))
+        let rootfs_source = read_trimmed(&stage_dir.join(".boot-live-rootfs-source.path"))
             .map(PathBuf::from)
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("lib64")).expect("remove lib64 symlink");
         fs::create_dir_all(rootfs_source.join("lib64")).expect("create wrong lib64 directory");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "s01");
+        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
         assert!(!report.passed());
         assert!(report
             .violations

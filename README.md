@@ -4,12 +4,12 @@ Conformance schema + validation engine for LevitateOS variant contracts.
 
 ## Purpose
 
-This crate enforces canonical declaration integrity plus Stage 00 runtime provenance:
+This crate enforces canonical declaration integrity plus build-runtime provenance:
 
-- Define Stage 00..Stage 08 contract schema
+- Define the canonical conformance contract schema
 - Load canonical contracts from the ring/owner manifest family in `distro-variants/*`
 - Validate anti-gaming and consistency rules
-- Validate Stage 00 runtime provenance against real outputs (`kconfig`, `kernel.release`, `vmlinuz`, modules path)
+- Validate build-runtime provenance against real outputs (`kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
 
 This crate is also the policy authority for stage-envelope conformance:

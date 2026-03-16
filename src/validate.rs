@@ -1,8 +1,6 @@
 //! Contract validation engine.
 //!
-//! Current phase: Stage 00-only enforcement.
-//! Stage 01-Stage 08 declarations may exist in the schema, but this validator only
-//! executes Stage 00 build-capability conformance checks.
+//! Validates canonical build, source, transform, release, and scenario owners.
 
 use std::collections::HashSet;
 
@@ -13,8 +11,8 @@ use crate::build_host_legacy::{
 };
 use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
 use crate::schema::{
-    ConformanceContract, RootfsSourceKind, CONTRACT_SCHEMA_VERSION,
-    STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE, STAGE_01_REQUIRED_LIVE_SERVICES_BASE,
+    ConformanceContract, RootfsSourceKind, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
+    BOOT_REQUIRED_LIVE_SERVICES_BASE, CONTRACT_SCHEMA_VERSION,
 };
 
 const PLACEHOLDER_TOKENS: &[&str] = &[
@@ -28,7 +26,7 @@ const PLACEHOLDER_TOKENS: &[&str] = &[
     "n/a",
     "unknown",
 ];
-const FORBIDDEN_STAGE00_ROOTFS_TOKEN: &str = "squashfs";
+const FORBIDDEN_BUILD_ROOTFS_TOKEN: &str = "squashfs";
 const BUILD_REQUIRED_TOOLS_FIELD: &str = "build.required_build_tools";
 const BUILD_KERNEL_KCONFIG_FIELD: &str = "build.kernel.kconfig_path";
 const BUILD_KERNEL_RECIPE_SCRIPT_FIELD: &str = "build.kernel.recipe_script";
@@ -126,10 +124,10 @@ fn validate_non_empty_trimmed(
     true
 }
 
-fn contains_forbidden_stage00_rootfs_token(value: &str) -> bool {
+fn contains_forbidden_build_rootfs_token(value: &str) -> bool {
     value
         .to_ascii_lowercase()
-        .contains(FORBIDDEN_STAGE00_ROOTFS_TOKEN)
+        .contains(FORBIDDEN_BUILD_ROOTFS_TOKEN)
 }
 
 fn first_transform_output<'a>(
@@ -167,7 +165,7 @@ fn live_uki_output<'a>(
     })
 }
 
-fn expected_stage_00_required_inputs<'a>(
+fn expected_build_runtime_required_inputs<'a>(
     violations: &mut Vec<Violation>,
     contract: &'a ConformanceContract,
 ) -> Vec<&'a str> {
@@ -634,44 +632,45 @@ fn validate_relative_paths_allow_empty(
     }
 }
 
-fn validate_stage_00_non_kernel_inputs(
+fn validate_build_runtime_non_kernel_inputs(
     violations: &mut Vec<Violation>,
     contract: &ConformanceContract,
 ) {
     let kernel = &contract.build.kernel;
     let required_field = BUILD_RUNTIME_REQUIRED_INPUTS_FIELD;
-    let stage01_field = BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD;
-    let stage02_field = BUILD_RUNTIME_DEFERRED_LIVE_TOOLS_FIELD;
-    let stage03_field = BUILD_RUNTIME_DEFERRED_INSTALL_PLUS_FIELD;
-    let required_for_00build: Vec<String> = expected_stage_00_required_inputs(violations, contract)
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    let deferred_live_boot_field = BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD;
+    let deferred_live_tools_field = BUILD_RUNTIME_DEFERRED_LIVE_TOOLS_FIELD;
+    let deferred_install_plus_field = BUILD_RUNTIME_DEFERRED_INSTALL_PLUS_FIELD;
+    let required_build_runtime: Vec<String> =
+        expected_build_runtime_required_inputs(violations, contract)
+            .into_iter()
+            .map(str::to_string)
+            .collect();
     let empty_group: Vec<String> = Vec::new();
 
-    if required_for_00build.len() != 3 {
+    if required_build_runtime.len() != 3 {
         push_violation(
             violations,
             Some(StageId::Stage00),
             required_field,
             ViolationCode::MissingBaselineArtifact,
             format!(
-                "{required_field} must derive exactly three Stage 00 artifacts from Ring 1 transforms (rootfs, initramfs_live, overlay_image)"
+                "{required_field} must derive exactly three build-runtime artifacts from Ring 1 transforms (rootfs, initramfs_live, overlay_image)"
             ),
         );
     }
 
-    validate_relative_paths_allow_empty(violations, required_field, &required_for_00build);
-    validate_relative_paths_allow_empty(violations, stage01_field, &empty_group);
-    validate_relative_paths_allow_empty(violations, stage02_field, &empty_group);
-    validate_relative_paths_allow_empty(violations, stage03_field, &empty_group);
+    validate_relative_paths_allow_empty(violations, required_field, &required_build_runtime);
+    validate_relative_paths_allow_empty(violations, deferred_live_boot_field, &empty_group);
+    validate_relative_paths_allow_empty(violations, deferred_live_tools_field, &empty_group);
+    validate_relative_paths_allow_empty(violations, deferred_install_plus_field, &empty_group);
 
     let kernel_paths = [
         kernel.release_path.as_str(),
         kernel.image_path.as_str(),
         kernel.modules_path.as_str(),
     ];
-    for value in &required_for_00build {
+    for value in &required_build_runtime {
         if kernel_paths.contains(&value.as_str()) {
             push_violation(
                 violations,
@@ -679,14 +678,14 @@ fn validate_stage_00_non_kernel_inputs(
                 required_field,
                 ViolationCode::InvalidPathDeclaration,
                 format!(
-                    "'{value}' is a kernel artifact path and must not be declared in stage_00 non-kernel input buckets"
+                    "'{value}' is a kernel artifact path and must not be declared in build-runtime non-kernel input buckets"
                 ),
             );
         }
     }
 }
 
-fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
+fn validate_build_contract(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let build = &contract.build;
     let kernel = &build.kernel;
 
@@ -696,13 +695,13 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         BUILD_REQUIRED_TOOLS_FIELD,
         &build.required_build_tools,
     );
-    let stage_00_tools: HashSet<&str> = build
+    let required_build_tools: HashSet<&str> = build
         .required_build_tools
         .iter()
         .map(String::as_str)
         .collect();
     for tool in REQUIRED_BUILD_TOOLS_BASELINE {
-        if !stage_00_tools.contains(tool) {
+        if !required_build_tools.contains(tool) {
             push_violation(
                 violations,
                 Some(StageId::Stage00),
@@ -936,7 +935,7 @@ fn validate_stage_00_build(violations: &mut Vec<Violation>, contract: &Conforman
         );
     }
 
-    validate_stage_00_non_kernel_inputs(violations, contract);
+    validate_build_runtime_non_kernel_inputs(violations, contract);
 }
 
 fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
@@ -1044,10 +1043,7 @@ fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &Conformanc
     }
 }
 
-fn validate_stage_00_erofs_boundary(
-    violations: &mut Vec<Violation>,
-    contract: &ConformanceContract,
-) {
+fn validate_build_erofs_boundary(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let rootfs_field = "artifacts.rootfs_name";
     if validate_non_empty_trimmed(
         violations,
@@ -1056,7 +1052,7 @@ fn validate_stage_00_erofs_boundary(
         &contract.artifacts.rootfs_name,
     ) {
         let rootfs_name = contract.artifacts.rootfs_name.as_str();
-        if contains_forbidden_stage00_rootfs_token(rootfs_name) {
+        if contains_forbidden_build_rootfs_token(rootfs_name) {
             push_violation(
                 violations,
                 None,
@@ -1078,16 +1074,16 @@ fn validate_stage_00_erofs_boundary(
         }
     }
 
-    let required_inputs_field = "transforms.stage00_required_inputs";
-    for item in expected_stage_00_required_inputs(violations, contract) {
-        if contains_forbidden_stage00_rootfs_token(item) {
+    let required_inputs_field = BUILD_RUNTIME_REQUIRED_INPUTS_FIELD;
+    for item in expected_build_runtime_required_inputs(violations, contract) {
+        if contains_forbidden_build_rootfs_token(item) {
             push_violation(
                 violations,
                 Some(StageId::Stage00),
                 required_inputs_field,
                 ViolationCode::InvalidPathDeclaration,
                 format!(
-                    "{required_inputs_field} contains forbidden squashfs artifact '{item}'; Stage 00 payloads must be EROFS"
+                    "{required_inputs_field} contains forbidden squashfs artifact '{item}'; build-runtime payloads must be EROFS"
                 ),
             );
         }
@@ -1095,14 +1091,14 @@ fn validate_stage_00_erofs_boundary(
 
     let required_tools_field = BUILD_REQUIRED_TOOLS_FIELD;
     for tool in &contract.build.required_build_tools {
-        if contains_forbidden_stage00_rootfs_token(tool) {
+        if contains_forbidden_build_rootfs_token(tool) {
             push_violation(
                 violations,
                 Some(StageId::Stage00),
                 required_tools_field,
                 ViolationCode::InvalidToken,
                 format!(
-                    "{required_tools_field} contains forbidden squashfs tool '{tool}'; Stage 00 uses EROFS tooling"
+                    "{required_tools_field} contains forbidden squashfs tool '{tool}'; build-runtime uses EROFS tooling"
                 ),
             );
         }
@@ -1110,12 +1106,6 @@ fn validate_stage_00_erofs_boundary(
 }
 
 /// Validate a conformance contract and return a full report.
-///
-/// Stage 00-only phase:
-/// - validates schema version
-/// - validates identity token shape
-/// - validates Stage 00 build-capability declaration
-/// - does not execute Stage 01-Stage 08 runtime stage validation
 pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     let mut violations = Vec::new();
 
@@ -1178,11 +1168,12 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         );
     }
 
-    validate_stage_00_erofs_boundary(&mut violations, contract);
+    validate_build_erofs_boundary(&mut violations, contract);
     validate_ring3_sources(&mut violations, contract);
     validate_artifact_identity_mirrors(&mut violations, contract);
     validate_release_mirrors_stage_08(&mut violations, contract);
-    validate_stage_00_build(&mut violations, contract);
+    validate_build_runtime_non_kernel_inputs(&mut violations, contract);
+    validate_build_contract(&mut violations, contract);
     let live_boot = &contract.scenarios.live_boot;
     validate_evidence(
         &mut violations,
@@ -1204,7 +1195,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         LIVE_BOOT_REQUIRED_SERVICES_FIELD,
         &live_boot.required_live_services,
     );
-    for token in STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE {
+    for token in BOOT_REQUIRED_KERNEL_CMDLINE_BASE {
         if !live_boot
             .required_kernel_cmdline
             .iter()
@@ -1262,7 +1253,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         &contract.scenarios.installed_tools.evidence.pass_marker,
         "installed-",
     );
-    for service in STAGE_01_REQUIRED_LIVE_SERVICES_BASE {
+    for service in BOOT_REQUIRED_LIVE_SERVICES_BASE {
         if !live_boot
             .required_live_services
             .iter()
@@ -1610,7 +1601,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_requires_recipe_lifecycle_invocation() {
+    fn build_requires_recipe_lifecycle_invocation() {
         let mut contract = valid_contract();
         contract.build.kernel.recipe_invocation = "recipe run".to_string();
 
@@ -1623,7 +1614,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_requires_baseline_build_tools() {
+    fn build_requires_baseline_build_tools() {
         let mut contract = valid_contract();
         contract
             .build
@@ -1639,7 +1630,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_rejects_squashfs_rootfs_name() {
+    fn build_rejects_squashfs_rootfs_name() {
         let mut contract = valid_contract();
         contract.artifacts.rootfs_name = "exampleos.squashfs".to_string();
 
@@ -1651,7 +1642,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_rejects_squashfs_tools() {
+    fn build_rejects_squashfs_tools() {
         let mut contract = valid_contract();
         contract
             .build
@@ -1666,7 +1657,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_requires_usrmerge_module_install_path() {
+    fn build_requires_usrmerge_module_install_path() {
         let mut contract = valid_contract();
         contract.build.kernel.module_install_path = "/lib/modules".to_string();
 
@@ -1679,7 +1670,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_requires_minimal_non_kernel_input_baseline() {
+    fn build_requires_minimal_non_kernel_input_baseline() {
         let mut contract = valid_contract();
         contract.transforms.overlay_image.output_names.clear();
 
@@ -1692,7 +1683,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_non_kernel_inputs_reject_kernel_paths_in_transform_outputs() {
+    fn build_non_kernel_inputs_reject_kernel_paths_in_transform_outputs() {
         let mut contract = valid_contract();
         contract.transforms.overlay_image.output_names[0] = "staging/boot/vmlinuz".to_string();
 
@@ -1705,7 +1696,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_iso_assembly_rejects_non_filename_paths() {
+    fn build_iso_assembly_rejects_non_filename_paths() {
         let mut contract = valid_contract();
         contract.transforms.live_uki.output_names[0] = "efi/live.efi".to_string();
 
@@ -1718,7 +1709,7 @@ mod tests {
     }
 
     #[test]
-    fn stage_00_iso_assembly_allows_empty_live_cmdline() {
+    fn build_iso_assembly_allows_empty_live_cmdline() {
         let mut contract = valid_contract();
         contract.transforms.live_uki.extra_cmdline = None;
 

@@ -1,26 +1,26 @@
-//! Conformance contract schema for distro stage declarations.
+//! Conformance contract schema for distro ownership and scenario declarations.
 
 use std::collections::BTreeMap;
 
 /// Contract schema version enforced by validators.
 pub const CONTRACT_SCHEMA_VERSION: u32 = 6;
 
-/// Shared Stage 01 kernel cmdline invariants required for deterministic live boot.
-pub const STAGE_01_REQUIRED_KERNEL_CMDLINE_BASE: &[&str] = &["audit=1", "inst.sshd=0"];
+/// Shared live-boot kernel cmdline invariants required across all distros.
+pub const BOOT_REQUIRED_KERNEL_CMDLINE_BASE: &[&str] = &["audit=1", "inst.sshd=0"];
 
-/// Shared Stage 01 live services that must be present across all distros.
-pub const STAGE_01_REQUIRED_LIVE_SERVICES_BASE: &[&str] = &["sshd"];
+/// Shared live-boot services that must be present across all distros.
+pub const BOOT_REQUIRED_LIVE_SERVICES_BASE: &[&str] = &["sshd"];
 
-/// Stage 05 authentication policy.
+/// Automated login policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthMode {
-    /// Stage 05 automation uses deterministic distro-provided credentials.
+    /// Automated login uses deterministic distro-provided credentials.
     DefaultPasswordLogin,
-    /// Stage 05 credentials are provisioned out-of-band.
+    /// Automated login credentials are provisioned out-of-band.
     ProvisionedCredentials,
 }
 
-/// Stage 07 rootfs model.
+/// Runtime-policy rootfs model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RootfsMutability {
     /// Writable install model.
@@ -61,7 +61,7 @@ pub struct ArtifactIdentity {
 
 /// Minimal build-system ownership model.
 ///
-/// This is the filesystem-first replacement for treating Stage 00 as the
+/// This is the filesystem-first replacement for treating the build stage as the
 /// canonical aggregate owner. It captures build prerequisites and kernel
 /// ownership without implying that "stage" is the architecture.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,7 +177,7 @@ pub struct ReleaseContract {
     pub metadata_facts: Vec<String>,
 }
 
-/// Stage 01/Stage 04 boot declaration.
+/// Boot-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootStage {
     pub success_patterns: Vec<String>,
@@ -189,14 +189,14 @@ pub struct BootStage {
     pub evidence: ScriptEvidence,
 }
 
-/// Stage 02/Stage 06 tool declaration.
+/// Tool-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolsStage {
     pub required_tools: Vec<String>,
     pub evidence: ScriptEvidence,
 }
 
-/// Stage 03 install declaration.
+/// Install-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallStage {
     pub required_tools: Vec<String>,
@@ -204,7 +204,7 @@ pub struct InstallStage {
     pub evidence: ScriptEvidence,
 }
 
-/// Stage 05 automated login declaration.
+/// Automated-login scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AutomatedLoginStage {
     pub auth_mode: AuthMode,
@@ -214,7 +214,7 @@ pub struct AutomatedLoginStage {
     pub evidence: ScriptEvidence,
 }
 
-/// Stage 07 runtime policy declaration.
+/// Runtime-policy scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimePolicyStage {
     pub rootfs_mutability: RootfsMutability,
@@ -222,7 +222,7 @@ pub struct RuntimePolicyStage {
     pub immutable_required_ro_paths: Vec<String>,
 }
 
-/// Stage 08 release declaration.
+/// Release validation declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseStage {
     pub required_artifacts: Vec<String>,
