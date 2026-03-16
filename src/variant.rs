@@ -1415,51 +1415,54 @@ immutable_required_ro_paths = []
         assert!(live_boot.success_patterns.is_empty());
         assert!(live_boot.fatal_patterns.is_empty());
         assert_eq!(
-            contract.stages.stage_02_live_tools.required_tools,
+            contract.scenarios.live_tools.required_tools,
             vec!["bash".to_string()]
         );
         assert_eq!(
-            contract.stages.stage_03_install.required_services,
+            contract.scenarios.install.required_services,
             vec!["sshd".to_string(), "auditd".to_string()]
         );
         assert_eq!(
-            contract.stages.stage_04_installed_boot.success_patterns,
+            contract.scenarios.installed_boot.success_patterns,
             vec!["example login:".to_string()]
         );
         assert_eq!(
-            contract.stages.stage_05_automated_login.default_username,
+            contract.scenarios.automated_login.default_username,
             Some("example".to_string())
         );
         assert_eq!(
-            contract.stages.stage_06_installed_tools.required_tools,
+            contract.scenarios.installed_tools.required_tools,
             vec!["sudo".to_string()]
         );
         assert_eq!(
-            contract.stages.stage_07_runtime_policy.rootfs_mutability,
+            contract.scenarios.runtime_policy.rootfs_mutability,
             RootfsMutability::Mutable
         );
+        assert_eq!(contract.build.kernel.localversion, "-levitate");
         assert_eq!(
-            contract.stages.stage_00_build.kernel_localversion,
-            "-levitate"
-        );
-        assert_eq!(
-            contract.stages.stage_00_build.module_install_path,
+            contract.build.kernel.module_install_path,
             "/usr/lib/modules"
         );
         assert_eq!(
-            contract.stages.stage_00_build.recipe_kernel_script,
+            contract.build.kernel.recipe_script,
             "distro-builder/recipes/linux.rhai"
         );
         assert_eq!(
-            contract.stages.stage_01_live_boot.required_kernel_cmdline,
+            contract.scenarios.live_boot.required_kernel_cmdline,
             vec!["audit=1".to_string(), "inst.sshd=0".to_string()]
         );
         assert_eq!(
-            contract.stages.stage_01_live_boot.required_live_services,
+            contract.scenarios.live_boot.required_live_services,
             vec!["sshd".to_string()]
         );
         assert_eq!(
-            contract.stages.stage_08_release.required_artifacts,
+            contract
+                .release
+                .primary_outputs
+                .iter()
+                .chain(contract.release.supporting_artifacts.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
             vec![
                 "levitateos-x86_64.iso".to_string(),
                 "s00-filesystem.erofs".to_string(),
@@ -1468,7 +1471,13 @@ immutable_required_ro_paths = []
             ]
         );
         assert_eq!(
-            contract.stages.stage_08_release.required_metadata,
+            contract
+                .release
+                .metadata_outputs
+                .iter()
+                .chain(contract.release.metadata_facts.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
             vec![
                 "kernel_source.version".to_string(),
                 "kernel_source.sha256".to_string(),
@@ -1685,24 +1694,17 @@ immutable_required_ro_paths = []
                 "distro-builder/recipes/linux.rhai"
             };
 
+            assert_eq!(loaded.contract.build.kernel.kconfig_path, "kconfig");
             assert_eq!(
-                loaded.contract.stages.stage_00_build.kernel_kconfig_path,
-                "kconfig"
-            );
-            assert_eq!(
-                loaded.contract.stages.stage_00_build.recipe_kernel_script,
+                loaded.contract.build.kernel.recipe_script,
                 expected_kernel_recipe
             );
             assert_eq!(
-                loaded
-                    .contract
-                    .stages
-                    .stage_00_build
-                    .recipe_kernel_invocation,
+                loaded.contract.build.kernel.recipe_invocation,
                 "recipe install"
             );
             assert_eq!(
-                loaded.contract.stages.stage_00_build.module_install_path,
+                loaded.contract.build.kernel.module_install_path,
                 "/usr/lib/modules"
             );
             match distro_id {
