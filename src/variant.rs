@@ -17,9 +17,12 @@ use crate::build_host_legacy::{REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE
 use crate::error::{StageId, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootStage, BuildContract,
-    ConformanceContract, DistroIdentity, InstallStage, KernelBuildContract, ProductContract,
-    ProductDecl, ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootPayloadContract,
+    BootStage, BuildContract, ConformanceContract, DistroIdentity, InstallDocsFrontend,
+    InstallExperience, InstallStage, KernelBuildContract, LiveEnvironmentScenario,
+    LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
+    PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, ReleaseContract,
+    RootfsMutability, RootfsSourceContract, RootfsSourceKind, RuntimeActionContract,
     RuntimePolicyStage, ScenarioContract, ScriptEvidence, SourceContract, ToolsStage,
     TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
@@ -75,6 +78,10 @@ pub enum VariantContractLoadError {
         description: &'static str,
     },
     InvalidRecipeDeclaration {
+        path: PathBuf,
+        message: String,
+    },
+    InvalidRing2Declaration {
         path: PathBuf,
         message: String,
     },
@@ -135,6 +142,12 @@ impl fmt::Display for VariantContractLoadError {
             Self::InvalidRecipeDeclaration { path, message } => write!(
                 f,
                 "invalid build-host recipe declaration '{}': {}",
+                path.display(),
+                message
+            ),
+            Self::InvalidRing2Declaration { path, message } => write!(
+                f,
+                "invalid Ring 2 declaration '{}': {}",
                 path.display(),
                 message
             ),
@@ -281,7 +294,8 @@ fn load_variant_contract_bundle_for_distro_at_root(
             .build_host
             .recipe_kernel_invocation,
     )?;
-    let contract = contract_from_ring_manifest_bundle(&ring_manifest_bundle);
+    let contract =
+        contract_from_ring_manifest_bundle(repo_root, &variant_dir, &ring_manifest_bundle)?;
 
     Ok(LoadedVariantContract {
         repo_root: repo_root.to_path_buf(),
@@ -322,11 +336,17 @@ fn validate_recipe_declaration_content(
     Ok(())
 }
 
-fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> ConformanceContract {
+fn contract_from_ring_manifest_bundle(
+    repo_root: &Path,
+    variant_dir: &Path,
+    ring: &VariantRingManifestBundle,
+) -> Result<ConformanceContract, VariantContractLoadError> {
     let identity = identity_from_manifest(&ring.identity.identity);
     let build = build_contract_from_ring_manifest(&ring.build_host.build_host);
     let sources = source_contract_from_ring_manifest(&ring.ring3_sources.ring3_sources);
     let products = product_contract_from_ring_manifest(&ring.ring2_products.ring2_products);
+    let product_config =
+        product_config_contract_from_ring_manifest(repo_root, variant_dir, &ring.ring2_products)?;
     let transforms = TransformContract {
         rootfs_image: artifact_transform_from_ring_manifest(
             &ring.ring1_transforms.ring1_transforms.rootfs_image,
@@ -364,17 +384,18 @@ fn contract_from_ring_manifest_bundle(ring: &VariantRingManifestBundle) -> Confo
     let release = release_contract_from_ring_manifest(&ring.ring0_release.ring0_release.release);
     let artifacts = artifact_identity_from_transforms(&transforms);
 
-    ConformanceContract {
+    Ok(ConformanceContract {
         schema_version: ring.build_host.schema_version,
         identity,
         build,
         sources,
         products,
+        product_config,
         transforms,
         scenarios,
         release,
         artifacts,
-    }
+    })
 }
 
 fn load_ring_manifest_bundle(
@@ -508,6 +529,461 @@ fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) ->
     }
 }
 
+fn product_config_contract_from_ring_manifest(
+    _repo_root: &Path,
+    variant_dir: &Path,
+    ring2_manifest: &VariantRing2ProductsManifest,
+) -> Result<ProductConfigContract, VariantContractLoadError> {
+    let manifest_path = variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME);
+
+    Ok(ProductConfigContract {
+        live_overlay: overlay_contract_from_ring_manifest(
+            &manifest_path,
+            &ring2_manifest.ring2_products.live_overlay,
+        )?,
+        boot_live: BootPayloadContract {
+            producers: payload_producers_for_product(
+                &manifest_path,
+                &ring2_manifest.ring2_products.boot_live,
+                ring2_manifest.ring2_payload_profiles.as_ref(),
+            )?,
+        },
+        boot_installed: ring2_manifest
+            .ring2_products
+            .boot_installed
+            .as_ref()
+            .map(|product| {
+                payload_producers_for_product(
+                    &manifest_path,
+                    product,
+                    ring2_manifest.ring2_payload_profiles.as_ref(),
+                )
+                .map(|producers| BootPayloadContract { producers })
+            })
+            .transpose()?,
+        live_tools: live_tools_runtime_contract_from_ring_manifest(
+            &manifest_path,
+            &ring2_manifest.ring2_products.live_tools,
+            ring2_manifest.ring2_runtime_profiles.as_ref(),
+        )?,
+    })
+}
+
+fn overlay_contract_from_ring_manifest(
+    manifest_path: &Path,
+    ring_overlay: &VariantOverlayProductDecl,
+) -> Result<OverlayContract, VariantContractLoadError> {
+    let kind = match ring_overlay
+        .overlay_kind
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "systemd" => OverlayKind::Systemd,
+        "openrc" => OverlayKind::OpenRc,
+        other => {
+            return Err(invalid_ring2(
+                manifest_path,
+                format!(
+                    "unsupported overlay_kind '{}' (expected 'systemd' or 'openrc')",
+                    other
+                ),
+            ))
+        }
+    };
+
+    let openrc_inittab = match kind {
+        OverlayKind::Systemd => None,
+        OverlayKind::OpenRc => Some(parse_openrc_inittab_contract(
+            manifest_path,
+            ring_overlay.openrc_inittab.as_deref(),
+        )?),
+    };
+
+    let profile_overlay = ring_overlay
+        .profile_overlay
+        .as_deref()
+        .map(|raw| {
+            normalize_relative_string(
+                raw,
+                "ring2_products.live_overlay.profile_overlay",
+                manifest_path,
+            )
+        })
+        .transpose()?;
+
+    Ok(OverlayContract {
+        kind,
+        issue_message: ring_overlay.issue_message.clone(),
+        openrc_inittab,
+        profile_overlay,
+    })
+}
+
+fn parse_openrc_inittab_contract(
+    manifest_path: &Path,
+    raw: Option<&str>,
+) -> Result<OpenRcInittab, VariantContractLoadError> {
+    let raw = raw.ok_or_else(|| {
+        invalid_ring2(
+            manifest_path,
+            "openrc_inittab is required when ring2_products.live_overlay.overlay_kind = 'openrc'",
+        )
+    })?;
+
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "desktop_with_serial" => Ok(OpenRcInittab::DesktopWithSerial),
+        "serial_only" => Ok(OpenRcInittab::SerialOnly),
+        other => Err(invalid_ring2(
+            manifest_path,
+            format!(
+                "unsupported openrc_inittab '{}' (expected 'desktop_with_serial' or 'serial_only')",
+                other
+            ),
+        )),
+    }
+}
+
+fn payload_producers_for_product(
+    manifest_path: &Path,
+    product: &VariantProductDecl,
+    payload_profiles: Option<&BTreeMap<String, VariantRing2PayloadProfile>>,
+) -> Result<Vec<PayloadProducerContract>, VariantContractLoadError> {
+    let profile_name = product.payload_profile.as_deref().ok_or_else(|| {
+        invalid_ring2(
+            manifest_path,
+            format!("missing payload_profile for '{}'", product.logical_name),
+        )
+    })?;
+    let profile_name = normalize_non_empty_string(
+        profile_name,
+        "ring2_products.*.payload_profile",
+        manifest_path,
+    )?;
+
+    let profiles = payload_profiles.ok_or_else(|| {
+        invalid_ring2(
+            manifest_path,
+            format!(
+                "missing ring2_payload_profiles section required by payload_profile '{}'",
+                profile_name
+            ),
+        )
+    })?;
+
+    let profile = profiles.get(profile_name.as_str()).ok_or_else(|| {
+        invalid_ring2(
+            manifest_path,
+            format!(
+                "unknown payload profile '{}' referenced by '{}'",
+                profile_name, product.logical_name
+            ),
+        )
+    })?;
+
+    if profile.producers.is_empty() {
+        return Err(invalid_ring2(
+            manifest_path,
+            format!(
+                "payload profile '{}' must declare at least one producer",
+                profile_name
+            ),
+        ));
+    }
+
+    profile
+        .producers
+        .iter()
+        .map(|producer| payload_producer_contract_from_ring_manifest(producer, manifest_path))
+        .collect()
+}
+
+fn payload_producer_contract_from_ring_manifest(
+    producer: &VariantRing2PayloadProducer,
+    manifest_path: &Path,
+) -> Result<PayloadProducerContract, VariantContractLoadError> {
+    Ok(match producer {
+        VariantRing2PayloadProducer::CopyTree {
+            source,
+            destination,
+        } => PayloadProducerContract::CopyTree {
+            source: normalize_relative_string(source, "source", manifest_path)?,
+            destination: normalize_relative_string(destination, "destination", manifest_path)?,
+        },
+        VariantRing2PayloadProducer::CopySymlink {
+            source,
+            destination,
+        } => PayloadProducerContract::CopySymlink {
+            source: normalize_relative_string(source, "source", manifest_path)?,
+            destination: normalize_relative_string(destination, "destination", manifest_path)?,
+        },
+        VariantRing2PayloadProducer::CopyFile {
+            source,
+            destination,
+            optional,
+        } => PayloadProducerContract::CopyFile {
+            source: normalize_relative_string(source, "source", manifest_path)?,
+            destination: normalize_relative_string(destination, "destination", manifest_path)?,
+            optional: *optional,
+        },
+        VariantRing2PayloadProducer::WriteText {
+            path,
+            content,
+            mode,
+        } => PayloadProducerContract::WriteText {
+            path: normalize_relative_string(path, "path", manifest_path)?,
+            content: content.clone(),
+            mode: *mode,
+        },
+    })
+}
+
+fn live_tools_runtime_contract_from_ring_manifest(
+    manifest_path: &Path,
+    live_tools: &VariantProductDecl,
+    runtime_profiles: Option<&BTreeMap<String, VariantRing2RuntimeProfile>>,
+) -> Result<LiveToolsRuntimeContract, VariantContractLoadError> {
+    Ok(LiveToolsRuntimeContract {
+        common_actions: runtime_actions_for_profile_group(
+            manifest_path,
+            &live_tools.logical_name,
+            live_tools.runtime_profiles.as_deref(),
+            runtime_profiles,
+            "ring2_products.live_tools.runtime_profiles",
+        )?,
+        ux_actions: runtime_actions_for_profile_group(
+            manifest_path,
+            &live_tools.logical_name,
+            live_tools.runtime_profiles_ux.as_deref(),
+            runtime_profiles,
+            "ring2_products.live_tools.runtime_profiles_ux",
+        )?,
+        automated_ssh_actions: runtime_actions_for_profile_group(
+            manifest_path,
+            &live_tools.logical_name,
+            live_tools.runtime_profiles_automated_ssh.as_deref(),
+            runtime_profiles,
+            "ring2_products.live_tools.runtime_profiles_automated_ssh",
+        )?,
+    })
+}
+
+fn runtime_actions_for_profile_group(
+    manifest_path: &Path,
+    logical_name: &str,
+    profile_names: Option<&[String]>,
+    runtime_profiles: Option<&BTreeMap<String, VariantRing2RuntimeProfile>>,
+    field: &str,
+) -> Result<Vec<RuntimeActionContract>, VariantContractLoadError> {
+    let Some(profile_names) = profile_names else {
+        return Ok(Vec::new());
+    };
+
+    let profiles = runtime_profiles.ok_or_else(|| {
+        invalid_ring2(
+            manifest_path,
+            format!(
+                "missing ring2_runtime_profiles section required by {}",
+                field
+            ),
+        )
+    })?;
+
+    let mut actions = Vec::new();
+    for profile_name in profile_names {
+        let profile_name = normalize_non_empty_string(profile_name, field, manifest_path)?;
+        let profile = profiles.get(profile_name.as_str()).ok_or_else(|| {
+            invalid_ring2(
+                manifest_path,
+                format!(
+                    "unknown runtime profile '{}' referenced by '{}'",
+                    profile_name, logical_name
+                ),
+            )
+        })?;
+        if profile.actions.is_empty() {
+            return Err(invalid_ring2(
+                manifest_path,
+                format!(
+                    "runtime profile '{}' must declare at least one action",
+                    profile_name
+                ),
+            ));
+        }
+        for action in &profile.actions {
+            actions.push(runtime_action_contract_from_ring_manifest(
+                action,
+                manifest_path,
+            )?);
+        }
+    }
+
+    Ok(actions)
+}
+
+fn runtime_action_contract_from_ring_manifest(
+    action: &VariantRing2RuntimeAction,
+    manifest_path: &Path,
+) -> Result<RuntimeActionContract, VariantContractLoadError> {
+    Ok(match action {
+        VariantRing2RuntimeAction::ToolPayloadWorkspaceBinary {
+            package,
+            binary,
+            target,
+        } => RuntimeActionContract::ToolPayloadWorkspaceBinary {
+            package: normalize_non_empty_string(package, "package", manifest_path)?,
+            binary: binary
+                .as_deref()
+                .map(|raw| normalize_non_empty_string(raw, "binary", manifest_path))
+                .transpose()?,
+            target: target
+                .as_deref()
+                .map(|raw| normalize_non_empty_string(raw, "target", manifest_path))
+                .transpose()?,
+        },
+        VariantRing2RuntimeAction::RootfsWorkspaceBinary {
+            package,
+            binary,
+            target,
+            destination,
+        } => RuntimeActionContract::RootfsWorkspaceBinary {
+            package: normalize_non_empty_string(package, "package", manifest_path)?,
+            binary: binary
+                .as_deref()
+                .map(|raw| normalize_non_empty_string(raw, "binary", manifest_path))
+                .transpose()?,
+            target: target
+                .as_deref()
+                .map(|raw| normalize_non_empty_string(raw, "target", manifest_path))
+                .transpose()?,
+            destination: normalize_relative_string(destination, "destination", manifest_path)?,
+        },
+        VariantRing2RuntimeAction::ApkPackages { packages } => {
+            let packages = packages
+                .iter()
+                .map(|package| normalize_non_empty_string(package, "packages", manifest_path))
+                .collect::<Result<Vec<_>, _>>()?;
+            if packages.is_empty() {
+                return Err(invalid_ring2(
+                    manifest_path,
+                    "runtime action 'apk_packages' must declare at least one package",
+                ));
+            }
+            RuntimeActionContract::ApkPackages { packages }
+        }
+        VariantRing2RuntimeAction::IuppiterDarPayload { target } => {
+            RuntimeActionContract::IuppiterDarPayload {
+                target: target
+                    .as_deref()
+                    .map(|raw| normalize_non_empty_string(raw, "target", manifest_path))
+                    .transpose()?,
+            }
+        }
+        VariantRing2RuntimeAction::InstallModePayload {
+            interactive_shell,
+            ux_docs_frontend,
+        } => RuntimeActionContract::InstallModePayload {
+            interactive_shell: normalize_absolute_string(
+                interactive_shell,
+                "interactive_shell",
+                manifest_path,
+            )?,
+            ux_docs_frontend: match ux_docs_frontend {
+                VariantInstallDocsFrontend::PlainText => InstallDocsFrontend::PlainText,
+                VariantInstallDocsFrontend::BunBundle => InstallDocsFrontend::BunBundle,
+            },
+        },
+    })
+}
+
+fn normalize_non_empty_string(
+    raw: &str,
+    field: &str,
+    manifest_path: &Path,
+) -> Result<String, VariantContractLoadError> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Err(invalid_ring2(
+            manifest_path,
+            format!("field '{}' must not be empty", field),
+        ));
+    }
+    Ok(value.to_string())
+}
+
+fn normalize_relative_string(
+    raw: &str,
+    field: &str,
+    manifest_path: &Path,
+) -> Result<String, VariantContractLoadError> {
+    let value = normalize_non_empty_string(raw, field, manifest_path)?;
+    let path = Path::new(&value);
+    if path.is_absolute() {
+        return Err(invalid_ring2(
+            manifest_path,
+            format!(
+                "field '{}' must be relative, got '{}'",
+                field,
+                path.display()
+            ),
+        ));
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(invalid_ring2(
+            manifest_path,
+            format!(
+                "field '{}' must not traverse parents, got '{}'",
+                field,
+                path.display()
+            ),
+        ));
+    }
+    Ok(value)
+}
+
+fn normalize_absolute_string(
+    raw: &str,
+    field: &str,
+    manifest_path: &Path,
+) -> Result<String, VariantContractLoadError> {
+    let value = normalize_non_empty_string(raw, field, manifest_path)?;
+    let path = Path::new(&value);
+    if !path.is_absolute() {
+        return Err(invalid_ring2(
+            manifest_path,
+            format!(
+                "field '{}' must be absolute, got '{}'",
+                field,
+                path.display()
+            ),
+        ));
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(invalid_ring2(
+            manifest_path,
+            format!(
+                "field '{}' must not traverse parents, got '{}'",
+                field,
+                path.display()
+            ),
+        ));
+    }
+    Ok(value)
+}
+
+fn invalid_ring2(manifest_path: &Path, message: impl Into<String>) -> VariantContractLoadError {
+    VariantContractLoadError::InvalidRing2Declaration {
+        path: manifest_path.to_path_buf(),
+        message: message.into(),
+    }
+}
+
 fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> SourceContract {
     SourceContract {
         rootfs_source: RootfsSourceContract {
@@ -574,8 +1050,15 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
                 pass_marker: scenarios.live_boot.evidence.pass_marker.clone(),
             },
         },
-        live_tools: ToolsStage {
+        live_environment: LiveEnvironmentScenario {
+            required_services: scenarios.live_environment.required_services.clone(),
+        },
+        live_tools: LiveToolsScenario {
             required_tools: scenarios.live_tools.required_tools.clone(),
+            install_experience: match scenarios.live_tools.install_experience {
+                VariantInstallExperience::Ux => InstallExperience::Ux,
+                VariantInstallExperience::AutomatedSsh => InstallExperience::AutomatedSsh,
+            },
             evidence: ScriptEvidence {
                 script_path: scenarios.live_tools.evidence.script_path.clone(),
                 pass_marker: scenarios.live_tools.evidence.pass_marker.clone(),
@@ -967,7 +1450,7 @@ struct VariantLiveEnvironmentScenario {
 #[serde(deny_unknown_fields)]
 struct VariantLiveToolsScenario {
     required_tools: Vec<String>,
-    install_experience: String,
+    install_experience: VariantInstallExperience,
     evidence: VariantEvidence,
 }
 
@@ -1528,7 +2011,7 @@ immutable_required_ro_paths = []
                 .scenarios
                 .live_tools
                 .install_experience,
-            "ux"
+            VariantInstallExperience::Ux
         );
         assert_eq!(
             ring_bundle
@@ -1889,8 +2372,12 @@ immutable_required_ro_paths = []
                     pass_marker: "LIVE BOOT PASSED".to_string(),
                 },
             },
-            live_tools: ToolsStage {
+            live_environment: LiveEnvironmentScenario {
+                required_services: vec!["sshd".to_string(), "auditd".to_string()],
+            },
+            live_tools: LiveToolsScenario {
                 required_tools: vec!["bash".to_string()],
+                install_experience: InstallExperience::Ux,
                 evidence: ScriptEvidence {
                     script_path: "live-tools.sh".to_string(),
                     pass_marker: "LIVE TOOLS PASSED".to_string(),
@@ -1948,6 +2435,30 @@ immutable_required_ro_paths = []
             description: logical_name.to_string(),
             extends: None,
         };
+        let product_config = ProductConfigContract {
+            live_overlay: OverlayContract {
+                kind: OverlayKind::Systemd,
+                issue_message: None,
+                openrc_inittab: None,
+                profile_overlay: None,
+            },
+            boot_live: BootPayloadContract {
+                producers: vec![PayloadProducerContract::WriteText {
+                    path: ".live-payload-role".to_string(),
+                    content: "rootfs\n".to_string(),
+                    mode: None,
+                }],
+            },
+            boot_installed: None,
+            live_tools: LiveToolsRuntimeContract {
+                common_actions: vec![RuntimeActionContract::InstallModePayload {
+                    interactive_shell: "/bin/bash".to_string(),
+                    ux_docs_frontend: InstallDocsFrontend::PlainText,
+                }],
+                ux_actions: vec![],
+                automated_ssh_actions: vec![],
+            },
+        };
         let contract = ConformanceContract {
             schema_version: CONTRACT_SCHEMA_VERSION,
             identity: DistroIdentity {
@@ -1977,6 +2488,7 @@ immutable_required_ro_paths = []
                 boot_installed: None,
                 kernel_staging: product("product.kernel.staging"),
             },
+            product_config,
             artifacts: artifact_identity_from_transforms(&transforms),
             transforms,
             scenarios,
@@ -1999,4 +2511,10 @@ immutable_required_ro_paths = []
             Some("example".to_string())
         );
     }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VariantInstallExperience {
+    Ux,
+    AutomatedSsh,
 }

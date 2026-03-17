@@ -58,6 +58,8 @@ const LIVE_UKI_EXTRA_CMDLINE_FIELD: &str = "transforms.live_uki.extra_cmdline";
 const LIVE_BOOT_EVIDENCE_FIELD: &str = "scenarios.live_boot.evidence";
 const LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD: &str = "scenarios.live_boot.required_kernel_cmdline";
 const LIVE_BOOT_REQUIRED_SERVICES_FIELD: &str = "scenarios.live_boot.required_live_services";
+const LIVE_ENVIRONMENT_REQUIRED_SERVICES_FIELD: &str =
+    "scenarios.live_environment.required_services";
 const LIVE_TOOLS_EVIDENCE_FIELD: &str = "scenarios.live_tools.evidence";
 const INSTALL_EVIDENCE_FIELD: &str = "scenarios.install.evidence";
 const INSTALLED_BOOT_EVIDENCE_FIELD: &str = "scenarios.installed_boot.evidence";
@@ -1213,6 +1215,12 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
             );
         }
     }
+    validate_command_entries(
+        &mut violations,
+        Some(StageId::Stage01),
+        LIVE_ENVIRONMENT_REQUIRED_SERVICES_FIELD,
+        &contract.scenarios.live_environment.required_services,
+    );
     validate_evidence(
         &mut violations,
         StageId::Stage02,
@@ -1294,6 +1302,39 @@ mod tests {
     use super::*;
     use crate::schema::*;
     use std::collections::BTreeMap;
+
+    fn valid_product_config() -> ProductConfigContract {
+        ProductConfigContract {
+            live_overlay: OverlayContract {
+                kind: OverlayKind::Systemd,
+                issue_message: None,
+                openrc_inittab: None,
+                profile_overlay: None,
+            },
+            boot_live: BootPayloadContract {
+                producers: vec![PayloadProducerContract::WriteText {
+                    path: ".live-payload-role".to_string(),
+                    content: "rootfs\n".to_string(),
+                    mode: None,
+                }],
+            },
+            boot_installed: Some(BootPayloadContract {
+                producers: vec![PayloadProducerContract::WriteText {
+                    path: ".live-payload-role".to_string(),
+                    content: "rootfs\n".to_string(),
+                    mode: None,
+                }],
+            }),
+            live_tools: LiveToolsRuntimeContract {
+                common_actions: vec![RuntimeActionContract::InstallModePayload {
+                    interactive_shell: "/bin/bash".to_string(),
+                    ux_docs_frontend: InstallDocsFrontend::PlainText,
+                }],
+                ux_actions: vec![],
+                automated_ssh_actions: vec![],
+            },
+        }
+    }
 
     fn valid_contract() -> ConformanceContract {
         ConformanceContract {
@@ -1381,6 +1422,7 @@ mod tests {
                     extends: None,
                 },
             },
+            product_config: valid_product_config(),
             transforms: TransformContract {
                 rootfs_image: ArtifactTransform {
                     logical_name: "artifact.rootfs.erofs".to_string(),
@@ -1468,8 +1510,12 @@ mod tests {
                         pass_marker: "LIVE BOOT PASSED".to_string(),
                     },
                 },
-                live_tools: ToolsStage {
+                live_environment: LiveEnvironmentScenario {
+                    required_services: vec!["sshd".to_string()],
+                },
+                live_tools: LiveToolsScenario {
                     required_tools: vec!["bash".to_string()],
+                    install_experience: InstallExperience::Ux,
                     evidence: ScriptEvidence {
                         script_path: "live-tools.sh".to_string(),
                         pass_marker: "LIVE TOOLS PASSED".to_string(),

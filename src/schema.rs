@@ -11,6 +11,13 @@ pub const BOOT_REQUIRED_KERNEL_CMDLINE_BASE: &[&str] = &["audit=1", "inst.sshd=0
 /// Shared live-boot services that must be present across all distros.
 pub const BOOT_REQUIRED_LIVE_SERVICES_BASE: &[&str] = &["sshd"];
 
+/// Canonical install interaction mode for live-tools.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InstallExperience {
+    Ux,
+    AutomatedSsh,
+}
+
 /// Automated login policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthMode {
@@ -128,6 +135,108 @@ pub struct ProductContract {
     pub kernel_staging: ProductDecl,
 }
 
+/// Supported overlay implementation for live boot products.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OverlayKind {
+    Systemd,
+    OpenRc,
+}
+
+/// Supported OpenRC `/etc/inittab` variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OpenRcInittab {
+    DesktopWithSerial,
+    SerialOnly,
+}
+
+/// Canonical live-overlay execution policy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverlayContract {
+    pub kind: OverlayKind,
+    pub issue_message: Option<String>,
+    pub openrc_inittab: Option<OpenRcInittab>,
+    pub profile_overlay: Option<String>,
+}
+
+/// Canonical rootfs producer declaration for boot payload shaping.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PayloadProducerContract {
+    CopyTree {
+        source: String,
+        destination: String,
+    },
+    CopySymlink {
+        source: String,
+        destination: String,
+    },
+    CopyFile {
+        source: String,
+        destination: String,
+        optional: bool,
+    },
+    WriteText {
+        path: String,
+        content: String,
+        mode: Option<u32>,
+    },
+}
+
+/// Resolved boot payload producer set for a Ring 2 product.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BootPayloadContract {
+    pub producers: Vec<PayloadProducerContract>,
+}
+
+/// Canonical install-docs frontend selection for live-tools runtime payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InstallDocsFrontend {
+    PlainText,
+    BunBundle,
+}
+
+/// Canonical live-tools runtime action declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeActionContract {
+    ToolPayloadWorkspaceBinary {
+        package: String,
+        binary: Option<String>,
+        target: Option<String>,
+    },
+    RootfsWorkspaceBinary {
+        package: String,
+        binary: Option<String>,
+        target: Option<String>,
+        destination: String,
+    },
+    ApkPackages {
+        packages: Vec<String>,
+    },
+    IuppiterDarPayload {
+        target: Option<String>,
+    },
+    InstallModePayload {
+        interactive_shell: String,
+        ux_docs_frontend: InstallDocsFrontend,
+    },
+}
+
+/// Resolved live-tools runtime policy by install-experience branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveToolsRuntimeContract {
+    pub common_actions: Vec<RuntimeActionContract>,
+    pub ux_actions: Vec<RuntimeActionContract>,
+    pub automated_ssh_actions: Vec<RuntimeActionContract>,
+}
+
+/// Canonical Ring 2 execution config used by the builder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProductConfigContract {
+    pub live_overlay: OverlayContract,
+    pub boot_live: BootPayloadContract,
+    pub boot_installed: Option<BootPayloadContract>,
+    pub live_tools: LiveToolsRuntimeContract,
+}
+
 /// Artifact transform declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactTransform {
@@ -160,7 +269,8 @@ pub struct TransformContract {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScenarioContract {
     pub live_boot: BootStage,
-    pub live_tools: ToolsStage,
+    pub live_environment: LiveEnvironmentScenario,
+    pub live_tools: LiveToolsScenario,
     pub install: InstallStage,
     pub installed_boot: BootStage,
     pub automated_login: AutomatedLoginStage,
@@ -189,10 +299,24 @@ pub struct BootStage {
     pub evidence: ScriptEvidence,
 }
 
+/// Shared live-environment service requirements.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveEnvironmentScenario {
+    pub required_services: Vec<String>,
+}
+
 /// Tool-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolsStage {
     pub required_tools: Vec<String>,
+    pub evidence: ScriptEvidence,
+}
+
+/// Live-tools scenario declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveToolsScenario {
+    pub required_tools: Vec<String>,
+    pub install_experience: InstallExperience,
     pub evidence: ScriptEvidence,
 }
 
@@ -237,6 +361,7 @@ pub struct ConformanceContract {
     pub build: BuildContract,
     pub sources: SourceContract,
     pub products: ProductContract,
+    pub product_config: ProductConfigContract,
     pub transforms: TransformContract,
     pub scenarios: ScenarioContract,
     pub release: ReleaseContract,

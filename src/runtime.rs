@@ -1213,6 +1213,39 @@ mod tests {
     use std::os::unix::fs::symlink;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    fn valid_product_config() -> ProductConfigContract {
+        ProductConfigContract {
+            live_overlay: OverlayContract {
+                kind: OverlayKind::Systemd,
+                issue_message: None,
+                openrc_inittab: None,
+                profile_overlay: None,
+            },
+            boot_live: BootPayloadContract {
+                producers: vec![PayloadProducerContract::WriteText {
+                    path: ".live-payload-role".to_string(),
+                    content: "rootfs\n".to_string(),
+                    mode: None,
+                }],
+            },
+            boot_installed: Some(BootPayloadContract {
+                producers: vec![PayloadProducerContract::WriteText {
+                    path: ".live-payload-role".to_string(),
+                    content: "rootfs\n".to_string(),
+                    mode: None,
+                }],
+            }),
+            live_tools: LiveToolsRuntimeContract {
+                common_actions: vec![RuntimeActionContract::InstallModePayload {
+                    interactive_shell: "/bin/bash".to_string(),
+                    ux_docs_frontend: InstallDocsFrontend::PlainText,
+                }],
+                ux_actions: vec![],
+                automated_ssh_actions: vec![],
+            },
+        }
+    }
+
     fn valid_contract() -> ConformanceContract {
         ConformanceContract {
             schema_version: CONTRACT_SCHEMA_VERSION,
@@ -1299,6 +1332,7 @@ mod tests {
                     extends: None,
                 },
             },
+            product_config: valid_product_config(),
             transforms: TransformContract {
                 rootfs_image: ArtifactTransform {
                     logical_name: "artifact.rootfs.erofs".to_string(),
@@ -1386,8 +1420,12 @@ mod tests {
                         pass_marker: "LIVE BOOT PASSED".to_string(),
                     },
                 },
-                live_tools: ToolsStage {
+                live_environment: LiveEnvironmentScenario {
+                    required_services: vec!["sshd".to_string()],
+                },
+                live_tools: LiveToolsScenario {
                     required_tools: vec!["bash".to_string()],
+                    install_experience: InstallExperience::Ux,
                     evidence: ScriptEvidence {
                         script_path: "live-tools.sh".to_string(),
                         pass_marker: "LIVE TOOLS PASSED".to_string(),
