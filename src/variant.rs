@@ -2148,16 +2148,16 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("kconfig"),
+            &variant_dir.join("build-host").join("kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
+            &variant_dir.join("build-host").join("recipes/kernel.rhai"),
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("build-capability.sh"),
+            &variant_dir.join("build-host").join("build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold(&variant_dir);
@@ -2421,16 +2421,20 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("kconfig"),
+            &variant_dir.join(BUILD_HOST_OWNER_DIR).join("kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("recipes/kernel.rhai"),
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("build-capability.sh"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold_owner_dirs(&variant_dir);
@@ -2461,7 +2465,7 @@ immutable_required_ro_paths = []
         );
         assert_eq!(
             loaded.paths.build_host_support_layout,
-            VariantPathLayout::FlatRoot
+            VariantPathLayout::OwnerDirectories
         );
         assert_eq!(loaded.contract.identity.os_name, "LevitateOS");
 

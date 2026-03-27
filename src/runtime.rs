@@ -11,6 +11,7 @@ use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
     ConformanceContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
+use crate::variant::{resolve_variant_owner_paths, VariantContractLoadError};
 
 const LEGACY_ROOTFS_COMPONENT_SEQUENCES: &[&[&str]] = &[
     &["leviso", "downloads", "rootfs"],
@@ -77,6 +78,20 @@ fn read_trimmed(path: &Path) -> Option<String> {
         .ok()
         .map(|raw| raw.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn resolved_build_host_support_root(
+    variant_dir: &Path,
+) -> Result<PathBuf, VariantContractLoadError> {
+    match resolve_variant_owner_paths(variant_dir) {
+        Ok(paths) => Ok(paths.build_host_support_root),
+        Err(VariantContractLoadError::PartialRingManifestSet { present, .. })
+            if present.is_empty() =>
+        {
+            Ok(variant_dir.to_path_buf())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn build_runtime_artifacts_from_contract(
@@ -183,10 +198,26 @@ pub fn validate_build_runtime_with_artifacts(
     let build = &contract.build;
     let kernel = &build.kernel;
     let mut violations = Vec::new();
+    let build_host_support_root = match resolved_build_host_support_root(variant_dir) {
+        Ok(path) => path,
+        Err(err) => {
+            push_violation(
+                &mut violations,
+                BUILD_KERNEL_KCONFIG_FIELD,
+                ViolationCode::InvalidPathDeclaration,
+                format!(
+                    "invalid build-host ownership scaffold under '{}': {}",
+                    variant_dir.display(),
+                    err
+                ),
+            );
+            variant_dir.to_path_buf()
+        }
+    };
 
     let variant_layout = validate_layout(
         Some(StageId::Stage00),
-        variant_dir,
+        &build_host_support_root,
         &[LayoutRequirement::file(
             BUILD_KERNEL_KCONFIG_FIELD,
             &kernel.kconfig_path,
@@ -245,7 +276,7 @@ pub fn validate_build_runtime_with_artifacts(
         }
     }
 
-    let kconfig_path = variant_dir.join(&kernel.kconfig_path);
+    let kconfig_path = build_host_support_root.join(&kernel.kconfig_path);
     if !kconfig_missing {
         match fs::read_to_string(&kconfig_path) {
             Ok(raw) => match parse_kconfig_localversion(&raw) {
