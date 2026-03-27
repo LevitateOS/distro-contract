@@ -37,5 +37,6 @@ pub use schema::{
 pub use validate::{require_valid_contract, validate_contract};
 pub use variant::{
     load_variant_contract_bundle_for_distro_from, load_variant_contract_for_distro,
-    load_variant_contract_for_distro_from, LoadedVariantContract, VariantContractLoadError,
+    load_variant_contract_for_distro_from, resolve_variant_owner_paths, LoadedVariantContract,
+    VariantContractLoadError, VariantOwnerPaths, VariantPathLayout,
 };

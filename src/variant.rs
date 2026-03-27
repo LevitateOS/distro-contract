@@ -35,6 +35,65 @@ const RING2_PRODUCTS_MANIFEST_FILENAME: &str = "ring2-products.toml";
 const RING1_TRANSFORMS_MANIFEST_FILENAME: &str = "ring1-transforms.toml";
 const RING0_RELEASE_MANIFEST_FILENAME: &str = "ring0-release.toml";
 const SCENARIOS_MANIFEST_FILENAME: &str = "scenarios.toml";
+const IDENTITY_OWNER_DIR: &str = "identity";
+const BUILD_HOST_OWNER_DIR: &str = "build-host";
+const RING3_OWNER_DIR: &str = "ring3";
+const RING2_OWNER_DIR: &str = "ring2";
+const RING1_OWNER_DIR: &str = "ring1";
+const RING0_OWNER_DIR: &str = "ring0";
+const SCENARIOS_OWNER_DIR: &str = "scenarios";
+const RING0_HOOKS_DIR: &str = "hooks";
+const BUILD_RELEASE_HOOK_FILENAME: &str = "build-release.sh";
+const BOOT_RELEASE_HOOK_FILENAME: &str = "boot-release.sh";
+const LIVE_TOOLS_RELEASE_HOOK_FILENAME: &str = "live-tools-release.sh";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariantPathLayout {
+    FlatRoot,
+    OwnerDirectories,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantOwnerPaths {
+    pub variant_dir: PathBuf,
+    pub manifest_layout: VariantPathLayout,
+    pub build_host_support_layout: VariantPathLayout,
+    pub ring0_hooks_layout: VariantPathLayout,
+    pub identity_manifest: PathBuf,
+    pub build_host_manifest: PathBuf,
+    pub ring3_sources_manifest: PathBuf,
+    pub ring2_products_manifest: PathBuf,
+    pub ring1_transforms_manifest: PathBuf,
+    pub ring0_release_manifest: PathBuf,
+    pub scenarios_manifest: PathBuf,
+    pub build_host_support_root: PathBuf,
+    pub ring0_hooks_dir: PathBuf,
+}
+
+impl VariantOwnerPaths {
+    pub fn build_host_declared_path(&self, declared_relative: &str) -> PathBuf {
+        self.build_host_support_root.join(declared_relative)
+    }
+
+    pub fn build_host_recipe_declaration_path(&self) -> PathBuf {
+        self.build_host_declared_path(REQUIRED_VARIANT_RECIPE_DECL)
+    }
+
+    pub fn ring0_hook_path(&self, hook_filename: &str) -> PathBuf {
+        self.ring0_hooks_dir.join(hook_filename)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedManifestPaths(
+    PathBuf,
+    PathBuf,
+    PathBuf,
+    PathBuf,
+    PathBuf,
+    PathBuf,
+    PathBuf,
+);
 
 /// Loaded variant contract bundle with resolved filesystem paths.
 #[derive(Debug, Clone)]
@@ -42,6 +101,7 @@ pub struct LoadedVariantContract {
     pub repo_root: PathBuf,
     pub variant_dir: PathBuf,
     pub manifest_path: PathBuf,
+    pub paths: VariantOwnerPaths,
     pub contract: ConformanceContract,
 }
 
@@ -55,6 +115,18 @@ pub enum VariantContractLoadError {
     VariantDirectoryNotFound {
         distro_id: String,
         path: PathBuf,
+    },
+    DuplicateOwnerPath {
+        component: &'static str,
+        flat_path: PathBuf,
+        owner_path: PathBuf,
+    },
+    MixedOwnerLayout {
+        component: &'static str,
+        variant_dir: PathBuf,
+        flat_present: Vec<String>,
+        owner_present: Vec<String>,
+        missing: Vec<String>,
     },
     PartialRingManifestSet {
         variant_dir: PathBuf,
@@ -104,6 +176,32 @@ impl fmt::Display for VariantContractLoadError {
                 "missing variant directory for '{}': expected '{}'",
                 distro_id,
                 path.display()
+            ),
+            Self::DuplicateOwnerPath {
+                component,
+                flat_path,
+                owner_path,
+            } => write!(
+                f,
+                "conflicting variant path ownership for {}: both flat path '{}' and owner-directory path '{}' exist",
+                component,
+                flat_path.display(),
+                owner_path.display()
+            ),
+            Self::MixedOwnerLayout {
+                component,
+                variant_dir,
+                flat_present,
+                owner_present,
+                missing,
+            } => write!(
+                f,
+                "mixed flat/owner-directory layout for {} under '{}': flat-present [{}], owner-present [{}], missing [{}]",
+                component,
+                variant_dir.display(),
+                flat_present.join(", "),
+                owner_present.join(", "),
+                missing.join(", ")
             ),
             Self::PartialRingManifestSet {
                 variant_dir,
@@ -225,12 +323,13 @@ fn load_variant_contract_bundle_for_distro_at_root(
         });
     }
 
-    let ring_manifest_bundle = load_ring_manifest_bundle(&variant_dir)?;
-    let manifest_path = variant_dir.join(BUILD_HOST_MANIFEST_FILENAME);
+    let paths = resolve_variant_owner_paths(&variant_dir)?;
+    let ring_manifest_bundle = load_ring_manifest_bundle(&paths)?;
+    let manifest_path = paths.build_host_manifest.clone();
 
     let variant_layout = validate_layout(
         Some(StageId::Stage00),
-        &variant_dir,
+        &paths.build_host_support_root,
         &[
             LayoutRequirement::file(
                 "build_host.kernel_kconfig_path",
@@ -284,7 +383,7 @@ fn load_variant_contract_bundle_for_distro_at_root(
     }
 
     validate_recipe_declaration_content(
-        &variant_dir.join(REQUIRED_VARIANT_RECIPE_DECL),
+        &paths.build_host_recipe_declaration_path(),
         &ring_manifest_bundle
             .build_host
             .build_host
@@ -294,14 +393,78 @@ fn load_variant_contract_bundle_for_distro_at_root(
             .build_host
             .recipe_kernel_invocation,
     )?;
-    let contract =
-        contract_from_ring_manifest_bundle(repo_root, &variant_dir, &ring_manifest_bundle)?;
+    let contract = contract_from_ring_manifest_bundle(repo_root, &paths, &ring_manifest_bundle)?;
 
     Ok(LoadedVariantContract {
         repo_root: repo_root.to_path_buf(),
         variant_dir,
         manifest_path,
+        paths,
         contract,
+    })
+}
+
+pub fn resolve_variant_owner_paths(
+    variant_dir: &Path,
+) -> Result<VariantOwnerPaths, VariantContractLoadError> {
+    let variant_dir = variant_dir.to_path_buf();
+    let (manifest_layout, manifest_paths) = resolve_manifest_paths(&variant_dir)?;
+    let ResolvedManifestPaths(
+        identity_manifest,
+        build_host_manifest_path,
+        ring3_sources_manifest,
+        ring2_products_manifest,
+        ring1_transforms_manifest,
+        ring0_release_manifest,
+        scenarios_manifest,
+    ) = manifest_paths;
+    let build_host_manifest: VariantBuildHostManifest =
+        read_ring_manifest(&build_host_manifest_path)?;
+    let (build_host_support_layout, build_host_support_root) = resolve_group_root(
+        "build-host support files",
+        &variant_dir,
+        &[
+            ("build_host.kernel_kconfig_path", REQUIRED_VARIANT_KCONFIG),
+            (
+                "build_host.recipe_kernel_declaration",
+                REQUIRED_VARIANT_RECIPE_DECL,
+            ),
+            (
+                "build_host.evidence.script_path",
+                build_host_manifest.build_host.evidence.script_path.as_str(),
+            ),
+        ],
+        &variant_dir,
+        &variant_dir.join(BUILD_HOST_OWNER_DIR),
+        manifest_layout,
+    )?;
+    let (ring0_hooks_layout, ring0_hooks_dir) = resolve_group_root(
+        "ring0 release hooks",
+        &variant_dir,
+        &[
+            ("ring0 hook", BUILD_RELEASE_HOOK_FILENAME),
+            ("ring0 hook", BOOT_RELEASE_HOOK_FILENAME),
+            ("ring0 hook", LIVE_TOOLS_RELEASE_HOOK_FILENAME),
+        ],
+        &variant_dir,
+        &variant_dir.join(RING0_OWNER_DIR).join(RING0_HOOKS_DIR),
+        manifest_layout,
+    )?;
+
+    Ok(VariantOwnerPaths {
+        variant_dir,
+        manifest_layout,
+        build_host_support_layout,
+        ring0_hooks_layout,
+        identity_manifest,
+        build_host_manifest: build_host_manifest_path,
+        ring3_sources_manifest,
+        ring2_products_manifest,
+        ring1_transforms_manifest,
+        ring0_release_manifest,
+        scenarios_manifest,
+        build_host_support_root,
+        ring0_hooks_dir,
     })
 }
 
@@ -338,15 +501,18 @@ fn validate_recipe_declaration_content(
 
 fn contract_from_ring_manifest_bundle(
     repo_root: &Path,
-    variant_dir: &Path,
+    paths: &VariantOwnerPaths,
     ring: &VariantRingManifestBundle,
 ) -> Result<ConformanceContract, VariantContractLoadError> {
     let identity = identity_from_manifest(&ring.identity.identity);
     let build = build_contract_from_ring_manifest(&ring.build_host.build_host);
     let sources = source_contract_from_ring_manifest(&ring.ring3_sources.ring3_sources);
     let products = product_contract_from_ring_manifest(&ring.ring2_products.ring2_products);
-    let product_config =
-        product_config_contract_from_ring_manifest(repo_root, variant_dir, &ring.ring2_products)?;
+    let product_config = product_config_contract_from_ring_manifest(
+        repo_root,
+        &paths.ring2_products_manifest,
+        &ring.ring2_products,
+    )?;
     let transforms = TransformContract {
         rootfs_image: artifact_transform_from_ring_manifest(
             &ring.ring1_transforms.ring1_transforms.rootfs_image,
@@ -399,47 +565,194 @@ fn contract_from_ring_manifest_bundle(
 }
 
 fn load_ring_manifest_bundle(
-    variant_dir: &Path,
+    paths: &VariantOwnerPaths,
 ) -> Result<VariantRingManifestBundle, VariantContractLoadError> {
+    Ok(VariantRingManifestBundle {
+        identity: read_ring_manifest(&paths.identity_manifest)?,
+        build_host: read_ring_manifest(&paths.build_host_manifest)?,
+        ring3_sources: read_ring_manifest(&paths.ring3_sources_manifest)?,
+        ring2_products: read_ring_manifest(&paths.ring2_products_manifest)?,
+        ring1_transforms: read_ring_manifest(&paths.ring1_transforms_manifest)?,
+        ring0_release: read_ring_manifest(&paths.ring0_release_manifest)?,
+        scenarios: read_ring_manifest(&paths.scenarios_manifest)?,
+    })
+}
+
+fn resolve_manifest_paths(
+    variant_dir: &Path,
+) -> Result<(VariantPathLayout, ResolvedManifestPaths), VariantContractLoadError> {
     let manifest_specs = [
-        ("identity", IDENTITY_MANIFEST_FILENAME),
-        ("build_host", BUILD_HOST_MANIFEST_FILENAME),
-        ("ring3_sources", RING3_SOURCES_MANIFEST_FILENAME),
-        ("ring2_products", RING2_PRODUCTS_MANIFEST_FILENAME),
-        ("ring1_transforms", RING1_TRANSFORMS_MANIFEST_FILENAME),
-        ("ring0_release", RING0_RELEASE_MANIFEST_FILENAME),
-        ("scenarios", SCENARIOS_MANIFEST_FILENAME),
+        ("identity", IDENTITY_OWNER_DIR, IDENTITY_MANIFEST_FILENAME),
+        (
+            "build_host",
+            BUILD_HOST_OWNER_DIR,
+            BUILD_HOST_MANIFEST_FILENAME,
+        ),
+        (
+            "ring3_sources",
+            RING3_OWNER_DIR,
+            RING3_SOURCES_MANIFEST_FILENAME,
+        ),
+        (
+            "ring2_products",
+            RING2_OWNER_DIR,
+            RING2_PRODUCTS_MANIFEST_FILENAME,
+        ),
+        (
+            "ring1_transforms",
+            RING1_OWNER_DIR,
+            RING1_TRANSFORMS_MANIFEST_FILENAME,
+        ),
+        (
+            "ring0_release",
+            RING0_OWNER_DIR,
+            RING0_RELEASE_MANIFEST_FILENAME,
+        ),
+        (
+            "scenarios",
+            SCENARIOS_OWNER_DIR,
+            SCENARIOS_MANIFEST_FILENAME,
+        ),
     ];
 
-    let mut present = Vec::new();
+    let mut flat_present = Vec::new();
+    let mut owner_present = Vec::new();
     let mut missing = Vec::new();
-    for (_, filename) in manifest_specs {
-        let path = variant_dir.join(filename);
-        if path.is_file() {
-            present.push(filename.to_string());
-        } else {
-            missing.push(filename.to_string());
+    let mut resolved = Vec::new();
+
+    for (component, owner_dir, filename) in manifest_specs {
+        let flat_path = variant_dir.join(filename);
+        let owner_path = variant_dir.join(owner_dir).join(filename);
+        let flat_exists = flat_path.is_file();
+        let owner_exists = owner_path.is_file();
+
+        if flat_exists && owner_exists {
+            return Err(VariantContractLoadError::DuplicateOwnerPath {
+                component,
+                flat_path,
+                owner_path,
+            });
+        }
+
+        match (flat_exists, owner_exists) {
+            (true, false) => {
+                flat_present.push(filename.to_string());
+                resolved.push(flat_path);
+            }
+            (false, true) => {
+                owner_present.push(format!("{owner_dir}/{filename}"));
+                resolved.push(owner_path);
+            }
+            (false, false) => missing.push(filename.to_string()),
+            (true, true) => unreachable!("duplicate manifest paths handled above"),
         }
     }
 
-    if !missing.is_empty() {
+    let layout = if missing.is_empty() && owner_present.is_empty() {
+        VariantPathLayout::FlatRoot
+    } else if missing.is_empty() && flat_present.is_empty() {
+        VariantPathLayout::OwnerDirectories
+    } else if flat_present.is_empty() && owner_present.is_empty() {
         return Err(VariantContractLoadError::PartialRingManifestSet {
             variant_dir: variant_dir.to_path_buf(),
-            present,
+            present: Vec::new(),
             missing,
         });
+    } else if !flat_present.is_empty() && owner_present.is_empty() {
+        return Err(VariantContractLoadError::PartialRingManifestSet {
+            variant_dir: variant_dir.to_path_buf(),
+            present: flat_present,
+            missing,
+        });
+    } else if flat_present.is_empty() && !owner_present.is_empty() {
+        return Err(VariantContractLoadError::PartialRingManifestSet {
+            variant_dir: variant_dir.to_path_buf(),
+            present: owner_present,
+            missing,
+        });
+    } else {
+        return Err(VariantContractLoadError::MixedOwnerLayout {
+            component: "ring manifests",
+            variant_dir: variant_dir.to_path_buf(),
+            flat_present,
+            owner_present,
+            missing,
+        });
+    };
+
+    let mut resolved_iter = resolved.into_iter();
+    Ok((
+        layout,
+        ResolvedManifestPaths(
+            resolved_iter.next().expect("identity manifest path"),
+            resolved_iter.next().expect("build-host manifest path"),
+            resolved_iter.next().expect("ring3 manifest path"),
+            resolved_iter.next().expect("ring2 manifest path"),
+            resolved_iter.next().expect("ring1 manifest path"),
+            resolved_iter.next().expect("ring0 manifest path"),
+            resolved_iter.next().expect("scenarios manifest path"),
+        ),
+    ))
+}
+
+fn resolve_group_root(
+    component: &'static str,
+    variant_dir: &Path,
+    entries: &[(&'static str, &str)],
+    flat_root: &Path,
+    owner_root: &Path,
+    default_layout: VariantPathLayout,
+) -> Result<(VariantPathLayout, PathBuf), VariantContractLoadError> {
+    let mut flat_present = Vec::new();
+    let mut owner_present = Vec::new();
+    let mut missing = Vec::new();
+
+    for (label, relative_path) in entries {
+        let flat_path = flat_root.join(relative_path);
+        let owner_path = owner_root.join(relative_path);
+        let flat_exists = flat_path.is_file();
+        let owner_exists = owner_path.is_file();
+
+        if flat_exists && owner_exists {
+            return Err(VariantContractLoadError::DuplicateOwnerPath {
+                component: *label,
+                flat_path,
+                owner_path,
+            });
+        }
+
+        match (flat_exists, owner_exists) {
+            (true, false) => flat_present.push(relative_path.to_string()),
+            (false, true) => owner_present.push(relative_path.to_string()),
+            (false, false) => missing.push(relative_path.to_string()),
+            (true, true) => unreachable!("duplicate owner paths handled above"),
+        }
     }
 
-    Ok(VariantRingManifestBundle {
-        identity: read_ring_manifest(&variant_dir.join(IDENTITY_MANIFEST_FILENAME))?,
-        build_host: read_ring_manifest(&variant_dir.join(BUILD_HOST_MANIFEST_FILENAME))?,
-        ring3_sources: read_ring_manifest(&variant_dir.join(RING3_SOURCES_MANIFEST_FILENAME))?,
-        ring2_products: read_ring_manifest(&variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME))?,
-        ring1_transforms: read_ring_manifest(
-            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
-        )?,
-        ring0_release: read_ring_manifest(&variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME))?,
-        scenarios: read_ring_manifest(&variant_dir.join(SCENARIOS_MANIFEST_FILENAME))?,
+    if flat_present.len() == entries.len() && owner_present.is_empty() {
+        return Ok((VariantPathLayout::FlatRoot, flat_root.to_path_buf()));
+    }
+    if owner_present.len() == entries.len() && flat_present.is_empty() {
+        return Ok((
+            VariantPathLayout::OwnerDirectories,
+            owner_root.to_path_buf(),
+        ));
+    }
+    if flat_present.is_empty() && owner_present.is_empty() {
+        return Ok((
+            default_layout,
+            match default_layout {
+                VariantPathLayout::FlatRoot => flat_root.to_path_buf(),
+                VariantPathLayout::OwnerDirectories => owner_root.to_path_buf(),
+            },
+        ));
+    }
+    Err(VariantContractLoadError::MixedOwnerLayout {
+        component,
+        variant_dir: variant_dir.to_path_buf(),
+        flat_present,
+        owner_present,
+        missing,
     })
 }
 
@@ -531,19 +844,17 @@ fn product_contract_from_ring_manifest(ring2_products: &VariantRing2Products) ->
 
 fn product_config_contract_from_ring_manifest(
     _repo_root: &Path,
-    variant_dir: &Path,
+    manifest_path: &Path,
     ring2_manifest: &VariantRing2ProductsManifest,
 ) -> Result<ProductConfigContract, VariantContractLoadError> {
-    let manifest_path = variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME);
-
     Ok(ProductConfigContract {
         live_overlay: overlay_contract_from_ring_manifest(
-            &manifest_path,
+            manifest_path,
             &ring2_manifest.ring2_products.live_overlay,
         )?,
         boot_live: BootPayloadContract {
             producers: payload_producers_for_product(
-                &manifest_path,
+                manifest_path,
                 &ring2_manifest.ring2_products.boot_live,
                 ring2_manifest.ring2_payload_profiles.as_ref(),
             )?,
@@ -554,7 +865,7 @@ fn product_config_contract_from_ring_manifest(
             .as_ref()
             .map(|product| {
                 payload_producers_for_product(
-                    &manifest_path,
+                    manifest_path,
                     product,
                     ring2_manifest.ring2_payload_profiles.as_ref(),
                 )
@@ -562,7 +873,7 @@ fn product_config_contract_from_ring_manifest(
             })
             .transpose()?,
         live_tools: live_tools_runtime_contract_from_ring_manifest(
-            &manifest_path,
+            manifest_path,
             &ring2_manifest.ring2_products.live_tools,
             ring2_manifest.ring2_runtime_profiles.as_ref(),
         )?,
@@ -1782,6 +2093,51 @@ immutable_required_ro_paths = []
         );
     }
 
+    fn write_full_ring_scaffold_owner_dirs(variant_dir: &Path) {
+        write_file(
+            &variant_dir
+                .join(IDENTITY_OWNER_DIR)
+                .join(IDENTITY_MANIFEST_FILENAME),
+            VALID_IDENTITY_RING_MANIFEST,
+        );
+        write_file(
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join(BUILD_HOST_MANIFEST_FILENAME),
+            VALID_BUILD_HOST_RING_MANIFEST,
+        );
+        write_file(
+            &variant_dir
+                .join(RING3_OWNER_DIR)
+                .join(RING3_SOURCES_MANIFEST_FILENAME),
+            VALID_RING3_SOURCES_MANIFEST,
+        );
+        write_file(
+            &variant_dir
+                .join(RING2_OWNER_DIR)
+                .join(RING2_PRODUCTS_MANIFEST_FILENAME),
+            VALID_RING2_PRODUCTS_MANIFEST,
+        );
+        write_file(
+            &variant_dir
+                .join(RING1_OWNER_DIR)
+                .join(RING1_TRANSFORMS_MANIFEST_FILENAME),
+            VALID_RING1_TRANSFORMS_MANIFEST,
+        );
+        write_file(
+            &variant_dir
+                .join(RING0_OWNER_DIR)
+                .join(RING0_RELEASE_MANIFEST_FILENAME),
+            VALID_RING0_RELEASE_MANIFEST,
+        );
+        write_file(
+            &variant_dir
+                .join(SCENARIOS_OWNER_DIR)
+                .join(SCENARIOS_MANIFEST_FILENAME),
+            VALID_SCENARIOS_MANIFEST,
+        );
+    }
+
     #[test]
     fn loads_variant_contract_from_repo_root_ancestor() {
         let repo_root = temp_repo_root("load-ok");
@@ -1955,7 +2311,8 @@ immutable_required_ro_paths = []
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold(&variant_dir);
-        let ring_bundle = load_ring_manifest_bundle(&variant_dir).expect("parse ring scaffold");
+        let paths = resolve_variant_owner_paths(&variant_dir).expect("resolve flat variant paths");
+        let ring_bundle = load_ring_manifest_bundle(&paths).expect("parse ring scaffold");
         assert_eq!(ring_bundle.identity.identity.os_id, "levitateos");
         assert_eq!(
             ring_bundle.build_host.build_host.kernel_localversion,
@@ -2036,6 +2393,11 @@ immutable_required_ro_paths = []
             loaded.manifest_path,
             variant_dir.join(BUILD_HOST_MANIFEST_FILENAME)
         );
+        assert_eq!(loaded.paths.manifest_layout, VariantPathLayout::FlatRoot);
+        assert_eq!(
+            loaded.paths.build_host_support_layout,
+            VariantPathLayout::FlatRoot
+        );
         assert_eq!(loaded.contract.identity.os_name, "LevitateOS");
         assert_eq!(
             loaded.contract.sources.rootfs_source.recipe_script,
@@ -2045,6 +2407,63 @@ immutable_required_ro_paths = []
             loaded.contract.transforms.iso.output_names,
             vec!["levitateos-x86_64.iso".to_string()]
         );
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn owner_directory_ring_scaffold_parses_and_loads_canonical_contract() {
+        let repo_root = temp_repo_root("owner-dir-ring-load");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-levitate\"\n",
+        );
+        write_file(
+            &variant_dir.join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir.join("build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_full_ring_scaffold_owner_dirs(&variant_dir);
+
+        let paths = resolve_variant_owner_paths(&variant_dir).expect("resolve owner-dir paths");
+        assert_eq!(paths.manifest_layout, VariantPathLayout::OwnerDirectories);
+        assert_eq!(
+            paths.build_host_manifest,
+            variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join(BUILD_HOST_MANIFEST_FILENAME)
+        );
+
+        let ring_bundle = load_ring_manifest_bundle(&paths).expect("parse owner-dir ring scaffold");
+        assert_eq!(ring_bundle.identity.identity.os_id, "levitateos");
+
+        let loaded = load_variant_contract_bundle_for_distro_from(&repo_root, "levitate")
+            .expect("load owner-dir levitate contract");
+        assert_eq!(
+            loaded.manifest_path,
+            variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join(BUILD_HOST_MANIFEST_FILENAME)
+        );
+        assert_eq!(
+            loaded.paths.manifest_layout,
+            VariantPathLayout::OwnerDirectories
+        );
+        assert_eq!(
+            loaded.paths.build_host_support_layout,
+            VariantPathLayout::FlatRoot
+        );
+        assert_eq!(loaded.contract.identity.os_name, "LevitateOS");
 
         fs::remove_dir_all(repo_root).expect("cleanup temp root");
     }
@@ -2078,11 +2497,36 @@ immutable_required_ro_paths = []
             VALID_BUILD_HOST_RING_MANIFEST,
         );
 
-        let err =
-            load_ring_manifest_bundle(&variant_dir).expect_err("partial ring scaffold should fail");
+        let err = resolve_variant_owner_paths(&variant_dir)
+            .expect_err("partial ring scaffold should fail");
         assert!(matches!(
             err,
             VariantContractLoadError::PartialRingManifestSet { .. }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn duplicate_ring_manifest_paths_fail_loudly() {
+        let repo_root = temp_repo_root("duplicate-ring-manifest");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+        write_full_ring_scaffold(&variant_dir);
+        write_file(
+            &variant_dir
+                .join(IDENTITY_OWNER_DIR)
+                .join(IDENTITY_MANIFEST_FILENAME),
+            VALID_IDENTITY_RING_MANIFEST,
+        );
+
+        let err = resolve_variant_owner_paths(&variant_dir)
+            .expect_err("duplicate manifest ownership should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::DuplicateOwnerPath {
+                component: "identity",
+                ..
+            }
         ));
 
         fs::remove_dir_all(repo_root).expect("cleanup temp root");
@@ -2237,8 +2681,8 @@ immutable_required_ro_paths = []
             .expect("canonicalize workspace root");
         let variant_dir = repo_root.join("distro-variants/levitate");
 
-        let ring_bundle =
-            load_ring_manifest_bundle(&variant_dir).expect("parse levitate ring scaffold");
+        let paths = resolve_variant_owner_paths(&variant_dir).expect("resolve levitate paths");
+        let ring_bundle = load_ring_manifest_bundle(&paths).expect("parse levitate ring scaffold");
 
         assert_eq!(ring_bundle.identity.identity.os_id, "levitateos");
         assert_eq!(
@@ -2256,7 +2700,10 @@ immutable_required_ro_paths = []
 
         for distro_id in ["levitate", "ralph", "acorn", "iuppiter"] {
             let variant_dir = repo_root.join("distro-variants").join(distro_id);
-            let ring_bundle = load_ring_manifest_bundle(&variant_dir).unwrap_or_else(|err| {
+            let paths = resolve_variant_owner_paths(&variant_dir).unwrap_or_else(|err| {
+                panic!("failed to resolve {} variant paths: {}", distro_id, err)
+            });
+            let ring_bundle = load_ring_manifest_bundle(&paths).unwrap_or_else(|err| {
                 panic!("failed to parse {} ring scaffold: {}", distro_id, err)
             });
 
