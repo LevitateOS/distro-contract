@@ -507,26 +507,33 @@ fn validate_evidence(
 
     let script_ok = validate_non_empty_trimmed(violations, Some(stage), &script_field, script_path);
     let marker_ok = validate_non_empty_trimmed(violations, Some(stage), &marker_field, pass_marker);
+    let mut script_filename = None;
 
     if script_ok {
-        if script_path.contains('/') || script_path.contains('\\') {
+        if !is_relative_contract_path(script_path) {
             push_violation(
                 violations,
                 Some(stage),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
-                format!("{script_field} must be a script filename, not a path"),
+                format!("{script_field} must be a safe relative script path"),
             );
         }
-        let valid_prefix = script_path.starts_with(expected_script_prefix);
-        if !valid_prefix || !script_path.ends_with(".sh") {
+        script_filename = script_path.rsplit('/').next();
+        let valid_filename = script_filename
+            .filter(|filename| !filename.is_empty())
+            .map(|filename| {
+                filename.starts_with(expected_script_prefix) && filename.ends_with(".sh")
+            })
+            .unwrap_or(false);
+        if !valid_filename {
             push_violation(
                 violations,
                 Some(stage),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!(
-                    "{script_field} must start with '{expected_script_prefix}' and end with '.sh'"
+                    "{script_field} basename must start with '{expected_script_prefix}' and end with '.sh'"
                 ),
             );
         }
@@ -543,7 +550,8 @@ fn validate_evidence(
                 format!("{marker_field} must contain PASS"),
             );
         } else if script_ok {
-            let expected_marker = canonical_pass_marker_for_script(script_path);
+            let expected_marker =
+                canonical_pass_marker_for_script(script_filename.unwrap_or(script_path));
             if pass_marker != expected_marker {
                 push_violation(
                     violations,
@@ -1362,7 +1370,7 @@ mod tests {
                     "recchroot".to_string(),
                 ],
                 kernel: KernelBuildContract {
-                    kconfig_path: "kconfig".to_string(),
+                    kconfig_path: "kernel/kconfig".to_string(),
                     recipe_script: "distro-builder/recipes/linux.rhai".to_string(),
                     recipe_invocation: "recipe install".to_string(),
                     release_path: "kernel-build/include/config/kernel.release".to_string(),
@@ -1375,7 +1383,7 @@ mod tests {
                     module_install_path: "/usr/lib/modules".to_string(),
                 },
                 evidence: ScriptEvidence {
-                    script_path: "build-capability.sh".to_string(),
+                    script_path: "evidence/build-capability.sh".to_string(),
                     pass_marker: "BUILD CAPABILITY PASSED".to_string(),
                 },
             },

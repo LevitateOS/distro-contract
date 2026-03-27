@@ -9,7 +9,7 @@ This crate enforces canonical declaration integrity plus build-runtime provenanc
 - Define the canonical conformance contract schema
 - Load canonical contracts from the ring/owner manifest family in `distro-variants/*`
 - Validate anti-gaming and consistency rules
-- Validate build-runtime provenance against real outputs (`kconfig`, `kernel.release`, `vmlinuz`, modules path)
+- Validate build-runtime provenance against real outputs (`build-host/kernel/kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
 
 This crate is also the policy authority for stage-envelope conformance:

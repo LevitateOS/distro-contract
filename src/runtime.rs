@@ -1303,7 +1303,7 @@ mod tests {
                     "recchroot".to_string(),
                 ],
                 kernel: KernelBuildContract {
-                    kconfig_path: "kconfig".to_string(),
+                    kconfig_path: "kernel/kconfig".to_string(),
                     recipe_script: "distro-builder/recipes/linux.rhai".to_string(),
                     recipe_invocation: "recipe install".to_string(),
                     release_path: "kernel-build/include/config/kernel.release".to_string(),
@@ -1316,7 +1316,7 @@ mod tests {
                     module_install_path: "/usr/lib/modules".to_string(),
                 },
                 evidence: ScriptEvidence {
-                    script_path: "build-capability.sh".to_string(),
+                    script_path: "evidence/build-capability.sh".to_string(),
                     pass_marker: "BUILD CAPABILITY PASSED".to_string(),
                 },
             },
@@ -1624,7 +1624,7 @@ mod tests {
         let contract = valid_contract();
 
         write_file(
-            &variant_dir.join("kconfig"),
+            &variant_dir.join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
@@ -1655,7 +1655,7 @@ mod tests {
         let contract = valid_contract();
 
         write_file(
-            &variant_dir.join("kconfig"),
+            &variant_dir.join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-other\"\n",
         );
         write_file(

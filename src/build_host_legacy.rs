@@ -7,7 +7,7 @@
 pub const EVIDENCE_SCRIPT_PREFIX: &str = "build-capability";
 
 /// Required variant-local kconfig path for the build contract.
-pub const REQUIRED_VARIANT_KCONFIG: &str = "kconfig";
+pub const REQUIRED_VARIANT_KCONFIG: &str = "kernel/kconfig";
 
 /// Required variant-local recipe declaration path for the build contract.
 pub const REQUIRED_VARIANT_RECIPE_DECL: &str = "recipes/kernel.rhai";

@@ -1844,7 +1844,7 @@ default_hostname = "levitateos"
 
 [build_host]
 required_build_tools = ["recipe", "cargo", "make", "recuki", "ukify", "mkfs.erofs", "xorriso", "reciso", "recinit", "recstrap", "recfstab", "recchroot"]
-kernel_kconfig_path = "kconfig"
+kernel_kconfig_path = "kernel/kconfig"
 recipe_kernel_script = "distro-builder/recipes/linux.rhai"
 recipe_kernel_invocation = "recipe install"
 kernel_release_path = "kernel-build/include/config/kernel.release"
@@ -1856,7 +1856,7 @@ kernel_localversion = "-levitate"
 module_install_path = "/usr/lib/modules"
 
 [build_host.evidence]
-script_path = "build-capability.sh"
+script_path = "evidence/build-capability.sh"
 pass_marker = "BUILD CAPABILITY PASSED"
 "#;
 
@@ -2159,7 +2159,7 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("build-host").join("kconfig"),
+            &variant_dir.join("build-host").join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
@@ -2168,7 +2168,9 @@ immutable_required_ro_paths = []
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("build-host").join("build-capability.sh"),
+            &variant_dir
+                .join("build-host")
+                .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold(&variant_dir);
@@ -2309,7 +2311,7 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("kconfig"),
+            &variant_dir.join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
@@ -2318,7 +2320,7 @@ immutable_required_ro_paths = []
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("build-capability.sh"),
+            &variant_dir.join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold(&variant_dir);
@@ -2432,7 +2434,9 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join(BUILD_HOST_OWNER_DIR).join("kconfig"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
@@ -2445,7 +2449,7 @@ immutable_required_ro_paths = []
         write_file(
             &variant_dir
                 .join(BUILD_HOST_OWNER_DIR)
-                .join("build-capability.sh"),
+                .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold_owner_dirs(&variant_dir);
@@ -2557,7 +2561,7 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("kconfig"),
+            &variant_dir.join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_full_ring_scaffold(&variant_dir);
@@ -2566,7 +2570,7 @@ immutable_required_ro_paths = []
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n",
         );
         write_file(
-            &variant_dir.join("build-capability.sh"),
+            &variant_dir.join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
 
@@ -2590,7 +2594,9 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join(BUILD_HOST_OWNER_DIR).join("kconfig"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-acorn\"\n",
         );
         write_file(
@@ -2603,7 +2609,7 @@ immutable_required_ro_paths = []
         write_file(
             &variant_dir
                 .join(BUILD_HOST_OWNER_DIR)
-                .join("build-capability.sh"),
+                .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold_owner_dirs(&variant_dir);
@@ -2639,7 +2645,9 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join(BUILD_HOST_OWNER_DIR).join("kconfig"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-acorn\"\n",
         );
         write_file(
@@ -2652,7 +2660,7 @@ immutable_required_ro_paths = []
         write_file(
             &variant_dir
                 .join(BUILD_HOST_OWNER_DIR)
-                .join("build-capability.sh"),
+                .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold_owner_dirs(&variant_dir);
@@ -2700,7 +2708,7 @@ immutable_required_ro_paths = []
                 "distro-builder/recipes/linux.rhai"
             };
 
-            assert_eq!(loaded.contract.build.kernel.kconfig_path, "kconfig");
+            assert_eq!(loaded.contract.build.kernel.kconfig_path, "kernel/kconfig");
             assert_eq!(
                 loaded.contract.build.kernel.recipe_script,
                 expected_kernel_recipe
@@ -2856,7 +2864,7 @@ immutable_required_ro_paths = []
         let build = BuildContract {
             required_build_tools: vec![],
             kernel: KernelBuildContract {
-                kconfig_path: "kconfig".to_string(),
+                kconfig_path: "kernel/kconfig".to_string(),
                 recipe_script: "kernel.rhai".to_string(),
                 recipe_invocation: "recipe install kernel.rhai".to_string(),
                 release_path: "kernel.release".to_string(),
@@ -2868,7 +2876,7 @@ immutable_required_ro_paths = []
                 module_install_path: "usr/lib/modules".to_string(),
             },
             evidence: ScriptEvidence {
-                script_path: "build-capability.sh".to_string(),
+                script_path: "evidence/build-capability.sh".to_string(),
                 pass_marker: "BUILD CAPABILITY PASSED".to_string(),
             },
         };
