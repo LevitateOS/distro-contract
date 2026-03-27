@@ -1250,7 +1250,7 @@ mod tests {
                 kind: OverlayKind::Systemd,
                 issue_message: None,
                 openrc_inittab: None,
-                profile_overlay: None,
+                seed_overlay: None,
             },
             boot_live: BootPayloadContract {
                 producers: vec![PayloadProducerContract::WriteText {

@@ -911,23 +911,32 @@ fn overlay_contract_from_ring_manifest(
         )?),
     };
 
-    let profile_overlay = ring_overlay
-        .profile_overlay
-        .as_deref()
-        .map(|raw| {
-            normalize_relative_string(
-                raw,
-                "ring2_products.live_overlay.profile_overlay",
-                manifest_path,
-            )
-        })
+    if ring_overlay.seed_overlay.is_some() && ring_overlay.legacy_profile_overlay.is_some() {
+        return Err(invalid_ring2(
+            manifest_path,
+            "ring2_products.live_overlay may not declare both seed_overlay and profile_overlay; use seed_overlay only",
+        ));
+    }
+
+    let (seed_overlay_raw, seed_overlay_field) = match (
+        ring_overlay.seed_overlay.as_deref(),
+        ring_overlay.legacy_profile_overlay.as_deref(),
+    ) {
+        (Some(raw), None) => (Some(raw), "ring2_products.live_overlay.seed_overlay"),
+        (None, Some(raw)) => (Some(raw), "ring2_products.live_overlay.profile_overlay"),
+        (None, None) => (None, "ring2_products.live_overlay.seed_overlay"),
+        (Some(_), Some(_)) => unreachable!("checked above"),
+    };
+
+    let seed_overlay = seed_overlay_raw
+        .map(|raw| normalize_relative_string(raw, seed_overlay_field, manifest_path))
         .transpose()?;
 
     Ok(OverlayContract {
         kind,
         issue_message: ring_overlay.issue_message.clone(),
         openrc_inittab,
-        profile_overlay,
+        seed_overlay,
     })
 }
 
@@ -1666,7 +1675,9 @@ struct VariantOverlayProductDecl {
     overlay_kind: String,
     issue_message: Option<String>,
     openrc_inittab: Option<String>,
-    profile_overlay: Option<String>,
+    seed_overlay: Option<String>,
+    #[serde(rename = "profile_overlay")]
+    legacy_profile_overlay: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -2570,6 +2581,107 @@ immutable_required_ro_paths = []
     }
 
     #[test]
+    fn legacy_profile_overlay_key_maps_to_seed_overlay_contract() {
+        let repo_root = temp_repo_root("legacy-profile-overlay-key");
+        let variant_dir = repo_root.join("distro-variants/acorn");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join(BUILD_HOST_OWNER_DIR).join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-acorn\"\n",
+        );
+        write_file(
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_full_ring_scaffold_owner_dirs(&variant_dir);
+        write_file(
+            &variant_dir
+                .join(RING2_OWNER_DIR)
+                .join(RING2_PRODUCTS_MANIFEST_FILENAME),
+            &VALID_RING2_PRODUCTS_MANIFEST.replacen(
+                "overlay_kind = \"systemd\"",
+                "overlay_kind = \"openrc\"\nopenrc_inittab = \"serial_only\"\nprofile_overlay = \"ring2/overlays/live\"",
+                1,
+            ),
+        );
+
+        let contract =
+            load_variant_contract_for_distro_from(&repo_root, "acorn").expect("load acorn");
+
+        assert_eq!(
+            contract.product_config.live_overlay.seed_overlay,
+            Some("ring2/overlays/live".to_string())
+        );
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
+    fn rejects_overlay_manifest_that_declares_both_seed_and_profile_overlay_keys() {
+        let repo_root = temp_repo_root("conflicting-overlay-keys");
+        let variant_dir = repo_root.join("distro-variants/acorn");
+
+        write_file(
+            &repo_root.join("distro-builder/recipes/linux.rhai"),
+            "// shared kernel recipe placeholder\n",
+        );
+        write_file(
+            &variant_dir.join(BUILD_HOST_OWNER_DIR).join("kconfig"),
+            "CONFIG_LOCALVERSION=\"-acorn\"\n",
+        );
+        write_file(
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("recipes/kernel.rhai"),
+            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
+             let required_invocation = \"recipe install\";\n",
+        );
+        write_file(
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("build-capability.sh"),
+            "#!/bin/sh\nexit 0\n",
+        );
+        write_full_ring_scaffold_owner_dirs(&variant_dir);
+        write_file(
+            &variant_dir
+                .join(RING2_OWNER_DIR)
+                .join(RING2_PRODUCTS_MANIFEST_FILENAME),
+            &VALID_RING2_PRODUCTS_MANIFEST.replacen(
+                "overlay_kind = \"systemd\"",
+                "overlay_kind = \"openrc\"\nopenrc_inittab = \"serial_only\"\nseed_overlay = \"ring2/overlays/live\"\nprofile_overlay = \"ring2/overlays/legacy\"",
+                1,
+            ),
+        );
+
+        let err = load_variant_contract_for_distro_from(&repo_root, "acorn")
+            .expect_err("conflicting overlay keys should fail");
+
+        assert!(matches!(
+            err,
+            VariantContractLoadError::InvalidRing2Declaration { .. }
+        ));
+        assert!(err
+            .to_string()
+            .contains("both seed_overlay and profile_overlay"));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
     fn workspace_variant_contracts_load_for_all_variants() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -2891,7 +3003,7 @@ immutable_required_ro_paths = []
                 kind: OverlayKind::Systemd,
                 issue_message: None,
                 openrc_inittab: None,
-                profile_overlay: None,
+                seed_overlay: None,
             },
             boot_live: BootPayloadContract {
                 producers: vec![PayloadProducerContract::WriteText {

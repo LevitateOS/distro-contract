@@ -155,7 +155,7 @@ pub struct OverlayContract {
     pub kind: OverlayKind,
     pub issue_message: Option<String>,
     pub openrc_inittab: Option<OpenRcInittab>,
-    pub profile_overlay: Option<String>,
+    pub seed_overlay: Option<String>,
 }
 
 /// Canonical rootfs producer declaration for boot payload shaping.
