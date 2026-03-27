@@ -68,9 +68,9 @@ pub struct ArtifactIdentity {
 
 /// Minimal build-system ownership model.
 ///
-/// This is the filesystem-first replacement for treating the build stage as the
-/// canonical aggregate owner. It captures build prerequisites and kernel
-/// ownership without implying that "stage" is the architecture.
+/// This is the filesystem-first replacement for treating the build checkpoint as
+/// the canonical aggregate owner. It captures build prerequisites and kernel
+/// ownership without implying that "checkpoint" is the architecture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildContract {
     pub required_build_tools: Vec<String>,
@@ -268,14 +268,14 @@ pub struct TransformContract {
 /// These are validation/runtime scenarios, not build-graph owners.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScenarioContract {
-    pub live_boot: BootStage,
+    pub live_boot: BootCheckpoint,
     pub live_environment: LiveEnvironmentScenario,
     pub live_tools: LiveToolsScenario,
-    pub install: InstallStage,
-    pub installed_boot: BootStage,
-    pub automated_login: AutomatedLoginStage,
-    pub installed_tools: ToolsStage,
-    pub runtime_policy: RuntimePolicyStage,
+    pub install: InstallCheckpoint,
+    pub installed_boot: BootCheckpoint,
+    pub automated_login: AutomatedLoginCheckpoint,
+    pub installed_tools: ToolsCheckpoint,
+    pub runtime_policy: RuntimePolicyCheckpoint,
 }
 
 /// Release ownership.
@@ -289,12 +289,12 @@ pub struct ReleaseContract {
 
 /// Boot-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BootStage {
+pub struct BootCheckpoint {
     pub success_patterns: Vec<String>,
     pub fatal_patterns: Vec<String>,
-    /// Required kernel cmdline tokens for booting this stage.
+    /// Required kernel cmdline tokens for booting this checkpoint.
     pub required_kernel_cmdline: Vec<String>,
-    /// Required live services that must be available at this stage.
+    /// Required live services that must be available at this checkpoint.
     pub required_live_services: Vec<String>,
     pub evidence: ScriptEvidence,
 }
@@ -307,7 +307,7 @@ pub struct LiveEnvironmentScenario {
 
 /// Tool-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToolsStage {
+pub struct ToolsCheckpoint {
     pub required_tools: Vec<String>,
     pub evidence: ScriptEvidence,
 }
@@ -322,7 +322,7 @@ pub struct LiveToolsScenario {
 
 /// Install-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstallStage {
+pub struct InstallCheckpoint {
     pub required_tools: Vec<String>,
     pub required_services: Vec<String>,
     pub evidence: ScriptEvidence,
@@ -330,7 +330,7 @@ pub struct InstallStage {
 
 /// Automated-login scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AutomatedLoginStage {
+pub struct AutomatedLoginCheckpoint {
     pub auth_mode: AuthMode,
     pub default_username: Option<String>,
     pub default_password: Option<String>,
@@ -340,7 +340,7 @@ pub struct AutomatedLoginStage {
 
 /// Runtime-policy scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimePolicyStage {
+pub struct RuntimePolicyCheckpoint {
     pub rootfs_mutability: RootfsMutability,
     pub mutable_required_rw_paths: Vec<String>,
     pub immutable_required_ro_paths: Vec<String>,
@@ -348,7 +348,7 @@ pub struct RuntimePolicyStage {
 
 /// Release validation declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReleaseStage {
+pub struct ReleaseCheckpoint {
     pub required_artifacts: Vec<String>,
     pub required_metadata: Vec<String>,
 }

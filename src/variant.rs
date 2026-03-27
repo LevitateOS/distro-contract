@@ -14,16 +14,16 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use crate::build_host_legacy::{REQUIRED_VARIANT_KCONFIG, REQUIRED_VARIANT_RECIPE_DECL};
-use crate::error::{StageId, ViolationCode};
+use crate::error::{CheckpointId, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootPayloadContract,
-    BootStage, BuildContract, ConformanceContract, DistroIdentity, InstallDocsFrontend,
-    InstallExperience, InstallStage, KernelBuildContract, LiveEnvironmentScenario,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginCheckpoint, BootCheckpoint,
+    BootPayloadContract, BuildContract, ConformanceContract, DistroIdentity, InstallCheckpoint,
+    InstallDocsFrontend, InstallExperience, KernelBuildContract, LiveEnvironmentScenario,
     LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
     PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, ReleaseContract,
     RootfsMutability, RootfsSourceContract, RootfsSourceKind, RuntimeActionContract,
-    RuntimePolicyStage, ScenarioContract, ScriptEvidence, SourceContract, ToolsStage,
+    RuntimePolicyCheckpoint, ScenarioContract, ScriptEvidence, SourceContract, ToolsCheckpoint,
     TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
 
@@ -348,7 +348,7 @@ fn load_variant_contract_bundle_for_distro_at_root(
     let manifest_path = paths.build_host_manifest.clone();
 
     let variant_layout = validate_layout(
-        Some(StageId::Stage00),
+        Some(CheckpointId::Build),
         &paths.build_host_support_root,
         &[
             LayoutRequirement::file(
@@ -383,7 +383,7 @@ fn load_variant_contract_bundle_for_distro_at_root(
     }
 
     let repo_layout = validate_layout(
-        Some(StageId::Stage00),
+        Some(CheckpointId::Build),
         repo_root,
         &[LayoutRequirement::file(
             "build_host.recipe_kernel_script",
@@ -1394,7 +1394,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
     );
 
     ScenarioContract {
-        live_boot: BootStage {
+        live_boot: BootCheckpoint {
             success_patterns: scenarios.live_boot.success_patterns.clone(),
             fatal_patterns: scenarios.live_boot.fatal_patterns.clone(),
             required_kernel_cmdline,
@@ -1418,7 +1418,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
                 pass_marker: scenarios.live_tools.evidence.pass_marker.clone(),
             },
         },
-        install: InstallStage {
+        install: InstallCheckpoint {
             required_tools: scenarios.install.required_tools.clone(),
             required_services: scenarios.install.required_services.clone(),
             evidence: ScriptEvidence {
@@ -1426,7 +1426,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
                 pass_marker: scenarios.install.evidence.pass_marker.clone(),
             },
         },
-        installed_boot: BootStage {
+        installed_boot: BootCheckpoint {
             success_patterns: scenarios.installed_boot.success_patterns.clone(),
             fatal_patterns: scenarios.installed_boot.fatal_patterns.clone(),
             required_kernel_cmdline: scenarios.installed_boot.required_kernel_cmdline.clone(),
@@ -1436,7 +1436,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
                 pass_marker: scenarios.installed_boot.evidence.pass_marker.clone(),
             },
         },
-        automated_login: AutomatedLoginStage {
+        automated_login: AutomatedLoginCheckpoint {
             auth_mode: match scenarios.automated_login.auth_mode {
                 VariantAuthMode::DefaultPasswordLogin => AuthMode::DefaultPasswordLogin,
                 VariantAuthMode::ProvisionedCredentials => AuthMode::ProvisionedCredentials,
@@ -1449,14 +1449,14 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
                 pass_marker: scenarios.automated_login.evidence.pass_marker.clone(),
             },
         },
-        installed_tools: ToolsStage {
+        installed_tools: ToolsCheckpoint {
             required_tools: scenarios.installed_tools.required_tools.clone(),
             evidence: ScriptEvidence {
                 script_path: scenarios.installed_tools.evidence.script_path.clone(),
                 pass_marker: scenarios.installed_tools.evidence.pass_marker.clone(),
             },
         },
-        runtime_policy: RuntimePolicyStage {
+        runtime_policy: RuntimePolicyCheckpoint {
             rootfs_mutability: match scenarios.runtime_policy.rootfs_mutability {
                 VariantRootfsMutability::Mutable => RootfsMutability::Mutable,
                 VariantRootfsMutability::Immutable => RootfsMutability::Immutable,
@@ -2925,7 +2925,7 @@ immutable_required_ro_paths = []
             disk_image: None,
         };
         let scenarios = ScenarioContract {
-            live_boot: BootStage {
+            live_boot: BootCheckpoint {
                 success_patterns: vec!["boot complete".to_string()],
                 fatal_patterns: vec![],
                 required_kernel_cmdline: vec![],
@@ -2946,7 +2946,7 @@ immutable_required_ro_paths = []
                     pass_marker: "LIVE TOOLS PASSED".to_string(),
                 },
             },
-            install: InstallStage {
+            install: InstallCheckpoint {
                 required_tools: vec!["recstrap".to_string()],
                 required_services: vec!["sshd".to_string()],
                 evidence: ScriptEvidence {
@@ -2954,7 +2954,7 @@ immutable_required_ro_paths = []
                     pass_marker: "INSTALL PASSED".to_string(),
                 },
             },
-            installed_boot: BootStage {
+            installed_boot: BootCheckpoint {
                 success_patterns: vec!["example login:".to_string()],
                 fatal_patterns: vec![],
                 required_kernel_cmdline: vec![],
@@ -2964,7 +2964,7 @@ immutable_required_ro_paths = []
                     pass_marker: "INSTALLED BOOT PASSED".to_string(),
                 },
             },
-            automated_login: AutomatedLoginStage {
+            automated_login: AutomatedLoginCheckpoint {
                 auth_mode: AuthMode::DefaultPasswordLogin,
                 default_username: Some("example".to_string()),
                 default_password: Some("example".to_string()),
@@ -2974,14 +2974,14 @@ immutable_required_ro_paths = []
                     pass_marker: "AUTOMATED LOGIN PASSED".to_string(),
                 },
             },
-            installed_tools: ToolsStage {
+            installed_tools: ToolsCheckpoint {
                 required_tools: vec!["sudo".to_string()],
                 evidence: ScriptEvidence {
                     script_path: "installed-tools.sh".to_string(),
                     pass_marker: "INSTALLED TOOLS PASSED".to_string(),
                 },
             },
-            runtime_policy: RuntimePolicyStage {
+            runtime_policy: RuntimePolicyCheckpoint {
                 rootfs_mutability: RootfsMutability::Mutable,
                 mutable_required_rw_paths: vec![],
                 immutable_required_ro_paths: vec![],

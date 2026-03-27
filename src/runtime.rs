@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use crate::error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
+use crate::error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
     ConformanceContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
@@ -49,15 +49,15 @@ pub struct LiveBootRuntimeArtifacts {
     pub rootfs_source_pointer: PathBuf,
 }
 
-fn push_stage_violation(
+fn push_checkpoint_violation(
     violations: &mut Vec<Violation>,
-    stage: StageId,
+    checkpoint: CheckpointId,
     field: impl Into<String>,
     code: ViolationCode,
     message: impl Into<String>,
 ) {
     violations.push(Violation {
-        stage: Some(stage),
+        checkpoint: Some(checkpoint),
         field: field.into(),
         code,
         message: message.into(),
@@ -70,7 +70,7 @@ fn push_violation(
     code: ViolationCode,
     message: impl Into<String>,
 ) {
-    push_stage_violation(violations, StageId::Stage00, field, code, message);
+    push_checkpoint_violation(violations, CheckpointId::Build, field, code, message);
 }
 
 fn read_trimmed(path: &Path) -> Option<String> {
@@ -127,7 +127,7 @@ fn build_runtime_artifacts_from_contract(
     }
 }
 
-fn live_boot_scenario<'a>(contract: &'a ConformanceContract) -> &'a crate::schema::BootStage {
+fn live_boot_scenario<'a>(contract: &'a ConformanceContract) -> &'a crate::schema::BootCheckpoint {
     &contract.scenarios.live_boot
 }
 
@@ -216,7 +216,7 @@ pub fn validate_build_runtime_with_artifacts(
     };
 
     let variant_layout = validate_layout(
-        Some(StageId::Stage00),
+        Some(CheckpointId::Build),
         &build_host_support_root,
         &[LayoutRequirement::file(
             BUILD_KERNEL_KCONFIG_FIELD,
@@ -229,7 +229,7 @@ pub fn validate_build_runtime_with_artifacts(
     violations.extend(variant_layout.violations);
 
     let artifact_layout = validate_layout(
-        Some(StageId::Stage00),
+        Some(CheckpointId::Build),
         kernel_artifact_dir,
         &[
             LayoutRequirement::file(
@@ -372,7 +372,7 @@ pub fn validate_build_runtime_with_artifacts(
             .modules_path
             .replace("<kernel.release>", &kernel_release);
         let modules_layout = validate_layout(
-            Some(StageId::Stage00),
+            Some(CheckpointId::Build),
             kernel_artifact_dir,
             &[LayoutRequirement::directory(
                 BUILD_KERNEL_MODULES_FIELD,
@@ -519,9 +519,9 @@ fn resolve_live_boot_rootfs_source_dir(
     violations: &mut Vec<Violation>,
 ) -> Option<PathBuf> {
     let Some(raw) = read_trimmed(rootfs_source_pointer) else {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -543,9 +543,9 @@ fn resolve_live_boot_rootfs_source_dir(
     };
 
     if is_legacy_rootfs_source(&resolved) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::InvalidPathDeclaration,
             format!(
@@ -557,9 +557,9 @@ fn resolve_live_boot_rootfs_source_dir(
     }
 
     if !has_directory(&resolved) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_ROOTFS_SOURCE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -598,7 +598,7 @@ fn contains_component_sequence(haystack: &[String], needle: &[&str]) -> bool {
 }
 
 fn validate_live_boot_contract_requirements(
-    live_boot: &crate::schema::BootStage,
+    live_boot: &crate::schema::BootCheckpoint,
     violations: &mut Vec<Violation>,
 ) {
     for token in BOOT_REQUIRED_KERNEL_CMDLINE_BASE {
@@ -609,9 +609,9 @@ fn validate_live_boot_contract_requirements(
         {
             continue;
         }
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
             ViolationCode::MissingValue,
             format!(
@@ -629,9 +629,9 @@ fn validate_live_boot_contract_requirements(
         {
             continue;
         }
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingValue,
             format!(
@@ -643,7 +643,7 @@ fn validate_live_boot_contract_requirements(
 }
 
 fn validate_systemd_live_boot_ssh(
-    live_boot: &crate::schema::BootStage,
+    live_boot: &crate::schema::BootCheckpoint,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
@@ -653,7 +653,7 @@ fn validate_systemd_live_boot_ssh(
     validate_live_boot_required_ssh_artifacts(rootfs_dir, violations);
 
     let rootfs_layout = validate_layout(
-        Some(StageId::Stage01),
+        Some(CheckpointId::Boot),
         rootfs_dir,
         &[
             LayoutRequirement::file(
@@ -687,9 +687,9 @@ fn validate_systemd_live_boot_ssh(
     let wants_link =
         live_overlay_dir.join("etc/systemd/system/multi-user.target.wants/sshd.service");
     if !has_symlink(&wants_link) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -702,9 +702,9 @@ fn validate_systemd_live_boot_ssh(
     let rootfs_tmpfiles = rootfs_dir.join("usr/lib/tmpfiles.d/sshd.conf");
     let overlay_tmpfiles = live_overlay_dir.join("etc/tmpfiles.d/sshd-local.conf");
     if !has_file(&rootfs_tmpfiles) && !has_file(&overlay_tmpfiles) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -722,9 +722,9 @@ fn validate_systemd_live_boot_ssh(
             .iter()
             .any(|token| token == "inst.sshd=0")
     {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
             ViolationCode::MissingValue,
             format!(
@@ -747,9 +747,9 @@ fn validate_live_boot_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<
     ] {
         let path = rootfs_dir.join(rel);
         if !has_symlink(&path) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -762,9 +762,9 @@ fn validate_live_boot_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<
             continue;
         }
         if !symlink_target_equals(&path, expected_target) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -778,7 +778,7 @@ fn validate_live_boot_usrmerge_symlinks(rootfs_dir: &Path, violations: &mut Vec<
 }
 
 fn validate_openrc_live_boot_ssh(
-    live_boot: &crate::schema::BootStage,
+    live_boot: &crate::schema::BootCheckpoint,
     rootfs_dir: &Path,
     live_overlay_dir: &Path,
     violations: &mut Vec<Violation>,
@@ -787,7 +787,7 @@ fn validate_openrc_live_boot_ssh(
     validate_live_boot_required_ssh_artifacts(rootfs_dir, violations);
 
     let rootfs_layout = validate_layout(
-        Some(StageId::Stage01),
+        Some(CheckpointId::Boot),
         rootfs_dir,
         &[
             LayoutRequirement::file(
@@ -808,9 +808,9 @@ fn validate_openrc_live_boot_ssh(
 
     let runlevel_link = live_overlay_dir.join("etc/runlevels/default/sshd");
     if !has_symlink(&runlevel_link) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -827,9 +827,9 @@ fn validate_openrc_live_boot_ssh(
     {
         let networking_script = rootfs_dir.join("etc/init.d/networking");
         if !has_file(&networking_script) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -841,9 +841,9 @@ fn validate_openrc_live_boot_ssh(
 
         let interfaces_path = rootfs_dir.join("etc/network/interfaces");
         if !has_file(&interfaces_path) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -855,9 +855,9 @@ fn validate_openrc_live_boot_ssh(
 
         let networking_boot_link = live_overlay_dir.join("etc/runlevels/boot/networking");
         if !has_symlink(&networking_boot_link) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -875,9 +875,9 @@ fn validate_openrc_live_boot_ssh(
     {
         let dhcpcd_script = rootfs_dir.join("etc/init.d/dhcpcd");
         if !has_file(&dhcpcd_script) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -889,9 +889,9 @@ fn validate_openrc_live_boot_ssh(
 
         let dhcpcd_link = live_overlay_dir.join("etc/runlevels/default/dhcpcd");
         if !has_symlink(&dhcpcd_link) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -911,9 +911,9 @@ fn validate_openrc_live_boot_locale_completeness(
 ) {
     let locale_conf = rootfs_dir.join("etc/locale.conf");
     if !has_file(&locale_conf) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -929,9 +929,9 @@ fn validate_openrc_live_boot_locale_completeness(
                     .map(str::trim)
                     .any(|line| line == "LANG=C.UTF-8");
                 if !has_c_utf8 {
-                    push_stage_violation(
+                    push_checkpoint_violation(
                         violations,
-                        StageId::Stage01,
+                        CheckpointId::Boot,
                         LIVE_BOOT_LOCALE_FIELD,
                         ViolationCode::MissingValue,
                         format!(
@@ -942,9 +942,9 @@ fn validate_openrc_live_boot_locale_completeness(
                 }
             }
             Err(err) => {
-                push_stage_violation(
+                push_checkpoint_violation(
                     violations,
-                    StageId::Stage01,
+                    CheckpointId::Boot,
                     LIVE_BOOT_LOCALE_FIELD,
                     ViolationCode::MissingBaselineArtifact,
                     format!(
@@ -968,9 +968,9 @@ fn validate_openrc_live_boot_locale_completeness(
         .any(|rel| has_file(&rootfs_dir.join(rel)));
     let has_musl_payload = has_file(&rootfs_dir.join("usr/share/i18n/locales/musl/en_US.UTF-8"));
     if !has_glibc_payload && !has_musl_payload {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -986,9 +986,9 @@ fn validate_forbidden_installed_tool_leaks(rootfs_dir: &Path, violations: &mut V
     for rel in ["usr/bin/recstrap", "usr/bin/recfstab", "usr/bin/recchroot"] {
         let path = rootfs_dir.join(rel);
         if has_file(&path) {
-            push_stage_violation(
+            push_checkpoint_violation(
                 violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 LIVE_BOOT_ENVELOPE_FIELD,
                 ViolationCode::MissingBaselineArtifact,
                 format!(
@@ -1002,7 +1002,7 @@ fn validate_forbidden_installed_tool_leaks(rootfs_dir: &Path, violations: &mut V
 
 fn validate_live_boot_required_ssh_artifacts(rootfs_dir: &Path, violations: &mut Vec<Violation>) {
     let ssh_layout = validate_layout(
-        Some(StageId::Stage01),
+        Some(CheckpointId::Boot),
         rootfs_dir,
         &[
             LayoutRequirement::file(
@@ -1028,9 +1028,9 @@ fn validate_systemd_live_boot_locale_completeness(
 ) {
     let locale_conf = rootfs_dir.join("etc/locale.conf");
     if !has_file(&locale_conf) {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -1046,9 +1046,9 @@ fn validate_systemd_live_boot_locale_completeness(
                     .map(str::trim)
                     .any(|line| line == "LANG=C.UTF-8");
                 if !has_c_utf8 {
-                    push_stage_violation(
+                    push_checkpoint_violation(
                         violations,
-                        StageId::Stage01,
+                        CheckpointId::Boot,
                         LIVE_BOOT_LOCALE_FIELD,
                         ViolationCode::MissingValue,
                         format!(
@@ -1059,9 +1059,9 @@ fn validate_systemd_live_boot_locale_completeness(
                 }
             }
             Err(err) => {
-                push_stage_violation(
+                push_checkpoint_violation(
                     violations,
-                    StageId::Stage01,
+                    CheckpointId::Boot,
                     LIVE_BOOT_LOCALE_FIELD,
                     ViolationCode::MissingBaselineArtifact,
                     format!(
@@ -1084,9 +1084,9 @@ fn validate_systemd_live_boot_locale_completeness(
         .iter()
         .any(|rel| has_file(&rootfs_dir.join(rel)));
     if !has_payload {
-        push_stage_violation(
+        push_checkpoint_violation(
             violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_LOCALE_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -1139,9 +1139,9 @@ pub fn validate_live_boot_runtime(
             has_file(path)
         };
         if !exists {
-            push_stage_violation(
+            push_checkpoint_violation(
                 &mut violations,
-                StageId::Stage01,
+                CheckpointId::Boot,
                 field,
                 ViolationCode::MissingBaselineArtifact,
                 format!("missing {} at '{}'", expectation, path.display()),
@@ -1177,9 +1177,9 @@ pub fn validate_live_boot_runtime(
             &mut violations,
         );
     } else {
-        push_stage_violation(
+        push_checkpoint_violation(
             &mut violations,
-            StageId::Stage01,
+            CheckpointId::Boot,
             LIVE_BOOT_REQUIRED_SERVICES_FIELD,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -1442,7 +1442,7 @@ mod tests {
                 disk_image: None,
             },
             scenarios: ScenarioContract {
-                live_boot: BootStage {
+                live_boot: BootCheckpoint {
                     success_patterns: vec!["LevitateOS".to_string()],
                     fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec!["audit=1".to_string(), "inst.sshd=0".to_string()],
@@ -1463,7 +1463,7 @@ mod tests {
                         pass_marker: "LIVE TOOLS PASSED".to_string(),
                     },
                 },
-                install: InstallStage {
+                install: InstallCheckpoint {
                     required_tools: vec!["recstrap".to_string()],
                     required_services: vec!["sshd".to_string()],
                     evidence: ScriptEvidence {
@@ -1471,7 +1471,7 @@ mod tests {
                         pass_marker: "INSTALL PASSED".to_string(),
                     },
                 },
-                installed_boot: BootStage {
+                installed_boot: BootCheckpoint {
                     success_patterns: vec!["levitateos login:".to_string()],
                     fatal_patterns: vec!["Kernel panic".to_string()],
                     required_kernel_cmdline: vec![],
@@ -1481,7 +1481,7 @@ mod tests {
                         pass_marker: "INSTALLED BOOT PASSED".to_string(),
                     },
                 },
-                automated_login: AutomatedLoginStage {
+                automated_login: AutomatedLoginCheckpoint {
                     auth_mode: AuthMode::DefaultPasswordLogin,
                     default_username: Some("levitate".to_string()),
                     default_password: Some("levitate".to_string()),
@@ -1491,14 +1491,14 @@ mod tests {
                         pass_marker: "AUTOMATED LOGIN PASSED".to_string(),
                     },
                 },
-                installed_tools: ToolsStage {
+                installed_tools: ToolsCheckpoint {
                     required_tools: vec!["sudo".to_string()],
                     evidence: ScriptEvidence {
                         script_path: "installed-tools.sh".to_string(),
                         pass_marker: "INSTALLED TOOLS PASSED".to_string(),
                     },
                 },
-                runtime_policy: RuntimePolicyStage {
+                runtime_policy: RuntimePolicyCheckpoint {
                     rootfs_mutability: RootfsMutability::Mutable,
                     mutable_required_rw_paths: vec![],
                     immutable_required_ro_paths: vec![],

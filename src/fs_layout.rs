@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::error::{StageId, Violation, ViolationCode};
+use crate::error::{CheckpointId, Violation, ViolationCode};
 
 /// Expected filesystem entry kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,7 +107,7 @@ impl LayoutReport {
 
 /// Validate filesystem layout requirements under `root`.
 pub fn validate_layout(
-    stage: Option<StageId>,
+    checkpoint: Option<CheckpointId>,
     root: &Path,
     requirements: &[LayoutRequirement],
 ) -> LayoutReport {
@@ -138,7 +138,7 @@ pub fn validate_layout(
         };
 
         report.violations.push(Violation {
-            stage,
+            checkpoint,
             field: req.field.clone(),
             code: req.code,
             message,

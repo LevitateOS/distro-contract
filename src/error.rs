@@ -4,35 +4,35 @@ use std::fmt;
 
 /// Checkpoint identifiers for violation attribution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StageId {
-    Stage00,
-    Stage01,
-    Stage02,
-    Stage03,
-    Stage04,
-    Stage05,
-    Stage06,
-    Stage07,
-    Stage08,
+pub enum CheckpointId {
+    Build,
+    Boot,
+    LiveTools,
+    Install,
+    LoginGate,
+    Harness,
+    Runtime,
+    Update,
+    Package,
 }
 
-impl StageId {
+impl CheckpointId {
     pub fn canonical_name(self) -> &'static str {
         match self {
-            Self::Stage00 => "00Build",
-            Self::Stage01 => "01Boot",
-            Self::Stage02 => "02LiveTools",
-            Self::Stage03 => "03Install",
-            Self::Stage04 => "04LoginGate",
-            Self::Stage05 => "05Harness",
-            Self::Stage06 => "06Runtime",
-            Self::Stage07 => "07Update",
-            Self::Stage08 => "08Package",
+            Self::Build => "00Build",
+            Self::Boot => "01Boot",
+            Self::LiveTools => "02LiveTools",
+            Self::Install => "03Install",
+            Self::LoginGate => "04LoginGate",
+            Self::Harness => "05Harness",
+            Self::Runtime => "06Runtime",
+            Self::Update => "07Update",
+            Self::Package => "08Package",
         }
     }
 }
 
-impl fmt::Display for StageId {
+impl fmt::Display for CheckpointId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.canonical_name())
     }
@@ -49,7 +49,7 @@ pub enum ViolationCode {
     DuplicateEntry,
     GenericSuccessPattern,
     PatternSetOverlap,
-    MissingStageToolInLiveTools,
+    MissingRequiredToolInLiveTools,
     InvalidAuthDeclaration,
     LoginPromptNotInInstalledBootPatterns,
     InvalidPathDeclaration,
@@ -68,14 +68,14 @@ pub enum ViolationCode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
     pub code: ViolationCode,
-    pub stage: Option<StageId>,
+    pub checkpoint: Option<CheckpointId>,
     pub field: String,
     pub message: String,
 }
 
 impl fmt::Display for Violation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.stage {
+        match self.checkpoint {
             Some(checkpoint) => write!(
                 f,
                 "{}.{} [{:?}]: {}",
@@ -130,16 +130,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stage_id_display_uses_canonical_checkpoint_name() {
-        assert_eq!(StageId::Stage01.to_string(), "01Boot");
-        assert_eq!(StageId::Stage06.to_string(), "06Runtime");
+    fn checkpoint_id_display_uses_canonical_name() {
+        assert_eq!(CheckpointId::Boot.to_string(), "01Boot");
+        assert_eq!(CheckpointId::Runtime.to_string(), "06Runtime");
     }
 
     #[test]
     fn violation_display_uses_canonical_checkpoint_name() {
         let violation = Violation {
             code: ViolationCode::MissingValue,
-            stage: Some(StageId::Stage02),
+            checkpoint: Some(CheckpointId::LiveTools),
             field: "scenarios.live_tools.evidence".to_string(),
             message: "missing scenario evidence".to_string(),
         };

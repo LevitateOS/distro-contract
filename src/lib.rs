@@ -14,7 +14,7 @@ pub mod schema;
 pub mod validate;
 pub mod variant;
 
-pub use error::{ConformanceError, ConformanceReport, StageId, Violation, ViolationCode};
+pub use error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
 pub use runtime::{
     require_valid_build_runtime, require_valid_build_runtime_with_artifacts,
     require_valid_build_runtime_with_split_artifact_roots, require_valid_live_boot_runtime,
@@ -24,15 +24,15 @@ pub use runtime::{
     BuildRuntimeArtifacts, LiveBootRuntimeArtifacts,
 };
 pub use schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginStage, BootPayloadContract,
-    BootStage, BuildContract, ConformanceContract, DistroIdentity, InstallDocsFrontend,
-    InstallExperience, InstallStage, KernelBuildContract, LiveEnvironmentScenario,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginCheckpoint, BootCheckpoint,
+    BootPayloadContract, BuildContract, ConformanceContract, DistroIdentity, InstallCheckpoint,
+    InstallDocsFrontend, InstallExperience, KernelBuildContract, LiveEnvironmentScenario,
     LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
-    PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, ReleaseContract,
-    ReleaseStage, RootfsMutability, RootfsSourceContract, RootfsSourceKind, RuntimeActionContract,
-    RuntimePolicyStage, ScenarioContract, ScriptEvidence, SourceContract, ToolsStage,
-    TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
-    CONTRACT_SCHEMA_VERSION,
+    PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl,
+    ReleaseCheckpoint, ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
+    RuntimeActionContract, RuntimePolicyCheckpoint, ScenarioContract, ScriptEvidence,
+    SourceContract, ToolsCheckpoint, TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
+    BOOT_REQUIRED_LIVE_SERVICES_BASE, CONTRACT_SCHEMA_VERSION,
 };
 pub use validate::{require_valid_contract, validate_contract};
 pub use variant::{

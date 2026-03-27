@@ -12,14 +12,14 @@ This crate enforces canonical declaration integrity plus build-runtime provenanc
 - Validate build-runtime provenance against real outputs (`build-host/kernel/kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
 
-This crate is also the policy authority for stage-envelope conformance:
+This crate is also the policy authority for checkpoint-envelope conformance:
 
-- Stage artifacts must satisfy "nothing more, nothing less" for their stage boundary.
+- Checkpoint artifacts must satisfy "nothing more, nothing less" for their checkpoint boundary.
 - Missing required payload is a failure.
-- Extra payload that belongs to later stages is a failure.
-- Filesystem layout checks (required/forbidden paths per stage) are first-class conformance rules.
+- Extra payload that belongs to later checkpoints is a failure.
+- Filesystem layout checks (required/forbidden paths per checkpoint) are first-class conformance rules.
 
-It does **not** own runtime testing (QEMU/stages) and does **not** own
+It does **not** own runtime testing (QEMU/scenarios) and does **not** own
 builder/component/disk interfaces.
 
 ## Public API
