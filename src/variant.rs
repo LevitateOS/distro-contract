@@ -1,9 +1,9 @@
 //! Variant-local contract loader.
 //!
 //! Canonical ownership now lives in the ring/owner manifest family:
-//! `identity.toml`, `build-host.toml`, `ring3-sources.toml`,
-//! `ring2-products.toml`, `ring1-transforms.toml`, `ring0-release.toml`, and
-//! `scenarios.toml`.
+//! `identity/identity.toml`, `build-host/build-host.toml`,
+//! `ring3/sources.toml`, `ring2/products.toml`, `ring1/transforms.toml`,
+//! `ring0/release.toml`, and `scenarios/scenarios.toml`.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -35,6 +35,10 @@ const RING2_PRODUCTS_MANIFEST_FILENAME: &str = "ring2-products.toml";
 const RING1_TRANSFORMS_MANIFEST_FILENAME: &str = "ring1-transforms.toml";
 const RING0_RELEASE_MANIFEST_FILENAME: &str = "ring0-release.toml";
 const SCENARIOS_MANIFEST_FILENAME: &str = "scenarios.toml";
+const RING3_SOURCES_OWNER_MANIFEST_FILENAME: &str = "sources.toml";
+const RING2_PRODUCTS_OWNER_MANIFEST_FILENAME: &str = "products.toml";
+const RING1_TRANSFORMS_OWNER_MANIFEST_FILENAME: &str = "transforms.toml";
+const RING0_RELEASE_OWNER_MANIFEST_FILENAME: &str = "release.toml";
 const IDENTITY_OWNER_DIR: &str = "identity";
 const BUILD_HOST_OWNER_DIR: &str = "build-host";
 const RING3_OWNER_DIR: &str = "ring3";
@@ -121,6 +125,11 @@ pub enum VariantContractLoadError {
         flat_path: PathBuf,
         owner_path: PathBuf,
     },
+    DuplicateOwnerManifestFilename {
+        component: &'static str,
+        canonical_path: PathBuf,
+        legacy_path: PathBuf,
+    },
     MixedOwnerLayout {
         component: &'static str,
         variant_dir: PathBuf,
@@ -187,6 +196,17 @@ impl fmt::Display for VariantContractLoadError {
                 component,
                 flat_path.display(),
                 owner_path.display()
+            ),
+            Self::DuplicateOwnerManifestFilename {
+                component,
+                canonical_path,
+                legacy_path,
+            } => write!(
+                f,
+                "conflicting owner-directory manifest filenames for {}: both canonical '{}' and legacy '{}' exist",
+                component,
+                canonical_path.display(),
+                legacy_path.display()
             ),
             Self::MixedOwnerLayout {
                 component,
@@ -582,36 +602,54 @@ fn resolve_manifest_paths(
     variant_dir: &Path,
 ) -> Result<(VariantPathLayout, ResolvedManifestPaths), VariantContractLoadError> {
     let manifest_specs = [
-        ("identity", IDENTITY_OWNER_DIR, IDENTITY_MANIFEST_FILENAME),
+        (
+            "identity",
+            IDENTITY_OWNER_DIR,
+            IDENTITY_MANIFEST_FILENAME,
+            IDENTITY_MANIFEST_FILENAME,
+            None,
+        ),
         (
             "build_host",
             BUILD_HOST_OWNER_DIR,
             BUILD_HOST_MANIFEST_FILENAME,
+            BUILD_HOST_MANIFEST_FILENAME,
+            None,
         ),
         (
             "ring3_sources",
             RING3_OWNER_DIR,
             RING3_SOURCES_MANIFEST_FILENAME,
+            RING3_SOURCES_OWNER_MANIFEST_FILENAME,
+            Some(RING3_SOURCES_MANIFEST_FILENAME),
         ),
         (
             "ring2_products",
             RING2_OWNER_DIR,
             RING2_PRODUCTS_MANIFEST_FILENAME,
+            RING2_PRODUCTS_OWNER_MANIFEST_FILENAME,
+            Some(RING2_PRODUCTS_MANIFEST_FILENAME),
         ),
         (
             "ring1_transforms",
             RING1_OWNER_DIR,
             RING1_TRANSFORMS_MANIFEST_FILENAME,
+            RING1_TRANSFORMS_OWNER_MANIFEST_FILENAME,
+            Some(RING1_TRANSFORMS_MANIFEST_FILENAME),
         ),
         (
             "ring0_release",
             RING0_OWNER_DIR,
             RING0_RELEASE_MANIFEST_FILENAME,
+            RING0_RELEASE_OWNER_MANIFEST_FILENAME,
+            Some(RING0_RELEASE_MANIFEST_FILENAME),
         ),
         (
             "scenarios",
             SCENARIOS_OWNER_DIR,
             SCENARIOS_MANIFEST_FILENAME,
+            SCENARIOS_MANIFEST_FILENAME,
+            None,
         ),
     ];
 
@@ -620,31 +658,56 @@ fn resolve_manifest_paths(
     let mut missing = Vec::new();
     let mut resolved = Vec::new();
 
-    for (component, owner_dir, filename) in manifest_specs {
-        let flat_path = variant_dir.join(filename);
-        let owner_path = variant_dir.join(owner_dir).join(filename);
+    for (component, owner_dir, flat_filename, owner_filename, owner_legacy_filename) in
+        manifest_specs
+    {
+        let flat_path = variant_dir.join(flat_filename);
+        let owner_path = variant_dir.join(owner_dir).join(owner_filename);
+        let owner_legacy_path =
+            owner_legacy_filename.map(|filename| variant_dir.join(owner_dir).join(filename));
         let flat_exists = flat_path.is_file();
         let owner_exists = owner_path.is_file();
+        let owner_legacy_exists = owner_legacy_path
+            .as_ref()
+            .map(|path| path.is_file())
+            .unwrap_or(false);
 
-        if flat_exists && owner_exists {
-            return Err(VariantContractLoadError::DuplicateOwnerPath {
+        if owner_exists && owner_legacy_exists {
+            return Err(VariantContractLoadError::DuplicateOwnerManifestFilename {
                 component,
-                flat_path,
-                owner_path,
+                canonical_path: owner_path,
+                legacy_path: owner_legacy_path.expect("legacy path present"),
             });
         }
 
-        match (flat_exists, owner_exists) {
-            (true, false) => {
-                flat_present.push(filename.to_string());
+        if flat_exists && (owner_exists || owner_legacy_exists) {
+            return Err(VariantContractLoadError::DuplicateOwnerPath {
+                component,
+                flat_path,
+                owner_path: if owner_exists {
+                    owner_path
+                } else {
+                    owner_legacy_path.expect("legacy owner path present")
+                },
+            });
+        }
+
+        match (flat_exists, owner_exists, owner_legacy_exists) {
+            (true, false, false) => {
+                flat_present.push(flat_filename.to_string());
                 resolved.push(flat_path);
             }
-            (false, true) => {
-                owner_present.push(format!("{owner_dir}/{filename}"));
+            (false, true, false) => {
+                owner_present.push(format!("{owner_dir}/{owner_filename}"));
                 resolved.push(owner_path);
             }
-            (false, false) => missing.push(filename.to_string()),
-            (true, true) => unreachable!("duplicate manifest paths handled above"),
+            (false, false, true) => {
+                let legacy_filename = owner_legacy_filename.expect("legacy filename present");
+                owner_present.push(format!("{owner_dir}/{legacy_filename}"));
+                resolved.push(owner_legacy_path.expect("legacy owner path present"));
+            }
+            (false, false, false) => missing.push(format!("{owner_dir}/{owner_filename}")),
+            _ => unreachable!("duplicate/owner cases handled above"),
         }
     }
 
@@ -2120,25 +2183,25 @@ immutable_required_ro_paths = []
         write_file(
             &variant_dir
                 .join(RING3_OWNER_DIR)
-                .join(RING3_SOURCES_MANIFEST_FILENAME),
+                .join(RING3_SOURCES_OWNER_MANIFEST_FILENAME),
             VALID_RING3_SOURCES_MANIFEST,
         );
         write_file(
             &variant_dir
                 .join(RING2_OWNER_DIR)
-                .join(RING2_PRODUCTS_MANIFEST_FILENAME),
+                .join(RING2_PRODUCTS_OWNER_MANIFEST_FILENAME),
             VALID_RING2_PRODUCTS_MANIFEST,
         );
         write_file(
             &variant_dir
                 .join(RING1_OWNER_DIR)
-                .join(RING1_TRANSFORMS_MANIFEST_FILENAME),
+                .join(RING1_TRANSFORMS_OWNER_MANIFEST_FILENAME),
             VALID_RING1_TRANSFORMS_MANIFEST,
         );
         write_file(
             &variant_dir
                 .join(RING0_OWNER_DIR)
-                .join(RING0_RELEASE_MANIFEST_FILENAME),
+                .join(RING0_RELEASE_OWNER_MANIFEST_FILENAME),
             VALID_RING0_RELEASE_MANIFEST,
         );
         write_file(
@@ -2552,6 +2615,31 @@ immutable_required_ro_paths = []
     }
 
     #[test]
+    fn duplicate_owner_manifest_filenames_fail_loudly() {
+        let repo_root = temp_repo_root("duplicate-owner-manifest-filenames");
+        let variant_dir = repo_root.join("distro-variants/levitate");
+        write_full_ring_scaffold_owner_dirs(&variant_dir);
+        write_file(
+            &variant_dir
+                .join(RING3_OWNER_DIR)
+                .join(RING3_SOURCES_MANIFEST_FILENAME),
+            VALID_RING3_SOURCES_MANIFEST,
+        );
+
+        let err = resolve_variant_owner_paths(&variant_dir)
+            .expect_err("duplicate owner manifest filenames should fail");
+        assert!(matches!(
+            err,
+            VariantContractLoadError::DuplicateOwnerManifestFilename {
+                component: "ring3_sources",
+                ..
+            }
+        ));
+
+        fs::remove_dir_all(repo_root).expect("cleanup temp root");
+    }
+
+    #[test]
     fn fails_when_recipe_declaration_does_not_reference_required_invocation() {
         let repo_root = temp_repo_root("bad-recipe-decl");
         let variant_dir = repo_root.join("distro-variants/levitate");
@@ -2616,7 +2704,7 @@ immutable_required_ro_paths = []
         write_file(
             &variant_dir
                 .join(RING2_OWNER_DIR)
-                .join(RING2_PRODUCTS_MANIFEST_FILENAME),
+                .join(RING2_PRODUCTS_OWNER_MANIFEST_FILENAME),
             &VALID_RING2_PRODUCTS_MANIFEST.replacen(
                 "overlay_kind = \"systemd\"",
                 "overlay_kind = \"openrc\"\nopenrc_inittab = \"serial_only\"\nprofile_overlay = \"ring2/overlays/live\"",
@@ -2667,7 +2755,7 @@ immutable_required_ro_paths = []
         write_file(
             &variant_dir
                 .join(RING2_OWNER_DIR)
-                .join(RING2_PRODUCTS_MANIFEST_FILENAME),
+                .join(RING2_PRODUCTS_OWNER_MANIFEST_FILENAME),
             &VALID_RING2_PRODUCTS_MANIFEST.replacen(
                 "overlay_kind = \"systemd\"",
                 "overlay_kind = \"openrc\"\nopenrc_inittab = \"serial_only\"\nseed_overlay = \"ring2/overlays/live\"\nprofile_overlay = \"ring2/overlays/legacy\"",
