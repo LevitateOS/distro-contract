@@ -216,7 +216,7 @@ impl fmt::Display for VariantContractLoadError {
                 missing,
             } => write!(
                 f,
-                "mixed flat/owner-directory layout for {} under '{}': flat-present [{}], owner-present [{}], missing [{}]",
+                "non-canonical owner layout for {} under '{}': flat-present [{}], owner-present [{}], missing [{}]",
                 component,
                 variant_dir.display(),
                 flat_present.join(", "),
@@ -456,7 +456,6 @@ pub fn resolve_variant_owner_paths(
         ],
         &variant_dir,
         &variant_dir.join(BUILD_HOST_OWNER_DIR),
-        manifest_layout,
     )?;
     let (ring0_hooks_layout, ring0_hooks_dir) = resolve_group_root(
         "ring0 release hooks",
@@ -468,7 +467,6 @@ pub fn resolve_variant_owner_paths(
         ],
         &variant_dir,
         &variant_dir.join(RING0_OWNER_DIR).join(RING0_HOOKS_DIR),
-        manifest_layout,
     )?;
 
     Ok(VariantOwnerPaths {
@@ -680,22 +678,17 @@ fn resolve_manifest_paths(
             });
         }
 
-        if flat_exists && (owner_exists || owner_legacy_exists) {
-            return Err(VariantContractLoadError::DuplicateOwnerPath {
-                component,
-                flat_path,
-                owner_path: if owner_exists {
-                    owner_path
-                } else {
-                    owner_legacy_path.expect("legacy owner path present")
-                },
-            });
-        }
-
         match (flat_exists, owner_exists, owner_legacy_exists) {
-            (true, false, false) => {
+            (true, false, false) => flat_present.push(flat_filename.to_string()),
+            (true, true, false) => {
                 flat_present.push(flat_filename.to_string());
-                resolved.push(flat_path);
+                owner_present.push(format!("{owner_dir}/{owner_filename}"));
+            }
+            (true, false, true) => {
+                flat_present.push(flat_filename.to_string());
+                let legacy_filename = owner_legacy_filename.expect("legacy filename present");
+                owner_present.push(format!("{owner_dir}/{legacy_filename}"));
+                missing.push(format!("{owner_dir}/{owner_filename}"));
             }
             (false, true, false) => {
                 owner_present.push(format!("{owner_dir}/{owner_filename}"));
@@ -704,27 +697,21 @@ fn resolve_manifest_paths(
             (false, false, true) => {
                 let legacy_filename = owner_legacy_filename.expect("legacy filename present");
                 owner_present.push(format!("{owner_dir}/{legacy_filename}"));
-                resolved.push(owner_legacy_path.expect("legacy owner path present"));
+                missing.push(format!("{owner_dir}/{owner_filename}"));
             }
             (false, false, false) => missing.push(format!("{owner_dir}/{owner_filename}")),
-            _ => unreachable!("duplicate/owner cases handled above"),
+            (true, true, true) | (false, true, true) => {
+                unreachable!("duplicate owner-filename cases handled above")
+            }
         }
     }
 
-    let layout = if missing.is_empty() && owner_present.is_empty() {
-        VariantPathLayout::FlatRoot
-    } else if missing.is_empty() && flat_present.is_empty() {
+    let layout = if missing.is_empty() && flat_present.is_empty() {
         VariantPathLayout::OwnerDirectories
     } else if flat_present.is_empty() && owner_present.is_empty() {
         return Err(VariantContractLoadError::PartialRingManifestSet {
             variant_dir: variant_dir.to_path_buf(),
             present: Vec::new(),
-            missing,
-        });
-    } else if !flat_present.is_empty() && owner_present.is_empty() {
-        return Err(VariantContractLoadError::PartialRingManifestSet {
-            variant_dir: variant_dir.to_path_buf(),
-            present: flat_present,
             missing,
         });
     } else if flat_present.is_empty() && !owner_present.is_empty() {
@@ -764,7 +751,6 @@ fn resolve_group_root(
     entries: &[(&'static str, &str)],
     flat_root: &Path,
     owner_root: &Path,
-    default_layout: VariantPathLayout,
 ) -> Result<(VariantPathLayout, PathBuf), VariantContractLoadError> {
     let mut flat_present = Vec::new();
     let mut owner_present = Vec::new();
@@ -792,9 +778,6 @@ fn resolve_group_root(
         }
     }
 
-    if flat_present.len() == entries.len() && owner_present.is_empty() {
-        return Ok((VariantPathLayout::FlatRoot, flat_root.to_path_buf()));
-    }
     if owner_present.len() == entries.len() && flat_present.is_empty() {
         return Ok((
             VariantPathLayout::OwnerDirectories,
@@ -803,11 +786,8 @@ fn resolve_group_root(
     }
     if flat_present.is_empty() && owner_present.is_empty() {
         return Ok((
-            default_layout,
-            match default_layout {
-                VariantPathLayout::FlatRoot => flat_root.to_path_buf(),
-                VariantPathLayout::OwnerDirectories => owner_root.to_path_buf(),
-            },
+            VariantPathLayout::OwnerDirectories,
+            owner_root.to_path_buf(),
         ));
     }
     Err(VariantContractLoadError::MixedOwnerLayout {
@@ -974,25 +954,16 @@ fn overlay_contract_from_ring_manifest(
         )?),
     };
 
-    if ring_overlay.seed_overlay.is_some() && ring_overlay.legacy_profile_overlay.is_some() {
-        return Err(invalid_ring2(
-            manifest_path,
-            "ring2_products.live_overlay may not declare both seed_overlay and profile_overlay; use seed_overlay only",
-        ));
-    }
-
-    let (seed_overlay_raw, seed_overlay_field) = match (
-        ring_overlay.seed_overlay.as_deref(),
-        ring_overlay.legacy_profile_overlay.as_deref(),
-    ) {
-        (Some(raw), None) => (Some(raw), "ring2_products.live_overlay.seed_overlay"),
-        (None, Some(raw)) => (Some(raw), "ring2_products.live_overlay.profile_overlay"),
-        (None, None) => (None, "ring2_products.live_overlay.seed_overlay"),
-        (Some(_), Some(_)) => unreachable!("checked above"),
-    };
-
-    let seed_overlay = seed_overlay_raw
-        .map(|raw| normalize_relative_string(raw, seed_overlay_field, manifest_path))
+    let seed_overlay = ring_overlay
+        .seed_overlay
+        .as_deref()
+        .map(|raw| {
+            normalize_relative_string(
+                raw,
+                "ring2_products.live_overlay.seed_overlay",
+                manifest_path,
+            )
+        })
         .transpose()?;
 
     Ok(OverlayContract {
@@ -1739,8 +1710,6 @@ struct VariantOverlayProductDecl {
     issue_message: Option<String>,
     openrc_inittab: Option<String>,
     seed_overlay: Option<String>,
-    #[serde(rename = "profile_overlay")]
-    legacy_profile_overlay: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -2138,37 +2107,6 @@ immutable_required_ro_paths = []
 
     fn write_full_ring_scaffold(variant_dir: &Path) {
         write_file(
-            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
-            VALID_IDENTITY_RING_MANIFEST,
-        );
-        write_file(
-            &variant_dir.join(BUILD_HOST_MANIFEST_FILENAME),
-            VALID_BUILD_HOST_RING_MANIFEST,
-        );
-        write_file(
-            &variant_dir.join(RING3_SOURCES_MANIFEST_FILENAME),
-            VALID_RING3_SOURCES_MANIFEST,
-        );
-        write_file(
-            &variant_dir.join(RING2_PRODUCTS_MANIFEST_FILENAME),
-            VALID_RING2_PRODUCTS_MANIFEST,
-        );
-        write_file(
-            &variant_dir.join(RING1_TRANSFORMS_MANIFEST_FILENAME),
-            VALID_RING1_TRANSFORMS_MANIFEST,
-        );
-        write_file(
-            &variant_dir.join(RING0_RELEASE_MANIFEST_FILENAME),
-            VALID_RING0_RELEASE_MANIFEST,
-        );
-        write_file(
-            &variant_dir.join(SCENARIOS_MANIFEST_FILENAME),
-            VALID_SCENARIOS_MANIFEST,
-        );
-    }
-
-    fn write_full_ring_scaffold_owner_dirs(variant_dir: &Path) {
-        write_file(
             &variant_dir
                 .join(IDENTITY_OWNER_DIR)
                 .join(IDENTITY_MANIFEST_FILENAME),
@@ -2374,20 +2312,26 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("kernel/kconfig"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("recipes/kernel.rhai"),
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
              let required_invocation = \"recipe install\";\n",
         );
         write_file(
-            &variant_dir.join("evidence/build-capability.sh"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
         write_full_ring_scaffold(&variant_dir);
-        let paths = resolve_variant_owner_paths(&variant_dir).expect("resolve flat variant paths");
+        let paths = resolve_variant_owner_paths(&variant_dir).expect("resolve owner-dir paths");
         let ring_bundle = load_ring_manifest_bundle(&paths).expect("parse ring scaffold");
         assert_eq!(ring_bundle.identity.identity.os_id, "levitateos");
         assert_eq!(
@@ -2467,12 +2411,17 @@ immutable_required_ro_paths = []
             .expect("load levitate contract with ring scaffold");
         assert_eq!(
             loaded.manifest_path,
-            variant_dir.join(BUILD_HOST_MANIFEST_FILENAME)
+            variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join(BUILD_HOST_MANIFEST_FILENAME)
         );
-        assert_eq!(loaded.paths.manifest_layout, VariantPathLayout::FlatRoot);
+        assert_eq!(
+            loaded.paths.manifest_layout,
+            VariantPathLayout::OwnerDirectories
+        );
         assert_eq!(
             loaded.paths.build_host_support_layout,
-            VariantPathLayout::FlatRoot
+            VariantPathLayout::OwnerDirectories
         );
         assert_eq!(loaded.contract.identity.os_name, "LevitateOS");
         assert_eq!(
@@ -2515,7 +2464,7 @@ immutable_required_ro_paths = []
                 .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
-        write_full_ring_scaffold_owner_dirs(&variant_dir);
+        write_full_ring_scaffold(&variant_dir);
 
         let paths = resolve_variant_owner_paths(&variant_dir).expect("resolve owner-dir paths");
         assert_eq!(paths.manifest_layout, VariantPathLayout::OwnerDirectories);
@@ -2571,11 +2520,15 @@ immutable_required_ro_paths = []
         let variant_dir = repo_root.join("distro-variants/levitate");
         fs::create_dir_all(&variant_dir).expect("create variant dir");
         write_file(
-            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
+            &variant_dir
+                .join(IDENTITY_OWNER_DIR)
+                .join(IDENTITY_MANIFEST_FILENAME),
             VALID_IDENTITY_RING_MANIFEST,
         );
         write_file(
-            &variant_dir.join(BUILD_HOST_MANIFEST_FILENAME),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join(BUILD_HOST_MANIFEST_FILENAME),
             VALID_BUILD_HOST_RING_MANIFEST,
         );
 
@@ -2595,9 +2548,7 @@ immutable_required_ro_paths = []
         let variant_dir = repo_root.join("distro-variants/levitate");
         write_full_ring_scaffold(&variant_dir);
         write_file(
-            &variant_dir
-                .join(IDENTITY_OWNER_DIR)
-                .join(IDENTITY_MANIFEST_FILENAME),
+            &variant_dir.join(IDENTITY_MANIFEST_FILENAME),
             VALID_IDENTITY_RING_MANIFEST,
         );
 
@@ -2605,8 +2556,8 @@ immutable_required_ro_paths = []
             .expect_err("duplicate manifest ownership should fail");
         assert!(matches!(
             err,
-            VariantContractLoadError::DuplicateOwnerPath {
-                component: "identity",
+            VariantContractLoadError::MixedOwnerLayout {
+                component: "ring manifests",
                 ..
             }
         ));
@@ -2618,7 +2569,7 @@ immutable_required_ro_paths = []
     fn duplicate_owner_manifest_filenames_fail_loudly() {
         let repo_root = temp_repo_root("duplicate-owner-manifest-filenames");
         let variant_dir = repo_root.join("distro-variants/levitate");
-        write_full_ring_scaffold_owner_dirs(&variant_dir);
+        write_full_ring_scaffold(&variant_dir);
         write_file(
             &variant_dir
                 .join(RING3_OWNER_DIR)
@@ -2649,16 +2600,22 @@ immutable_required_ro_paths = []
             "// shared kernel recipe placeholder\n",
         );
         write_file(
-            &variant_dir.join("kernel/kconfig"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("kernel/kconfig"),
             "CONFIG_LOCALVERSION=\"-levitate\"\n",
         );
         write_full_ring_scaffold(&variant_dir);
         write_file(
-            &variant_dir.join("recipes/kernel.rhai"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("recipes/kernel.rhai"),
             "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n",
         );
         write_file(
-            &variant_dir.join("evidence/build-capability.sh"),
+            &variant_dir
+                .join(BUILD_HOST_OWNER_DIR)
+                .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
 
@@ -2673,7 +2630,7 @@ immutable_required_ro_paths = []
     }
 
     #[test]
-    fn legacy_profile_overlay_key_maps_to_seed_overlay_contract() {
+    fn rejects_legacy_profile_overlay_key() {
         let repo_root = temp_repo_root("legacy-profile-overlay-key");
         let variant_dir = repo_root.join("distro-variants/acorn");
 
@@ -2700,7 +2657,7 @@ immutable_required_ro_paths = []
                 .join("evidence/build-capability.sh"),
             "#!/bin/sh\nexit 0\n",
         );
-        write_full_ring_scaffold_owner_dirs(&variant_dir);
+        write_full_ring_scaffold(&variant_dir);
         write_file(
             &variant_dir
                 .join(RING2_OWNER_DIR)
@@ -2712,67 +2669,14 @@ immutable_required_ro_paths = []
             ),
         );
 
-        let contract =
-            load_variant_contract_for_distro_from(&repo_root, "acorn").expect("load acorn");
-
-        assert_eq!(
-            contract.product_config.live_overlay.seed_overlay,
-            Some("ring2/overlays/live".to_string())
-        );
-
-        fs::remove_dir_all(repo_root).expect("cleanup temp root");
-    }
-
-    #[test]
-    fn rejects_overlay_manifest_that_declares_both_seed_and_profile_overlay_keys() {
-        let repo_root = temp_repo_root("conflicting-overlay-keys");
-        let variant_dir = repo_root.join("distro-variants/acorn");
-
-        write_file(
-            &repo_root.join("distro-builder/recipes/linux.rhai"),
-            "// shared kernel recipe placeholder\n",
-        );
-        write_file(
-            &variant_dir
-                .join(BUILD_HOST_OWNER_DIR)
-                .join("kernel/kconfig"),
-            "CONFIG_LOCALVERSION=\"-acorn\"\n",
-        );
-        write_file(
-            &variant_dir
-                .join(BUILD_HOST_OWNER_DIR)
-                .join("recipes/kernel.rhai"),
-            "let required_kernel_recipe = \"distro-builder/recipes/linux.rhai\";\n\
-             let required_invocation = \"recipe install\";\n",
-        );
-        write_file(
-            &variant_dir
-                .join(BUILD_HOST_OWNER_DIR)
-                .join("evidence/build-capability.sh"),
-            "#!/bin/sh\nexit 0\n",
-        );
-        write_full_ring_scaffold_owner_dirs(&variant_dir);
-        write_file(
-            &variant_dir
-                .join(RING2_OWNER_DIR)
-                .join(RING2_PRODUCTS_OWNER_MANIFEST_FILENAME),
-            &VALID_RING2_PRODUCTS_MANIFEST.replacen(
-                "overlay_kind = \"systemd\"",
-                "overlay_kind = \"openrc\"\nopenrc_inittab = \"serial_only\"\nseed_overlay = \"ring2/overlays/live\"\nprofile_overlay = \"ring2/overlays/legacy\"",
-                1,
-            ),
-        );
-
         let err = load_variant_contract_for_distro_from(&repo_root, "acorn")
-            .expect_err("conflicting overlay keys should fail");
+            .expect_err("legacy profile_overlay key must fail");
 
         assert!(matches!(
             err,
-            VariantContractLoadError::InvalidRing2Declaration { .. }
+            VariantContractLoadError::ParseRingManifestFailed { .. }
         ));
-        assert!(err
-            .to_string()
-            .contains("both seed_overlay and profile_overlay"));
+        assert!(err.to_string().contains("profile_overlay"));
 
         fs::remove_dir_all(repo_root).expect("cleanup temp root");
     }
