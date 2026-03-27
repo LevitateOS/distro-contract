@@ -96,7 +96,7 @@ fn resolved_build_host_support_root(
 
 fn build_runtime_artifacts_from_contract(
     contract: &ConformanceContract,
-    stage_artifact_dir: &Path,
+    artifact_dir: &Path,
 ) -> BuildRuntimeArtifacts {
     let rootfs_name = contract
         .transforms
@@ -121,9 +121,9 @@ fn build_runtime_artifacts_from_contract(
         .unwrap_or("overlayfs.erofs");
 
     BuildRuntimeArtifacts {
-        rootfs_image: stage_artifact_dir.join(rootfs_name),
-        initramfs_live: stage_artifact_dir.join(initramfs_live),
-        overlay_image: stage_artifact_dir.join(overlay_name),
+        rootfs_image: artifact_dir.join(rootfs_name),
+        initramfs_live: artifact_dir.join(initramfs_live),
+        overlay_image: artifact_dir.join(overlay_name),
     }
 }
 
@@ -169,17 +169,17 @@ pub fn validate_build_runtime(
     validate_build_runtime_with_artifacts(contract, variant_dir, artifact_dir, &runtime_artifacts)
 }
 
-/// Validate build-runtime provenance with split kernel + stage artifact roots.
+/// Validate build-runtime provenance with split kernel + non-kernel artifact roots.
 ///
 /// Use `kernel_artifact_dir` for kernel provenance outputs and
-/// `stage_artifact_dir` for stage-scoped non-kernel artifacts.
-pub fn validate_build_runtime_with_stage_dirs(
+/// `artifact_dir` for non-kernel build artifacts.
+pub fn validate_build_runtime_with_split_artifact_roots(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
-    stage_artifact_dir: &Path,
+    artifact_dir: &Path,
 ) -> ConformanceReport {
-    let runtime_artifacts = build_runtime_artifacts_from_contract(contract, stage_artifact_dir);
+    let runtime_artifacts = build_runtime_artifacts_from_contract(contract, artifact_dir);
     validate_build_runtime_with_artifacts(
         contract,
         variant_dir,
@@ -439,18 +439,18 @@ pub fn require_valid_build_runtime_with_artifacts(
     }
 }
 
-/// Require build-runtime checks to pass with split kernel + stage roots.
-pub fn require_valid_build_runtime_with_stage_dirs(
+/// Require build-runtime checks to pass with split kernel + non-kernel artifact roots.
+pub fn require_valid_build_runtime_with_split_artifact_roots(
     contract: &ConformanceContract,
     variant_dir: &Path,
     kernel_artifact_dir: &Path,
-    stage_artifact_dir: &Path,
+    artifact_dir: &Path,
 ) -> Result<(), ConformanceError> {
-    let report = validate_build_runtime_with_stage_dirs(
+    let report = validate_build_runtime_with_split_artifact_roots(
         contract,
         variant_dir,
         kernel_artifact_dir,
-        stage_artifact_dir,
+        artifact_dir,
     );
     if report.passed() {
         Ok(())
@@ -472,24 +472,24 @@ fn tagged_live_boot_rootfs_source_pointer_name(artifact_tag: &str) -> String {
 }
 
 fn live_boot_runtime_artifacts_from_tagged_artifact_dir(
-    stage_artifact_dir: &Path,
+    artifact_dir: &Path,
     artifact_tag: &str,
 ) -> LiveBootRuntimeArtifacts {
     LiveBootRuntimeArtifacts {
-        rootfs_image: stage_artifact_dir.join(tagged_live_boot_artifact_name(
+        rootfs_image: artifact_dir.join(tagged_live_boot_artifact_name(
             artifact_tag,
             "filesystem.erofs",
         )),
-        initramfs_live: stage_artifact_dir.join(tagged_live_boot_artifact_name(
+        initramfs_live: artifact_dir.join(tagged_live_boot_artifact_name(
             artifact_tag,
             "initramfs-live.cpio.gz",
         )),
-        overlay_image: stage_artifact_dir.join(tagged_live_boot_artifact_name(
+        overlay_image: artifact_dir.join(tagged_live_boot_artifact_name(
             artifact_tag,
             "overlayfs.erofs",
         )),
-        live_overlay_dir: stage_artifact_dir.join(tagged_live_boot_overlay_dir_name(artifact_tag)),
-        rootfs_source_pointer: stage_artifact_dir
+        live_overlay_dir: artifact_dir.join(tagged_live_boot_overlay_dir_name(artifact_tag)),
+        rootfs_source_pointer: artifact_dir
             .join(tagged_live_boot_rootfs_source_pointer_name(artifact_tag)),
     }
 }
@@ -1197,26 +1197,27 @@ pub fn validate_live_boot_runtime(
     }
 }
 
-/// Validate live-boot runtime using stage-scoped compatibility artifacts.
-pub fn validate_live_boot_runtime_with_stage_dir(
+/// Validate live-boot runtime using a compatibility artifact root plus tag.
+pub fn validate_live_boot_runtime_with_compatibility_artifact_dir(
     contract: &ConformanceContract,
-    stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
+    artifact_dir: &Path,
+    artifact_tag: &str,
 ) -> ConformanceReport {
-    let artifacts = live_boot_runtime_artifacts_from_tagged_artifact_dir(
-        stage_artifact_dir,
-        stage_artifact_tag,
-    );
+    let artifacts =
+        live_boot_runtime_artifacts_from_tagged_artifact_dir(artifact_dir, artifact_tag);
     validate_live_boot_runtime(contract, &artifacts)
 }
 
-pub fn require_valid_live_boot_runtime_with_stage_dir(
+pub fn require_valid_live_boot_runtime_with_compatibility_artifact_dir(
     contract: &ConformanceContract,
-    stage_artifact_dir: &Path,
-    stage_artifact_tag: &str,
+    artifact_dir: &Path,
+    artifact_tag: &str,
 ) -> Result<(), ConformanceError> {
-    let report =
-        validate_live_boot_runtime_with_stage_dir(contract, stage_artifact_dir, stage_artifact_tag);
+    let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+        contract,
+        artifact_dir,
+        artifact_tag,
+    );
     if report.passed() {
         Ok(())
     } else {
@@ -1689,7 +1690,9 @@ mod tests {
         let contract = valid_contract();
         write_systemd_live_boot_artifacts(&stage_dir, true);
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(report.passed(), "{:#?}", report.violations);
 
         fs::remove_dir_all(stage_dir).expect("cleanup artifacts");
@@ -1702,7 +1705,9 @@ mod tests {
         contract.scenarios.live_boot.required_kernel_cmdline = vec!["audit=1".to_string()];
         write_systemd_live_boot_artifacts(&stage_dir, true);
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1745,7 +1750,9 @@ mod tests {
             &format!("{}\n", legacy_rootfs.display()),
         );
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report.violations.iter().any(|v| {
             v.field == LIVE_BOOT_ROOTFS_SOURCE_FIELD
@@ -1766,7 +1773,9 @@ mod tests {
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("etc/locale.conf")).expect("remove locale.conf");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1788,7 +1797,9 @@ mod tests {
         fs::remove_file(rootfs_source.join("usr/lib/locale/C.utf8/LC_CTYPE"))
             .expect("remove locale payload");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1809,7 +1820,9 @@ mod tests {
             .expect("rootfs source path");
         fs::remove_file(rootfs_source.join("etc/ssh/sshd_config")).expect("remove sshd_config");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1830,7 +1843,9 @@ mod tests {
             .expect("rootfs source path");
         fs::remove_dir_all(rootfs_source.join("usr/share/empty.sshd")).expect("remove empty.sshd");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report
             .violations
@@ -1852,7 +1867,9 @@ mod tests {
         fs::remove_file(rootfs_source.join("lib64")).expect("remove lib64 symlink");
         fs::create_dir_all(rootfs_source.join("lib64")).expect("create wrong lib64 directory");
 
-        let report = validate_live_boot_runtime_with_stage_dir(&contract, &stage_dir, "boot");
+        let report = validate_live_boot_runtime_with_compatibility_artifact_dir(
+            &contract, &stage_dir, "boot",
+        );
         assert!(!report.passed());
         assert!(report
             .violations

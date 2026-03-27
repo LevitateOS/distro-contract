@@ -31,8 +31,9 @@ builder/component/disk interfaces.
 - `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`
 - `validate_build_runtime(&ConformanceContract, &Path, &Path) -> ConformanceReport`
 - `require_valid_build_runtime(&ConformanceContract, &Path, &Path) -> Result<(), ConformanceError>`
+- `validate_build_runtime_with_split_artifact_roots(&ConformanceContract, &Path, &Path, &Path) -> ConformanceReport`
 - `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts) -> ConformanceReport`
-- `validate_live_boot_runtime_with_stage_dir(&ConformanceContract, &Path, &str) -> ConformanceReport`
+- `validate_live_boot_runtime_with_compatibility_artifact_dir(&ConformanceContract, &Path, &str) -> ConformanceReport`
 
 ## Schema Version
 

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-/// Stage identifiers for violation attribution.
+/// Checkpoint identifiers for violation attribution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StageId {
     Stage00,
@@ -14,6 +14,28 @@ pub enum StageId {
     Stage06,
     Stage07,
     Stage08,
+}
+
+impl StageId {
+    pub fn canonical_name(self) -> &'static str {
+        match self {
+            Self::Stage00 => "00Build",
+            Self::Stage01 => "01Boot",
+            Self::Stage02 => "02LiveTools",
+            Self::Stage03 => "03Install",
+            Self::Stage04 => "04LoginGate",
+            Self::Stage05 => "05Harness",
+            Self::Stage06 => "06Runtime",
+            Self::Stage07 => "07Update",
+            Self::Stage08 => "08Package",
+        }
+    }
+}
+
+impl fmt::Display for StageId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.canonical_name())
+    }
 }
 
 /// Stable violation codes for machine-readable error handling.
@@ -51,6 +73,19 @@ pub struct Violation {
     pub message: String,
 }
 
+impl fmt::Display for Violation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.stage {
+            Some(checkpoint) => write!(
+                f,
+                "{}.{} [{:?}]: {}",
+                checkpoint, self.field, self.code, self.message
+            ),
+            None => write!(f, "{} [{:?}]: {}", self.field, self.code, self.message),
+        }
+    }
+}
+
 /// Full validation report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConformanceReport {
@@ -81,22 +116,7 @@ impl fmt::Display for ConformanceError {
         )?;
 
         for violation in &self.report.violations {
-            match violation.stage {
-                Some(cp) => {
-                    writeln!(
-                        f,
-                        "- {:?}.{} [{:?}]: {}",
-                        cp, violation.field, violation.code, violation.message
-                    )?;
-                }
-                None => {
-                    writeln!(
-                        f,
-                        "- {} [{:?}]: {}",
-                        violation.field, violation.code, violation.message
-                    )?;
-                }
-            }
+            writeln!(f, "- {}", violation)?;
         }
 
         Ok(())
@@ -104,3 +124,29 @@ impl fmt::Display for ConformanceError {
 }
 
 impl std::error::Error for ConformanceError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stage_id_display_uses_canonical_checkpoint_name() {
+        assert_eq!(StageId::Stage01.to_string(), "01Boot");
+        assert_eq!(StageId::Stage06.to_string(), "06Runtime");
+    }
+
+    #[test]
+    fn violation_display_uses_canonical_checkpoint_name() {
+        let violation = Violation {
+            code: ViolationCode::MissingValue,
+            stage: Some(StageId::Stage02),
+            field: "scenarios.live_tools.evidence".to_string(),
+            message: "missing scenario evidence".to_string(),
+        };
+
+        assert_eq!(
+            violation.to_string(),
+            "02LiveTools.scenarios.live_tools.evidence [MissingValue]: missing scenario evidence"
+        );
+    }
+}
