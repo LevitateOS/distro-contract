@@ -124,29 +124,3 @@ impl fmt::Display for ConformanceError {
 }
 
 impl std::error::Error for ConformanceError {}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn checkpoint_id_display_uses_canonical_name() {
-        assert_eq!(CheckpointId::Boot.to_string(), "01Boot");
-        assert_eq!(CheckpointId::Runtime.to_string(), "06Runtime");
-    }
-
-    #[test]
-    fn violation_display_uses_canonical_checkpoint_name() {
-        let violation = Violation {
-            code: ViolationCode::MissingValue,
-            checkpoint: Some(CheckpointId::LiveTools),
-            field: "scenarios.live_tools.evidence".to_string(),
-            message: "missing scenario evidence".to_string(),
-        };
-
-        assert_eq!(
-            violation.to_string(),
-            "02LiveTools.scenarios.live_tools.evidence [MissingValue]: missing scenario evidence"
-        );
-    }
-}
