@@ -6,7 +6,7 @@
 //! - Validates declaration integrity and anti-gaming rules
 //! - Produces deterministic violation reports
 
-mod build_host_legacy;
+mod build_host;
 pub mod error;
 pub mod fs_layout;
 pub mod runtime;
@@ -14,25 +14,24 @@ pub mod schema;
 pub mod validate;
 pub mod variant;
 
-pub use error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+pub use error::{ConformanceError, ConformanceReport, ContractScope, Violation, ViolationCode};
 pub use runtime::{
     require_valid_build_runtime, require_valid_build_runtime_with_artifacts,
     require_valid_build_runtime_with_split_artifact_roots, require_valid_live_boot_runtime,
-    require_valid_live_boot_runtime_with_compatibility_artifact_dir, validate_build_runtime,
-    validate_build_runtime_with_artifacts, validate_build_runtime_with_split_artifact_roots,
-    validate_live_boot_runtime, validate_live_boot_runtime_with_compatibility_artifact_dir,
+    validate_build_runtime, validate_build_runtime_with_artifacts,
+    validate_build_runtime_with_split_artifact_roots, validate_live_boot_runtime,
     BuildRuntimeArtifacts, LiveBootRuntimeArtifacts,
 };
 pub use schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginCheckpoint, BootCheckpoint,
-    BootPayloadContract, BuildContract, ConformanceContract, DistroIdentity, InstallCheckpoint,
-    InstallDocsFrontend, InstallExperience, KernelBuildContract, LiveEnvironmentScenario,
+    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
+    BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocsFrontend,
+    InstallExperience, InstallScenario, KernelBuildContract, LiveEnvironmentScenario,
     LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
-    PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl,
-    ReleaseCheckpoint, ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
-    RuntimeActionContract, RuntimePolicyCheckpoint, ScenarioContract, ScriptEvidence,
-    SourceContract, ToolsCheckpoint, TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
-    BOOT_REQUIRED_LIVE_SERVICES_BASE, CONTRACT_SCHEMA_VERSION,
+    PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, ReleaseContract,
+    RootfsMutability, RootfsSourceContract, RootfsSourceKind, RuntimeActionContract,
+    RuntimePolicyScenario, ScenarioContract, ScriptEvidence, SourceContract, ToolsScenario,
+    TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
+    CONTRACT_SCHEMA_VERSION,
 };
 pub use validate::{require_valid_contract, validate_contract};
 pub use variant::{

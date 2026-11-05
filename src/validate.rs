@@ -4,12 +4,12 @@
 
 use std::collections::HashSet;
 
-use crate::build_host_legacy::{
+use crate::build_host::{
     EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE, REQUIRED_KERNEL_IMAGE_PATH,
     REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH, REQUIRED_MODULE_INSTALL_PATH,
     REQUIRED_RECIPE_INVOCATION, REQUIRED_VARIANT_KCONFIG,
 };
-use crate::error::{CheckpointId, ConformanceError, ConformanceReport, Violation, ViolationCode};
+use crate::error::{ConformanceError, ConformanceReport, ContractScope, Violation, ViolationCode};
 use crate::schema::{
     ConformanceContract, RootfsSourceKind, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
     BOOT_REQUIRED_LIVE_SERVICES_BASE, CONTRACT_SCHEMA_VERSION,
@@ -45,12 +45,6 @@ const ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD: &str =
     "sources.rootfs_source.preseed_recipe_script";
 const ROOTFS_SOURCE_DEFINES_FIELD: &str = "sources.rootfs_source.defines";
 const BUILD_RUNTIME_REQUIRED_INPUTS_FIELD: &str = "transforms.build_runtime.required_inputs";
-const BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD: &str =
-    "compatibility.build_runtime.deferred_live_boot_inputs";
-const BUILD_RUNTIME_DEFERRED_LIVE_TOOLS_FIELD: &str =
-    "compatibility.build_runtime.deferred_live_tools_inputs";
-const BUILD_RUNTIME_DEFERRED_INSTALL_PLUS_FIELD: &str =
-    "compatibility.build_runtime.deferred_install_plus_inputs";
 const LIVE_UKI_PRIMARY_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[0]";
 const LIVE_UKI_EMERGENCY_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[1]";
 const LIVE_UKI_DEBUG_OUTPUT_FIELD: &str = "transforms.live_uki.output_names[2]";
@@ -68,13 +62,13 @@ const INSTALLED_TOOLS_EVIDENCE_FIELD: &str = "scenarios.installed_tools.evidence
 
 fn push_violation(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    scope: Option<ContractScope>,
     field: impl Into<String>,
     code: ViolationCode,
     message: impl Into<String>,
 ) {
     violations.push(Violation {
-        checkpoint,
+        scope,
         field: field.into(),
         code,
         message: message.into(),
@@ -88,14 +82,14 @@ fn is_placeholder_token(value: &str) -> bool {
 
 fn validate_non_empty_trimmed(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    scope: Option<ContractScope>,
     field: &str,
     value: &str,
 ) -> bool {
     if value.trim().is_empty() {
         push_violation(
             violations,
-            checkpoint,
+            scope,
             field,
             ViolationCode::MissingValue,
             format!("{field} must be non-empty"),
@@ -105,7 +99,7 @@ fn validate_non_empty_trimmed(
     if value != value.trim() {
         push_violation(
             violations,
-            checkpoint,
+            scope,
             field,
             ViolationCode::WhitespaceValue,
             format!("{field} must not include leading/trailing whitespace"),
@@ -115,7 +109,7 @@ fn validate_non_empty_trimmed(
     if is_placeholder_token(value) {
         push_violation(
             violations,
-            checkpoint,
+            scope,
             field,
             ViolationCode::PlaceholderValue,
             format!("{field} must not be a placeholder token"),
@@ -158,7 +152,7 @@ fn live_uki_output<'a>(
     outputs.get(index).map(String::as_str).or_else(|| {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             field,
             ViolationCode::MissingValue,
             format!("{field} must mirror transforms.live_uki.output_names[{index}]"),
@@ -317,10 +311,7 @@ fn validate_artifact_identity_mirrors(
     }
 }
 
-fn validate_release_mirrors_stage_08(
-    violations: &mut Vec<Violation>,
-    contract: &ConformanceContract,
-) {
+fn validate_release_outputs(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let mut expected_primary_outputs = Vec::new();
     if let Some(iso_output) = first_transform_output(
         violations,
@@ -404,14 +395,14 @@ fn validate_release_mirrors_stage_08(
 
 fn validate_unique_values(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    scope: Option<ContractScope>,
     field: &str,
     values: &[String],
 ) {
     if values.is_empty() {
         push_violation(
             violations,
-            checkpoint,
+            scope,
             field,
             ViolationCode::MissingValue,
             format!("{field} must be non-empty"),
@@ -421,11 +412,11 @@ fn validate_unique_values(
 
     let mut seen = HashSet::new();
     for value in values {
-        validate_non_empty_trimmed(violations, checkpoint, field, value);
+        validate_non_empty_trimmed(violations, scope, field, value);
         if !seen.insert(value) {
             push_violation(
                 violations,
-                checkpoint,
+                scope,
                 field,
                 ViolationCode::DuplicateEntry,
                 format!("{field} contains duplicate value '{value}'"),
@@ -442,17 +433,17 @@ fn is_command_token(value: &str) -> bool {
 
 fn validate_command_entries(
     violations: &mut Vec<Violation>,
-    checkpoint: Option<CheckpointId>,
+    scope: Option<ContractScope>,
     field: &str,
     values: &[String],
 ) {
-    validate_unique_values(violations, checkpoint, field, values);
+    validate_unique_values(violations, scope, field, values);
 
     for value in values {
         if !is_command_token(value) {
             push_violation(
                 violations,
-                checkpoint,
+                scope,
                 field,
                 ViolationCode::InvalidToken,
                 format!("{field} value '{value}' is not a valid command token"),
@@ -463,20 +454,20 @@ fn validate_command_entries(
 
 fn validate_kernel_cmdline_tokens(
     violations: &mut Vec<Violation>,
-    checkpoint: CheckpointId,
+    scope: ContractScope,
     field: &str,
     values: &[String],
 ) {
     let mut seen = HashSet::new();
     for value in values {
-        if !validate_non_empty_trimmed(violations, Some(checkpoint), field, value) {
+        if !validate_non_empty_trimmed(violations, Some(scope), field, value) {
             continue;
         }
 
         if value.contains(char::is_whitespace) {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(scope),
                 field,
                 ViolationCode::InvalidToken,
                 format!("{field} value '{value}' must be a single cmdline token"),
@@ -485,7 +476,7 @@ fn validate_kernel_cmdline_tokens(
         if !seen.insert(value) {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(scope),
                 field,
                 ViolationCode::DuplicateEntry,
                 format!("{field} contains duplicate value '{value}'"),
@@ -496,7 +487,7 @@ fn validate_kernel_cmdline_tokens(
 
 fn validate_evidence(
     violations: &mut Vec<Violation>,
-    checkpoint: CheckpointId,
+    scope: ContractScope,
     field_prefix: &str,
     script_path: &str,
     pass_marker: &str,
@@ -505,17 +496,15 @@ fn validate_evidence(
     let script_field = format!("{field_prefix}.script_path");
     let marker_field = format!("{field_prefix}.pass_marker");
 
-    let script_ok =
-        validate_non_empty_trimmed(violations, Some(checkpoint), &script_field, script_path);
-    let marker_ok =
-        validate_non_empty_trimmed(violations, Some(checkpoint), &marker_field, pass_marker);
+    let script_ok = validate_non_empty_trimmed(violations, Some(scope), &script_field, script_path);
+    let marker_ok = validate_non_empty_trimmed(violations, Some(scope), &marker_field, pass_marker);
     let mut script_filename = None;
 
     if script_ok {
         if !is_relative_contract_path(script_path) {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(scope),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!("{script_field} must be a safe relative script path"),
@@ -531,7 +520,7 @@ fn validate_evidence(
         if !valid_filename {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(scope),
                 &script_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!(
@@ -546,7 +535,7 @@ fn validate_evidence(
         if !lowered.contains("PASS") {
             push_violation(
                 violations,
-                Some(checkpoint),
+                Some(scope),
                 &marker_field,
                 ViolationCode::InvalidEvidenceDeclaration,
                 format!("{marker_field} must contain PASS"),
@@ -557,7 +546,7 @@ fn validate_evidence(
             if pass_marker != expected_marker {
                 push_violation(
                     violations,
-                    Some(checkpoint),
+                    Some(scope),
                     &marker_field,
                     ViolationCode::InvalidEvidenceDeclaration,
                     format!("{marker_field} must equal '{expected_marker}'"),
@@ -617,7 +606,7 @@ fn validate_relative_paths_allow_empty(
 ) {
     let mut seen = HashSet::new();
     for value in values {
-        let ok = validate_non_empty_trimmed(violations, Some(CheckpointId::Build), field, value);
+        let ok = validate_non_empty_trimmed(violations, Some(ContractScope::Build), field, value);
         if !ok {
             continue;
         }
@@ -625,7 +614,7 @@ fn validate_relative_paths_allow_empty(
         if !seen.insert(value) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 field,
                 ViolationCode::DuplicateEntry,
                 format!("{field} contains duplicate value '{value}'"),
@@ -635,7 +624,7 @@ fn validate_relative_paths_allow_empty(
         if !is_relative_contract_path(value) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 field,
                 ViolationCode::InvalidPathDeclaration,
                 format!("{field} value '{value}' must be a relative normalized path"),
@@ -650,20 +639,16 @@ fn validate_build_runtime_non_kernel_inputs(
 ) {
     let kernel = &contract.build.kernel;
     let required_field = BUILD_RUNTIME_REQUIRED_INPUTS_FIELD;
-    let deferred_live_boot_field = BUILD_RUNTIME_DEFERRED_LIVE_BOOT_FIELD;
-    let deferred_live_tools_field = BUILD_RUNTIME_DEFERRED_LIVE_TOOLS_FIELD;
-    let deferred_install_plus_field = BUILD_RUNTIME_DEFERRED_INSTALL_PLUS_FIELD;
     let required_build_runtime: Vec<String> =
         expected_build_runtime_required_inputs(violations, contract)
             .into_iter()
             .map(str::to_string)
             .collect();
-    let empty_group: Vec<String> = Vec::new();
 
     if required_build_runtime.len() != 3 {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             required_field,
             ViolationCode::MissingBaselineArtifact,
             format!(
@@ -673,9 +658,6 @@ fn validate_build_runtime_non_kernel_inputs(
     }
 
     validate_relative_paths_allow_empty(violations, required_field, &required_build_runtime);
-    validate_relative_paths_allow_empty(violations, deferred_live_boot_field, &empty_group);
-    validate_relative_paths_allow_empty(violations, deferred_live_tools_field, &empty_group);
-    validate_relative_paths_allow_empty(violations, deferred_install_plus_field, &empty_group);
 
     let kernel_paths = [
         kernel.release_path.as_str(),
@@ -686,7 +668,7 @@ fn validate_build_runtime_non_kernel_inputs(
         if kernel_paths.contains(&value.as_str()) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 required_field,
                 ViolationCode::InvalidPathDeclaration,
                 format!(
@@ -703,7 +685,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
     validate_command_entries(
         violations,
-        Some(CheckpointId::Build),
+        Some(ContractScope::Build),
         BUILD_REQUIRED_TOOLS_FIELD,
         &build.required_build_tools,
     );
@@ -716,7 +698,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
         if !required_build_tools.contains(tool) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 BUILD_REQUIRED_TOOLS_FIELD,
                 ViolationCode::MissingRequiredBuildTool,
                 format!("{BUILD_REQUIRED_TOOLS_FIELD} must include '{tool}'"),
@@ -727,14 +709,14 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     let kconfig_field = BUILD_KERNEL_KCONFIG_FIELD;
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Build),
+        Some(ContractScope::Build),
         kconfig_field,
         &kernel.kconfig_path,
     ) && kernel.kconfig_path != REQUIRED_VARIANT_KCONFIG
     {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             kconfig_field,
             ViolationCode::InvalidPathDeclaration,
             format!(
@@ -757,12 +739,12 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
         (BUILD_KERNEL_IMAGE_FIELD, kernel.image_path.as_str()),
         (BUILD_KERNEL_MODULES_FIELD, kernel.modules_path.as_str()),
     ] {
-        if validate_non_empty_trimmed(violations, Some(CheckpointId::Build), field, value)
+        if validate_non_empty_trimmed(violations, Some(ContractScope::Build), field, value)
             && !is_relative_contract_path(value)
         {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 field,
                 ViolationCode::InvalidPathDeclaration,
                 format!("{field} must be a relative normalized path"),
@@ -773,7 +755,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     if kernel.recipe_invocation != REQUIRED_RECIPE_INVOCATION {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_RECIPE_INVOCATION_FIELD,
             ViolationCode::RecipeKernelOrchestrationRequired,
             format!(
@@ -786,7 +768,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     if kernel.release_path != REQUIRED_KERNEL_RELEASE_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_RELEASE_FIELD,
             ViolationCode::MissingRequiredKernelOutput,
             format!(
@@ -798,7 +780,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     if kernel.image_path != REQUIRED_KERNEL_IMAGE_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_IMAGE_FIELD,
             ViolationCode::MissingRequiredKernelOutput,
             format!(
@@ -810,7 +792,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     if kernel.modules_path != REQUIRED_KERNEL_MODULES_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_MODULES_FIELD,
             ViolationCode::MissingRequiredKernelOutput,
             format!(
@@ -823,7 +805,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     if kernel.module_install_path != REQUIRED_MODULE_INSTALL_PATH {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_MODULE_INSTALL_FIELD,
             ViolationCode::UnsupportedModuleInstallPath,
             format!(
@@ -835,14 +817,14 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Build),
+        Some(ContractScope::Build),
         BUILD_KERNEL_VERSION_FIELD,
         &kernel.version,
     ) && !is_kernel_version_token(&kernel.version)
     {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_VERSION_FIELD,
             ViolationCode::InvalidKernelProvenance,
             "build.kernel.version must be digits/dot format (for example 6.12.71)",
@@ -851,14 +833,14 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Build),
+        Some(ContractScope::Build),
         BUILD_KERNEL_SHA256_FIELD,
         &kernel.sha256,
     ) && !is_sha256_hex(&kernel.sha256)
     {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_SHA256_FIELD,
             ViolationCode::InvalidKernelProvenance,
             "build.kernel.sha256 must be a 64-character hex SHA256",
@@ -867,7 +849,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
     if validate_non_empty_trimmed(
         violations,
-        Some(CheckpointId::Build),
+        Some(ContractScope::Build),
         BUILD_KERNEL_LOCALVERSION_FIELD,
         &kernel.localversion,
     ) && (kernel.localversion.len() < 2
@@ -880,7 +862,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             BUILD_KERNEL_LOCALVERSION_FIELD,
             ViolationCode::InvalidKernelProvenance,
             "build.kernel.localversion must be '-' followed by lowercase alnum/underscore",
@@ -889,7 +871,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
     validate_evidence(
         violations,
-        CheckpointId::Build,
+        ContractScope::Build,
         BUILD_EVIDENCE_FIELD,
         &build.evidence.script_path,
         &build.evidence.pass_marker,
@@ -909,13 +891,13 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
         ) else {
             continue;
         };
-        if !validate_non_empty_trimmed(violations, Some(CheckpointId::Build), field, value) {
+        if !validate_non_empty_trimmed(violations, Some(ContractScope::Build), field, value) {
             continue;
         }
         if !value.ends_with(".efi") {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 field,
                 ViolationCode::InvalidPathDeclaration,
                 format!("{field} must end with '.efi'"),
@@ -924,7 +906,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
         if !is_safe_filename(value) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 field,
                 ViolationCode::InvalidPathDeclaration,
                 format!("{field} must be a filename without path separators"),
@@ -940,7 +922,7 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
     if live_cmdline != live_cmdline.trim() {
         push_violation(
             violations,
-            Some(CheckpointId::Build),
+            Some(ContractScope::Build),
             LIVE_UKI_EXTRA_CMDLINE_FIELD,
             ViolationCode::WhitespaceValue,
             "transforms.live_uki.extra_cmdline must not include leading/trailing whitespace",
@@ -1091,7 +1073,7 @@ fn validate_build_erofs_boundary(violations: &mut Vec<Violation>, contract: &Con
         if contains_forbidden_build_rootfs_token(item) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 required_inputs_field,
                 ViolationCode::InvalidPathDeclaration,
                 format!(
@@ -1106,7 +1088,7 @@ fn validate_build_erofs_boundary(violations: &mut Vec<Violation>, contract: &Con
         if contains_forbidden_build_rootfs_token(tool) {
             push_violation(
                 violations,
-                Some(CheckpointId::Build),
+                Some(ContractScope::Build),
                 required_tools_field,
                 ViolationCode::InvalidToken,
                 format!(
@@ -1183,13 +1165,13 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     validate_build_erofs_boundary(&mut violations, contract);
     validate_ring3_sources(&mut violations, contract);
     validate_artifact_identity_mirrors(&mut violations, contract);
-    validate_release_mirrors_stage_08(&mut violations, contract);
+    validate_release_outputs(&mut violations, contract);
     validate_build_runtime_non_kernel_inputs(&mut violations, contract);
     validate_build_contract(&mut violations, contract);
     let live_boot = &contract.scenarios.live_boot;
     validate_evidence(
         &mut violations,
-        CheckpointId::Boot,
+        ContractScope::LiveBoot,
         LIVE_BOOT_EVIDENCE_FIELD,
         &live_boot.evidence.script_path,
         &live_boot.evidence.pass_marker,
@@ -1197,13 +1179,13 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     );
     validate_kernel_cmdline_tokens(
         &mut violations,
-        CheckpointId::Boot,
+        ContractScope::LiveBoot,
         LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
         &live_boot.required_kernel_cmdline,
     );
     validate_command_entries(
         &mut violations,
-        Some(CheckpointId::Boot),
+        Some(ContractScope::LiveBoot),
         LIVE_BOOT_REQUIRED_SERVICES_FIELD,
         &live_boot.required_live_services,
     );
@@ -1215,7 +1197,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         {
             push_violation(
                 &mut violations,
-                Some(CheckpointId::Boot),
+                Some(ContractScope::LiveBoot),
                 LIVE_BOOT_REQUIRED_KERNEL_CMDLINE_FIELD,
                 ViolationCode::MissingValue,
                 format!(
@@ -1227,13 +1209,13 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     }
     validate_command_entries(
         &mut violations,
-        Some(CheckpointId::Boot),
+        Some(ContractScope::LiveBoot),
         LIVE_ENVIRONMENT_REQUIRED_SERVICES_FIELD,
         &contract.scenarios.live_environment.required_services,
     );
     validate_evidence(
         &mut violations,
-        CheckpointId::LiveTools,
+        ContractScope::LiveTools,
         LIVE_TOOLS_EVIDENCE_FIELD,
         &contract.scenarios.live_tools.evidence.script_path,
         &contract.scenarios.live_tools.evidence.pass_marker,
@@ -1241,7 +1223,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     );
     validate_evidence(
         &mut violations,
-        CheckpointId::Install,
+        ContractScope::Install,
         INSTALL_EVIDENCE_FIELD,
         &contract.scenarios.install.evidence.script_path,
         &contract.scenarios.install.evidence.pass_marker,
@@ -1249,7 +1231,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     );
     validate_evidence(
         &mut violations,
-        CheckpointId::LoginGate,
+        ContractScope::InstalledBoot,
         INSTALLED_BOOT_EVIDENCE_FIELD,
         &contract.scenarios.installed_boot.evidence.script_path,
         &contract.scenarios.installed_boot.evidence.pass_marker,
@@ -1257,7 +1239,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     );
     validate_evidence(
         &mut violations,
-        CheckpointId::Harness,
+        ContractScope::AutomatedLogin,
         AUTOMATED_LOGIN_EVIDENCE_FIELD,
         &contract.scenarios.automated_login.evidence.script_path,
         &contract.scenarios.automated_login.evidence.pass_marker,
@@ -1265,7 +1247,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
     );
     validate_evidence(
         &mut violations,
-        CheckpointId::Runtime,
+        ContractScope::Runtime,
         INSTALLED_TOOLS_EVIDENCE_FIELD,
         &contract.scenarios.installed_tools.evidence.script_path,
         &contract.scenarios.installed_tools.evidence.pass_marker,
@@ -1279,7 +1261,7 @@ pub fn validate_contract(contract: &ConformanceContract) -> ConformanceReport {
         {
             push_violation(
                 &mut violations,
-                Some(CheckpointId::Boot),
+                Some(ContractScope::LiveBoot),
                 LIVE_BOOT_REQUIRED_SERVICES_FIELD,
                 ViolationCode::MissingValue,
                 format!(

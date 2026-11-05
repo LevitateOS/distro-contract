@@ -12,12 +12,7 @@ This crate enforces canonical declaration integrity plus build-runtime provenanc
 - Validate build-runtime provenance against real outputs (`build-host/kernel/kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
 
-This crate is also the policy authority for checkpoint-envelope conformance:
-
-- Checkpoint artifacts must satisfy "nothing more, nothing less" for their checkpoint boundary.
-- Missing required payload is a failure.
-- Extra payload that belongs to later checkpoints is a failure.
-- Filesystem layout checks (required/forbidden paths per checkpoint) are first-class conformance rules.
+Runtime checks validate required artifact payload, filesystem layout, kernel provenance and live-environment correctness against explicit product artifacts. Diagnostics identify the build owner or named scenario; there is no numbered checkpoint ladder or later-stage payload prohibition.
 
 It does **not** own runtime testing (QEMU/scenarios) and does **not** own
 builder/component/disk interfaces.
@@ -33,7 +28,6 @@ builder/component/disk interfaces.
 - `require_valid_build_runtime(&ConformanceContract, &Path, &Path) -> Result<(), ConformanceError>`
 - `validate_build_runtime_with_split_artifact_roots(&ConformanceContract, &Path, &Path, &Path) -> ConformanceReport`
 - `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts) -> ConformanceReport`
-- `validate_live_boot_runtime_with_compatibility_artifact_dir(&ConformanceContract, &Path, &str) -> ConformanceReport`
 
 ## Schema Version
 

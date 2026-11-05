@@ -2,37 +2,33 @@
 
 use std::fmt;
 
-/// Checkpoint identifiers for violation attribution.
+/// Contract owner or runtime scenario associated with a violation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CheckpointId {
+pub enum ContractScope {
     Build,
-    Boot,
+    LiveBoot,
     LiveTools,
     Install,
-    LoginGate,
-    Harness,
+    InstalledBoot,
+    AutomatedLogin,
     Runtime,
-    Update,
-    Package,
 }
 
-impl CheckpointId {
+impl ContractScope {
     pub fn canonical_name(self) -> &'static str {
         match self {
-            Self::Build => "00Build",
-            Self::Boot => "01Boot",
-            Self::LiveTools => "02LiveTools",
-            Self::Install => "03Install",
-            Self::LoginGate => "04LoginGate",
-            Self::Harness => "05Harness",
-            Self::Runtime => "06Runtime",
-            Self::Update => "07Update",
-            Self::Package => "08Package",
+            Self::Build => "build",
+            Self::LiveBoot => "live-boot",
+            Self::LiveTools => "live-tools",
+            Self::Install => "install",
+            Self::InstalledBoot => "installed-boot",
+            Self::AutomatedLogin => "automated-login",
+            Self::Runtime => "runtime",
         }
     }
 }
 
-impl fmt::Display for CheckpointId {
+impl fmt::Display for ContractScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.canonical_name())
     }
@@ -68,18 +64,18 @@ pub enum ViolationCode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
     pub code: ViolationCode,
-    pub checkpoint: Option<CheckpointId>,
+    pub scope: Option<ContractScope>,
     pub field: String,
     pub message: String,
 }
 
 impl fmt::Display for Violation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.checkpoint {
-            Some(checkpoint) => write!(
+        match self.scope {
+            Some(scope) => write!(
                 f,
                 "{}.{} [{:?}]: {}",
-                checkpoint, self.field, self.code, self.message
+                scope, self.field, self.code, self.message
             ),
             None => write!(f, "{} [{:?}]: {}", self.field, self.code, self.message),
         }
