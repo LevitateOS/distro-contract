@@ -1339,6 +1339,22 @@ fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> So
             },
             recipe_script: ring3_sources.rootfs_source.recipe_script.clone(),
             preseed_recipe_script: ring3_sources.rootfs_source.preseed_recipe_script.clone(),
+            preseed_outputs: ring3_sources
+                .rootfs_source
+                .preseed_outputs
+                .iter()
+                .map(|(name, kind)| {
+                    (
+                        name.clone(),
+                        match kind {
+                            VariantRecipeOutputKind::File => crate::RecipeOutputKind::File,
+                            VariantRecipeOutputKind::Directory => {
+                                crate::RecipeOutputKind::Directory
+                            }
+                        },
+                    )
+                })
+                .collect(),
             defines: ring3_sources
                 .rootfs_source
                 .defines
@@ -1581,7 +1597,16 @@ struct VariantRootfsSource {
     kind: VariantRootfsSourceKind,
     recipe_script: String,
     preseed_recipe_script: Option<String>,
+    #[serde(default)]
+    preseed_outputs: BTreeMap<String, VariantRecipeOutputKind>,
     defines: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VariantRecipeOutputKind {
+    File,
+    Directory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

@@ -99,12 +99,20 @@ pub enum RootfsSourceKind {
     RecipeCustom,
 }
 
+/// Filesystem kinds required by a recipe consumer's named output contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecipeOutputKind {
+    File,
+    Directory,
+}
+
 /// Canonical rootfs source policy declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootfsSourceContract {
     pub kind: RootfsSourceKind,
     pub recipe_script: String,
     pub preseed_recipe_script: Option<String>,
+    pub preseed_outputs: BTreeMap<String, RecipeOutputKind>,
     pub defines: BTreeMap<String, String>,
 }
 

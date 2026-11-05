@@ -951,65 +951,51 @@ fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &Conformanc
         );
     }
 
-    match rootfs_source.kind {
-        RootfsSourceKind::RecipeRpmDvd => {
-            if let Some(preseed_recipe_script) = rootfs_source.preseed_recipe_script.as_deref() {
-                if validate_non_empty_trimmed(
-                    violations,
-                    None,
-                    ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
-                    preseed_recipe_script,
-                ) && !is_relative_contract_path(preseed_recipe_script)
-                {
-                    push_violation(
-                        violations,
-                        None,
-                        ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
-                        ViolationCode::InvalidPathDeclaration,
-                        format!(
-                            "{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} must be a relative normalized path"
-                        ),
-                    );
-                }
-            } else {
-                push_violation(
-                    violations,
-                    None,
-                    ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
-                    ViolationCode::MissingValue,
-                    format!(
-                        "{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} is required for {} = 'recipe_rpm_dvd'",
-                        ROOTFS_SOURCE_KIND_FIELD
-                    ),
-                );
-            }
-            if !rootfs_source.defines.is_empty() {
-                push_violation(
-                    violations,
-                    None,
-                    ROOTFS_SOURCE_DEFINES_FIELD,
-                    ViolationCode::InvalidToken,
-                    format!(
-                        "{ROOTFS_SOURCE_DEFINES_FIELD} must be empty when {} = 'recipe_rpm_dvd'",
-                        ROOTFS_SOURCE_KIND_FIELD
-                    ),
-                );
-            }
+    if let Some(preseed_recipe_script) = rootfs_source.preseed_recipe_script.as_deref() {
+        if validate_non_empty_trimmed(
+            violations,
+            None,
+            ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+            preseed_recipe_script,
+        ) && !is_relative_contract_path(preseed_recipe_script)
+        {
+            push_violation(violations, None, ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+                ViolationCode::InvalidPathDeclaration,
+                format!("{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} must be a relative normalized path"));
         }
-        RootfsSourceKind::RecipeCustom => {
-            if rootfs_source.preseed_recipe_script.is_some() {
-                push_violation(
-                    violations,
-                    None,
-                    ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
-                    ViolationCode::InvalidToken,
-                    format!(
-                        "{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} must be omitted when {} = 'recipe_custom'",
-                        ROOTFS_SOURCE_KIND_FIELD
-                    ),
-                );
-            }
+        if rootfs_source.preseed_outputs.is_empty() {
+            push_violation(violations, None, "sources.rootfs_source.preseed_outputs",
+                ViolationCode::MissingValue,
+                "sources.rootfs_source.preseed_outputs must declare required product names and kinds");
         }
+    } else {
+        if rootfs_source.kind == RootfsSourceKind::RecipeRpmDvd {
+            push_violation(violations, None, ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
+                ViolationCode::MissingValue,
+                format!("{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} is required for {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_dvd'"));
+        }
+        if !rootfs_source.preseed_outputs.is_empty() {
+            push_violation(
+                violations,
+                None,
+                "sources.rootfs_source.preseed_outputs",
+                ViolationCode::InvalidToken,
+                "preseed_outputs requires an explicit preseed_recipe_script",
+            );
+        }
+    }
+    for name in rootfs_source.preseed_outputs.keys() {
+        validate_non_empty_trimmed(
+            violations,
+            None,
+            "sources.rootfs_source.preseed_outputs",
+            name,
+        );
+    }
+    if rootfs_source.kind == RootfsSourceKind::RecipeRpmDvd && !rootfs_source.defines.is_empty() {
+        push_violation(violations, None, ROOTFS_SOURCE_DEFINES_FIELD,
+            ViolationCode::InvalidToken,
+            format!("{ROOTFS_SOURCE_DEFINES_FIELD} must be empty when {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_dvd'"));
     }
 
     for (key, value) in &rootfs_source.defines {
