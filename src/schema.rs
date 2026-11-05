@@ -109,6 +109,7 @@ pub enum RecipeOutputKind {
 /// Canonical rootfs source policy declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootfsSourceContract {
+    pub inputs: BTreeMap<String, String>,
     pub kind: RootfsSourceKind,
     pub recipe_script: String,
     pub preseed_recipe_script: Option<String>,

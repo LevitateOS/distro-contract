@@ -998,6 +998,24 @@ fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &Conformanc
             format!("{ROOTFS_SOURCE_DEFINES_FIELD} must be empty when {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_dvd'"));
     }
 
+    for (name, path) in &rootfs_source.inputs {
+        let field = format!("sources.rootfs_source.inputs.{name}");
+        validate_non_empty_trimmed(violations, None, &field, path);
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            push_violation(
+                violations,
+                None,
+                &field,
+                ViolationCode::InvalidToken,
+                "recipe input names must contain only ASCII letters, digits, underscore or hyphen",
+            );
+        }
+    }
+
     for (key, value) in &rootfs_source.defines {
         let key_ok = validate_non_empty_trimmed(violations, None, ROOTFS_SOURCE_DEFINES_FIELD, key);
         let field = format!("{ROOTFS_SOURCE_DEFINES_FIELD}.{key}");
