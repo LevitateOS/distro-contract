@@ -15,9 +15,7 @@ use crate::variant::{resolve_variant_owner_paths, VariantContractLoadError};
 
 const LEGACY_ROOTFS_COMPONENT_SEQUENCES: &[&[&str]] = &[
     &["leviso", "downloads", "rootfs"],
-    &["ralphos", "downloads", "rootfs"],
     &["acornos", "downloads", "rootfs"],
-    &["iuppiteros", "downloads", "rootfs"],
 ];
 
 const BUILD_KERNEL_KCONFIG_FIELD: &str = "build.kernel.kconfig_path";

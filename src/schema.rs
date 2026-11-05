@@ -211,9 +211,6 @@ pub enum RuntimeActionContract {
     ApkPackages {
         packages: Vec<String>,
     },
-    IuppiterDarPayload {
-        target: Option<String>,
-    },
     InstallModePayload {
         interactive_shell: String,
         ux_docs_frontend: InstallDocsFrontend,

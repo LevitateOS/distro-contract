@@ -1225,14 +1225,6 @@ fn runtime_action_contract_from_ring_manifest(
             }
             RuntimeActionContract::ApkPackages { packages }
         }
-        VariantRing2RuntimeAction::IuppiterDarPayload { target } => {
-            RuntimeActionContract::IuppiterDarPayload {
-                target: target
-                    .as_deref()
-                    .map(|raw| normalize_non_empty_string(raw, "target", manifest_path))
-                    .transpose()?,
-            }
-        }
         VariantRing2RuntimeAction::InstallModePayload {
             interactive_shell,
             ux_docs_frontend,
@@ -1690,9 +1682,6 @@ enum VariantRing2RuntimeAction {
     },
     ApkPackages {
         packages: Vec<String>,
-    },
-    IuppiterDarPayload {
-        target: Option<String>,
     },
     InstallModePayload {
         interactive_shell: String,
