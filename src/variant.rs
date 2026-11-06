@@ -1410,6 +1410,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
         live_boot: BootScenario {
             success_patterns: scenarios.live_boot.success_patterns.clone(),
             fatal_patterns: scenarios.live_boot.fatal_patterns.clone(),
+            service_failure_patterns: scenarios.live_boot.service_failure_patterns.clone(),
             required_kernel_cmdline,
             required_live_services,
             evidence: ScriptEvidence {
@@ -1422,6 +1423,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
         },
         live_tools: LiveToolsScenario {
             required_tools: scenarios.live_tools.required_tools.clone(),
+            serial_ready_patterns: scenarios.live_tools.serial_ready_patterns.clone(),
             install_experience: match scenarios.live_tools.install_experience {
                 VariantInstallExperience::Ux => InstallExperience::Ux,
                 VariantInstallExperience::AutomatedSsh => InstallExperience::AutomatedSsh,
@@ -1442,6 +1444,7 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
         installed_boot: BootScenario {
             success_patterns: scenarios.installed_boot.success_patterns.clone(),
             fatal_patterns: scenarios.installed_boot.fatal_patterns.clone(),
+            service_failure_patterns: scenarios.installed_boot.service_failure_patterns.clone(),
             required_kernel_cmdline: scenarios.installed_boot.required_kernel_cmdline.clone(),
             required_live_services: scenarios.installed_boot.required_live_services.clone(),
             evidence: ScriptEvidence {
@@ -1816,6 +1819,8 @@ struct VariantScenarios {
 struct VariantBootScenario {
     success_patterns: Vec<String>,
     fatal_patterns: Vec<String>,
+    #[serde(default)]
+    service_failure_patterns: Vec<String>,
     required_kernel_cmdline: Vec<String>,
     required_live_services: Vec<String>,
     evidence: VariantEvidence,
@@ -1831,6 +1836,8 @@ struct VariantLiveEnvironmentScenario {
 #[serde(deny_unknown_fields)]
 struct VariantLiveToolsScenario {
     required_tools: Vec<String>,
+    #[serde(default)]
+    serial_ready_patterns: Vec<String>,
     install_experience: VariantInstallExperience,
     evidence: VariantEvidence,
 }

@@ -299,8 +299,13 @@ pub struct ReleaseContract {
 /// Boot-scenario declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BootScenario {
+    /// Console lines that mean the boot succeeded (the serial test protocol's
+    /// readiness marker always does).
     pub success_patterns: Vec<String>,
+    /// Console lines that mean the boot failed.
     pub fatal_patterns: Vec<String>,
+    /// Console lines that report a failed service: recorded, not fatal.
+    pub service_failure_patterns: Vec<String>,
     /// Required kernel cmdline tokens for booting this scenario.
     pub required_kernel_cmdline: Vec<String>,
     /// Required live services that must be available in this scenario.
@@ -325,6 +330,9 @@ pub struct ToolsScenario {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveToolsScenario {
     pub required_tools: Vec<String>,
+    /// Serial console lines that mean the live system is up when the serial
+    /// console runs the install UX instead of a shell (login prompt, issue).
+    pub serial_ready_patterns: Vec<String>,
     pub install_experience: InstallExperience,
     pub evidence: ScriptEvidence,
 }
