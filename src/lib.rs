@@ -28,7 +28,7 @@ pub use schema::{
     InstallExperience, InstallScenario, KernelBuildContract, LiveEnvironmentScenario,
     LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
     PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, RecipeOutputKind,
-    ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
+    ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
     RuntimeActionContract, RuntimePolicyScenario, ScenarioContract, ScriptEvidence, SourceContract,
     ToolsScenario, TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
     BOOT_REQUIRED_LIVE_SERVICES_BASE, CONTRACT_SCHEMA_VERSION,

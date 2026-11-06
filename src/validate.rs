@@ -970,10 +970,10 @@ fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &Conformanc
                 "sources.rootfs_source.preseed_outputs must declare required product names and kinds");
         }
     } else {
-        if rootfs_source.kind == RootfsSourceKind::RecipeRpmDvd {
+        if rootfs_source.kind == RootfsSourceKind::RecipeRpmSet {
             push_violation(violations, None, ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD,
                 ViolationCode::MissingValue,
-                format!("{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} is required for {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_dvd'"));
+                format!("{ROOTFS_SOURCE_PRESEED_RECIPE_SCRIPT_FIELD} is required for {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_set'"));
         }
         if !rootfs_source.preseed_outputs.is_empty() {
             push_violation(
@@ -993,10 +993,50 @@ fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &Conformanc
             name,
         );
     }
-    if rootfs_source.kind == RootfsSourceKind::RecipeRpmDvd && !rootfs_source.defines.is_empty() {
+    if rootfs_source.kind == RootfsSourceKind::RecipeRpmSet && !rootfs_source.defines.is_empty() {
         push_violation(violations, None, ROOTFS_SOURCE_DEFINES_FIELD,
             ViolationCode::InvalidToken,
-            format!("{ROOTFS_SOURCE_DEFINES_FIELD} must be empty when {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_dvd'"));
+            format!("{ROOTFS_SOURCE_DEFINES_FIELD} must be empty when {ROOTFS_SOURCE_KIND_FIELD} = 'recipe_rpm_set'"));
+    }
+    match (&rootfs_source.rpm_base, rootfs_source.kind) {
+        (None, RootfsSourceKind::RecipeRpmSet) => push_violation(
+            violations,
+            None,
+            "sources.rootfs_source.rpm_base",
+            ViolationCode::MissingValue,
+            "sources.rootfs_source.rpm_base is required for kind = 'recipe_rpm_set'",
+        ),
+        (Some(_), RootfsSourceKind::RecipeCustom) => push_violation(
+            violations,
+            None,
+            "sources.rootfs_source.rpm_base",
+            ViolationCode::InvalidToken,
+            "sources.rootfs_source.rpm_base only applies to kind = 'recipe_rpm_set'",
+        ),
+        (Some(base), RootfsSourceKind::RecipeRpmSet) => {
+            if base.fedora_release == 0 {
+                push_violation(violations, None, "sources.rootfs_source.rpm_base.fedora_release",
+                    ViolationCode::MissingValue, "rpm_base.fedora_release must name a Fedora release");
+            }
+            if !is_relative_contract_path(&base.signing_key) {
+                push_violation(violations, None, "sources.rootfs_source.rpm_base.signing_key",
+                    ViolationCode::InvalidPathDeclaration,
+                    "rpm_base.signing_key must be a relative normalized path to the release key");
+            }
+            if base.packages.is_empty() {
+                push_violation(violations, None, "sources.rootfs_source.rpm_base.packages",
+                    ViolationCode::MissingValue, "rpm_base.packages must list the packages taken from the base");
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for name in &base.packages {
+                validate_non_empty_trimmed(violations, None, "sources.rootfs_source.rpm_base.packages", name);
+                if !seen.insert(name.as_str()) {
+                    push_violation(violations, None, "sources.rootfs_source.rpm_base.packages",
+                        ViolationCode::InvalidToken, format!("rpm_base.packages lists '{name}' twice"));
+                }
+            }
+        }
+        (None, RootfsSourceKind::RecipeCustom) => {}
     }
 
     for (name, path) in &rootfs_source.inputs {

@@ -1356,7 +1356,7 @@ fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> So
             preseed_network_hosts: ring3_sources.rootfs_source.preseed_network_hosts.clone(),
             inputs: ring3_sources.rootfs_source.inputs.clone(),
             kind: match ring3_sources.rootfs_source.kind {
-                VariantRootfsSourceKind::RecipeRpmDvd => RootfsSourceKind::RecipeRpmDvd,
+                VariantRootfsSourceKind::RecipeRpmSet => RootfsSourceKind::RecipeRpmSet,
                 VariantRootfsSourceKind::RecipeCustom => RootfsSourceKind::RecipeCustom,
             },
             recipe_script: ring3_sources.rootfs_source.recipe_script.clone(),
@@ -1382,6 +1382,13 @@ fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> So
                 .defines
                 .clone()
                 .unwrap_or_default(),
+            rpm_base: ring3_sources.rootfs_source.rpm_base.as_ref().map(|base| {
+                crate::RpmBaseContract {
+                    fedora_release: base.fedora_release,
+                    signing_key: base.signing_key.clone(),
+                    packages: base.packages.clone(),
+                }
+            }),
         },
     }
 }
@@ -1633,6 +1640,15 @@ struct VariantRootfsSource {
     #[serde(default)]
     preseed_outputs: BTreeMap<String, VariantRecipeOutputKind>,
     defines: Option<BTreeMap<String, String>>,
+    rpm_base: Option<VariantRpmBase>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantRpmBase {
+    fedora_release: u32,
+    signing_key: String,
+    packages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -1645,7 +1661,7 @@ enum VariantRecipeOutputKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum VariantRootfsSourceKind {
-    RecipeRpmDvd,
+    RecipeRpmSet,
     RecipeCustom,
 }
 

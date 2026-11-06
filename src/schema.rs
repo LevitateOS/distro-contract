@@ -106,8 +106,19 @@ pub struct KernelBuildContract {
 /// Ring 3 source acquisition kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RootfsSourceKind {
-    RecipeRpmDvd,
+    /// A locked set of RPMs from a Fedora release and its updates (`rpm_base`).
+    RecipeRpmSet,
     RecipeCustom,
+}
+
+/// The RPMs a `recipe_rpm_set` rootfs takes from its Fedora base. The exact
+/// builds are locked by `cargo xtask base lock`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpmBaseContract {
+    pub fedora_release: u32,
+    /// The release's RPM signing key, relative to the variant directory.
+    pub signing_key: String,
+    pub packages: Vec<String>,
 }
 
 /// Filesystem kinds required by a recipe consumer's named output contract.
@@ -130,6 +141,7 @@ pub struct RootfsSourceContract {
     pub preseed_recipe_script: Option<String>,
     pub preseed_outputs: BTreeMap<String, RecipeOutputKind>,
     pub defines: BTreeMap<String, String>,
+    pub rpm_base: Option<RpmBaseContract>,
 }
 
 /// Canonical source ownership.
