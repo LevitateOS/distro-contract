@@ -20,11 +20,11 @@ use crate::schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
     BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocs, InstallScenario,
     InstallUxContract, KernelBuildContract, LiveEnvironmentScenario, LiveToolsScenario,
-    OpenRcInittab, OverlayContract, OverlayKind, PayloadProducerContract, ProductConfigContract,
-    ProductContract, ProductDecl, ReleaseContract, RootfsMutability, RootfsSourceContract,
-    RootfsSourceKind, RuntimeActionContract, RuntimePolicyScenario, ScenarioContract,
-    ScriptEvidence, SourceContract, ToolsScenario, TransformContract,
-    BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
+    OverlayContract, OverlayKind, PayloadProducerContract, ProductConfigContract, ProductContract,
+    ProductDecl, ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind,
+    RuntimeActionContract, RuntimePolicyScenario, ScenarioContract, ScriptEvidence, SourceContract,
+    ToolsScenario, TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE,
+    BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro/variants";
@@ -953,42 +953,7 @@ fn overlay_contract_from_ring_manifest(
         }
     };
 
-    let openrc_inittab = match kind {
-        OverlayKind::Systemd => None,
-        OverlayKind::OpenRc => Some(parse_openrc_inittab_contract(
-            manifest_path,
-            ring_overlay.openrc_inittab.as_deref(),
-        )?),
-    };
-
-    Ok(OverlayContract {
-        kind,
-        openrc_inittab,
-    })
-}
-
-fn parse_openrc_inittab_contract(
-    manifest_path: &Path,
-    raw: Option<&str>,
-) -> Result<OpenRcInittab, VariantContractLoadError> {
-    let raw = raw.ok_or_else(|| {
-        invalid_ring2(
-            manifest_path,
-            "openrc_inittab is required when ring2_products.live_overlay.overlay_kind = 'openrc'",
-        )
-    })?;
-
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "desktop_with_serial" => Ok(OpenRcInittab::DesktopWithSerial),
-        "serial_only" => Ok(OpenRcInittab::SerialOnly),
-        other => Err(invalid_ring2(
-            manifest_path,
-            format!(
-                "unsupported openrc_inittab '{}' (expected 'desktop_with_serial' or 'serial_only')",
-                other
-            ),
-        )),
-    }
+    Ok(OverlayContract { kind })
 }
 
 fn payload_producers_for_product(
@@ -1767,7 +1732,6 @@ struct VariantOverlayProductDecl {
     description: String,
     extends: Option<String>,
     overlay_kind: String,
-    openrc_inittab: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

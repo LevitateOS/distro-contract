@@ -27,7 +27,7 @@ pub use schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
     BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
     InstallScenario, InstallUxContract, KernelBuildContract, LiveEnvironmentScenario,
-    LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
+    LiveToolsScenario, OverlayContract, OverlayKind,
     PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, RecipeOutputKind,
     ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
     RuntimeActionContract, RuntimePolicyScenario, ScenarioContract, ScriptEvidence, SourceContract,

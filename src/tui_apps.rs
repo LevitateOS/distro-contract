@@ -69,9 +69,6 @@ struct Levitate {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Inspect {
-    /// Arguments passed before any the caller gives.
-    #[serde(default)]
-    pub args: Vec<String>,
     /// How to render every page: run the app with `list` to print one page per line,
     /// then render each with `arg <page>`.
     #[serde(default)]

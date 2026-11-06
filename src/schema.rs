@@ -159,18 +159,10 @@ pub enum OverlayKind {
     OpenRc,
 }
 
-/// Supported OpenRC `/etc/inittab` variants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OpenRcInittab {
-    DesktopWithSerial,
-    SerialOnly,
-}
-
 /// Canonical live-overlay execution policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverlayContract {
     pub kind: OverlayKind,
-    pub openrc_inittab: Option<OpenRcInittab>,
 }
 
 /// Canonical rootfs producer declaration for boot payload shaping.
