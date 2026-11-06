@@ -211,9 +211,11 @@ pub struct BootPayloadContract {
 }
 
 /// Canonical install-docs frontend selection for live-tools runtime payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InstallDocsFrontend {
-    PlainText,
+    /// The variant's own install guide, shown in a pager. `guide` is a
+    /// repo-relative path to the text file.
+    PlainText { guide: String },
     BunBundle,
 }
 

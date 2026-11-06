@@ -1228,15 +1228,32 @@ fn runtime_action_contract_from_ring_manifest(
         VariantRing2RuntimeAction::InstallModePayload {
             interactive_shell,
             ux_docs_frontend,
+            ux_docs_guide,
         } => RuntimeActionContract::InstallModePayload {
             interactive_shell: normalize_absolute_string(
                 interactive_shell,
                 "interactive_shell",
                 manifest_path,
             )?,
-            ux_docs_frontend: match ux_docs_frontend {
-                VariantInstallDocsFrontend::PlainText => InstallDocsFrontend::PlainText,
-                VariantInstallDocsFrontend::BunBundle => InstallDocsFrontend::BunBundle,
+            ux_docs_frontend: match (ux_docs_frontend, ux_docs_guide.as_deref()) {
+                (VariantInstallDocsFrontend::PlainText, Some(guide)) => {
+                    InstallDocsFrontend::PlainText {
+                        guide: normalize_relative_string(guide, "ux_docs_guide", manifest_path)?,
+                    }
+                }
+                (VariantInstallDocsFrontend::PlainText, None) => {
+                    return Err(invalid_ring2(
+                        manifest_path,
+                        "runtime action 'install_mode_payload' with ux_docs_frontend = \"plain_text\" must set ux_docs_guide to the variant's install guide text file",
+                    ));
+                }
+                (VariantInstallDocsFrontend::BunBundle, None) => InstallDocsFrontend::BunBundle,
+                (VariantInstallDocsFrontend::BunBundle, Some(_)) => {
+                    return Err(invalid_ring2(
+                        manifest_path,
+                        "runtime action 'install_mode_payload' sets ux_docs_guide, which only ux_docs_frontend = \"plain_text\" uses",
+                    ));
+                }
             },
         },
     })
@@ -1727,6 +1744,7 @@ enum VariantRing2RuntimeAction {
     InstallModePayload {
         interactive_shell: String,
         ux_docs_frontend: VariantInstallDocsFrontend,
+        ux_docs_guide: Option<String>,
     },
 }
 
