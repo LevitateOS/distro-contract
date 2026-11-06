@@ -934,6 +934,23 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
 fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let rootfs_source = &contract.sources.rootfs_source;
+    for (field, value) in [
+        ("sources.rootfs_source.memory_mib", rootfs_source.memory_mib),
+        (
+            "sources.rootfs_source.preseed_memory_mib",
+            rootfs_source.preseed_memory_mib,
+        ),
+    ] {
+        if value.is_some_and(|mib| !(16..=1_048_576).contains(&mib)) {
+            push_violation(
+                violations,
+                None,
+                field,
+                ViolationCode::InvalidToken,
+                "recipe memory limit must be between 16 and 1048576 MiB",
+            );
+        }
+    }
 
     if validate_non_empty_trimmed(
         violations,
