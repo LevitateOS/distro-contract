@@ -11,6 +11,7 @@ pub mod error;
 pub mod fs_layout;
 pub mod runtime;
 pub mod schema;
+pub mod tui_apps;
 pub mod validate;
 pub mod variant;
 
