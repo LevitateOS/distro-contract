@@ -27,7 +27,7 @@ use crate::schema::{
     TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
 
-const VARIANTS_DIR: &str = "distro-variants";
+const VARIANTS_DIR: &str = "distro/variants";
 const IDENTITY_MANIFEST_FILENAME: &str = "identity.toml";
 const BUILD_HOST_MANIFEST_FILENAME: &str = "build-host.toml";
 const RING3_SOURCES_MANIFEST_FILENAME: &str = "ring3-sources.toml";

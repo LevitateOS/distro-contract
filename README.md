@@ -7,7 +7,7 @@ Conformance schema + validation engine for LevitateOS variant contracts.
 This crate enforces canonical declaration integrity plus build-runtime provenance:
 
 - Define the canonical conformance contract schema
-- Load canonical contracts from the ring/owner manifest family in `distro-variants/*`
+- Load canonical contracts from the ring/owner manifest family in `distro/variants/*`
 - Validate anti-gaming and consistency rules
 - Validate build-runtime provenance against real outputs (`build-host/kernel/kconfig`, `kernel.release`, `vmlinuz`, modules path)
 - Return deterministic violation reports
