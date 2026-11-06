@@ -24,8 +24,8 @@ pub struct TuiApp {
     pub entry: PathBuf,
     /// Cargo packages whose binaries the app runs from PATH.
     pub tools: Vec<String>,
-    /// Arguments `inspect` passes when rendering the app headlessly.
-    pub inspect_args: Vec<String>,
+    /// How `cargo xtask inspect` renders the app headlessly.
+    pub inspect: Inspect,
 }
 
 #[derive(Debug)]
@@ -66,11 +66,27 @@ struct Levitate {
     inspect: Inspect,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-struct Inspect {
+pub struct Inspect {
+    /// Arguments passed before any the caller gives.
     #[serde(default)]
-    args: Vec<String>,
+    pub args: Vec<String>,
+    /// How to render every page: run the app with `list` to print one page per line,
+    /// then render each with `arg <page>`.
+    #[serde(default)]
+    pub pages: Option<Pages>,
+    /// Tool invocations a headless run must never make, as `tool token…`: a call to
+    /// `tool` whose arguments contain every token is refused (e.g. `recpart apply --confirm`).
+    #[serde(default)]
+    pub refuse: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pages {
+    pub list: Vec<String>,
+    pub arg: String,
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, TuiAppError> {
@@ -133,6 +149,6 @@ fn load(dir: &Path) -> Result<TuiApp, TuiAppError> {
         dir: dir.to_path_buf(),
         entry: PathBuf::from(entry),
         tools: manifest.levitate.tools,
-        inspect_args: manifest.levitate.inspect.args,
+        inspect: manifest.levitate.inspect,
     })
 }
