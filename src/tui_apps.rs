@@ -84,10 +84,23 @@ pub struct Inspect {
     /// rather than on the app, masked before snapshots are compared.
     #[serde(default)]
     pub mask: Vec<String>,
-    /// Keys `cargo xtask check tui` types, one step at a time, with text each resulting
-    /// screen must show.
+    /// App-relative directories put first on PATH in headless runs (stand-in tools).
     #[serde(default)]
-    pub walk: Vec<WalkStep>,
+    pub path: Vec<String>,
+    /// Scripted sessions `cargo xtask check tui` runs: keys typed one step at a time,
+    /// with text each resulting screen must show.
+    #[serde(default)]
+    pub walks: Vec<Walk>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Walk {
+    pub name: String,
+    /// Extra environment for this walk (e.g. making a stand-in tool fail).
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    pub steps: Vec<WalkStep>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
