@@ -961,22 +961,9 @@ fn overlay_contract_from_ring_manifest(
         )?),
     };
 
-    let seed_overlay = ring_overlay
-        .seed_overlay
-        .as_deref()
-        .map(|raw| {
-            normalize_relative_string(
-                raw,
-                "ring2_products.live_overlay.seed_overlay",
-                manifest_path,
-            )
-        })
-        .transpose()?;
-
     Ok(OverlayContract {
         kind,
         openrc_inittab,
-        seed_overlay,
     })
 }
 
@@ -1781,7 +1768,6 @@ struct VariantOverlayProductDecl {
     extends: Option<String>,
     overlay_kind: String,
     openrc_inittab: Option<String>,
-    seed_overlay: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

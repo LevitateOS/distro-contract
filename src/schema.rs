@@ -171,7 +171,6 @@ pub enum OpenRcInittab {
 pub struct OverlayContract {
     pub kind: OverlayKind,
     pub openrc_inittab: Option<OpenRcInittab>,
-    pub seed_overlay: Option<String>,
 }
 
 /// Canonical rootfs producer declaration for boot payload shaping.
