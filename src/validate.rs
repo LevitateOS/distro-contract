@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use crate::build_host::{
-    EVIDENCE_SCRIPT_PREFIX, REQUIRED_BUILD_TOOLS_BASELINE, REQUIRED_KERNEL_IMAGE_PATH,
+    EVIDENCE_SCRIPT_PREFIX, REQUIRED_KERNEL_IMAGE_PATH,
     REQUIRED_KERNEL_MODULES_PATH, REQUIRED_KERNEL_RELEASE_PATH, REQUIRED_MODULE_INSTALL_PATH,
     REQUIRED_RECIPE_INVOCATION, REQUIRED_VARIANT_KCONFIG,
 };
@@ -689,22 +689,6 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
         BUILD_REQUIRED_TOOLS_FIELD,
         &build.required_build_tools,
     );
-    let required_build_tools: HashSet<&str> = build
-        .required_build_tools
-        .iter()
-        .map(String::as_str)
-        .collect();
-    for tool in REQUIRED_BUILD_TOOLS_BASELINE {
-        if !required_build_tools.contains(tool) {
-            push_violation(
-                violations,
-                Some(ContractScope::Build),
-                BUILD_REQUIRED_TOOLS_FIELD,
-                ViolationCode::MissingRequiredBuildTool,
-                format!("{BUILD_REQUIRED_TOOLS_FIELD} must include '{tool}'"),
-            );
-        }
-    }
 
     let kconfig_field = BUILD_KERNEL_KCONFIG_FIELD;
     if validate_non_empty_trimmed(

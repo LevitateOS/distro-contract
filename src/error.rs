@@ -53,7 +53,6 @@ pub enum ViolationCode {
     MissingBaselineMetadata,
     MissingBaselineArtifact,
     InvalidEvidenceDeclaration,
-    MissingRequiredBuildTool,
     RecipeKernelOrchestrationRequired,
     InvalidKernelProvenance,
     UnsupportedModuleInstallPath,

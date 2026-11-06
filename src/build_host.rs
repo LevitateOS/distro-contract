@@ -12,23 +12,6 @@ pub const REQUIRED_VARIANT_KCONFIG: &str = "kernel/kconfig";
 /// Required variant-local recipe declaration path for the build contract.
 pub const REQUIRED_VARIANT_RECIPE_DECL: &str = "recipes/kernel.rhai";
 
-/// Baseline required build tools for the build contract.
-/// human: this doesn't make sense to me: if each distro needs these build tools.. then why put it in the contract?? isn't that just a distro-builder concern??
-pub const REQUIRED_BUILD_TOOLS_BASELINE: &[&str] = &[
-    "recipe",
-    "cargo",
-    "make",
-    "recuki",
-    "ukify",
-    "mkfs.erofs",
-    "xorriso",
-    "reciso",
-    "recinit",
-    "recstrap",
-    "recfstab",
-    "recchroot",
-];
-
 /// Required recipe lifecycle invocation declaration.
 /// human: I don't uderstand this one either.. I think this is overengineered..
 pub const REQUIRED_RECIPE_INVOCATION: &str = "recipe install";
