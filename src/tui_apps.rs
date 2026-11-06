@@ -113,7 +113,10 @@ pub struct WalkStep {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pages {
+    /// Arguments that print every page, one per line.
     pub list: Vec<String>,
+    /// The flag that opens a page. The live install screen passes it too, to open the
+    /// variant's `[install_ux]` page.
     pub arg: String,
 }
 

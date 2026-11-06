@@ -210,8 +210,8 @@ pub struct InstallUxContract {
 /// What the install screen shows as docs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallDocs {
-    /// A TUI app under `tui/apps`, by its `bin` name, opened at `page` (its
-    /// `--slug`) or at its first page.
+    /// A TUI app under `tui/apps`, by its `bin` name, opened at `page` (with the
+    /// flag its manifest's `inspect.pages.arg` names) or at its first page.
     TuiApp { app: String, page: Option<String> },
     /// A text file, resolved to a path on the build host.
     Text(std::path::PathBuf),
