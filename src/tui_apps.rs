@@ -80,6 +80,24 @@ pub struct Inspect {
     /// `tool` whose arguments contain every token is refused (e.g. `recpart apply --confirm`).
     #[serde(default)]
     pub refuse: Vec<String>,
+    /// Patterns (regular expressions) for screen text that depends on data the app shows
+    /// rather than on the app, masked before snapshots are compared.
+    #[serde(default)]
+    pub mask: Vec<String>,
+    /// Keys `cargo xtask check tui` types, one step at a time, with text each resulting
+    /// screen must show.
+    #[serde(default)]
+    pub walk: Vec<WalkStep>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WalkStep {
+    /// Keys to type (printf escapes), empty for the first screen.
+    #[serde(default)]
+    pub keys: String,
+    /// Text the screen must contain afterwards.
+    pub expect: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
