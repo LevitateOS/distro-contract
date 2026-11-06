@@ -207,7 +207,11 @@ pub struct BootPayloadContract {
 /// a shell beside the install docs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallUxContract {
-    /// Absolute path of the shell in the install screen.
+    /// Consoles whose getty starts the install screen (`tty1`, `ttyS0`). A serial
+    /// console runs it only when the boot asks for it; otherwise it gets the shell.
+    pub consoles: Vec<String>,
+    /// Absolute path of the shell beside the docs, and of the login shell that
+    /// takes over when the install screen ends.
     pub shell: String,
     pub docs: InstallDocs,
 }
@@ -215,8 +219,9 @@ pub struct InstallUxContract {
 /// What the install screen shows as docs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallDocs {
-    /// A TUI app under `tui/apps`, by its `bin` name.
-    TuiApp(String),
+    /// A TUI app under `tui/apps`, by its `bin` name, opened at `page` (its
+    /// `--slug`) or at its first page.
+    TuiApp { app: String, page: Option<String> },
     /// A text file, resolved to a path on the build host.
     Text(std::path::PathBuf),
 }

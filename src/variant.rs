@@ -1102,21 +1102,61 @@ fn install_ux_contract(
     manifest_path: &Path,
     install_ux: &VariantInstallUx,
 ) -> Result<InstallUxContract, VariantContractLoadError> {
-    Ok(InstallUxContract {
-        shell: normalize_absolute_string(&install_ux.shell, "install_ux.shell", manifest_path)?,
-        docs: match &install_ux.docs {
-            VariantInstallDocs::TuiApp(name) => InstallDocs::TuiApp(normalize_non_empty_string(
-                name,
-                "install_ux.docs.tui_app",
-                manifest_path,
-            )?),
-            VariantInstallDocs::Text(guide) => {
-                let guide =
-                    normalize_relative_string(guide, "install_ux.docs.text", manifest_path)?;
-                let dir = manifest_path.parent().unwrap_or(Path::new("."));
-                InstallDocs::Text(dir.join(guide))
+    if install_ux.consoles.is_empty() {
+        return Err(invalid_ring2(
+            manifest_path,
+            "install_ux.consoles must list at least one console",
+        ));
+    }
+    let consoles = install_ux
+        .consoles
+        .iter()
+        .map(|console| {
+            let digits = console
+                .strip_prefix("ttyS")
+                .or_else(|| console.strip_prefix("tty"))
+                .unwrap_or("");
+            if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(invalid_ring2(
+                    manifest_path,
+                    format!("install_ux.consoles: '{console}' is not ttyN or ttySN"),
+                ));
             }
+            Ok(console.clone())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let docs = match (&install_ux.docs.tui_app, &install_ux.docs.text) {
+        (Some(app), None) => InstallDocs::TuiApp {
+            app: normalize_non_empty_string(app, "install_ux.docs.tui_app", manifest_path)?,
+            page: install_ux
+                .docs
+                .page
+                .as_deref()
+                .map(|page| normalize_non_empty_string(page, "install_ux.docs.page", manifest_path))
+                .transpose()?,
         },
+        (None, Some(guide)) => {
+            if install_ux.docs.page.is_some() {
+                return Err(invalid_ring2(
+                    manifest_path,
+                    "install_ux.docs.page applies only to a tui_app",
+                ));
+            }
+            let guide = normalize_relative_string(guide, "install_ux.docs.text", manifest_path)?;
+            let dir = manifest_path.parent().unwrap_or(Path::new("."));
+            InstallDocs::Text(dir.join(guide))
+        }
+        _ => {
+            return Err(invalid_ring2(
+                manifest_path,
+                "install_ux.docs must set exactly one of tui_app or text",
+            ))
+        }
+    };
+    Ok(InstallUxContract {
+        consoles,
+        shell: normalize_absolute_string(&install_ux.shell, "install_ux.shell", manifest_path)?,
+        docs,
     })
 }
 
@@ -1642,17 +1682,19 @@ struct VariantRing2ProductsManifest {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantInstallUx {
+    consoles: Vec<String>,
     shell: String,
     docs: VariantInstallDocs,
 }
 
-/// `docs = { tui_app = "install-docs" }` or `docs = { text = "install-guide.txt" }`,
-/// a text path relative to products.toml.
+/// `docs = { tui_app = "install-docs", page = "installation" }` or
+/// `docs = { text = "install-guide.txt" }`, a path relative to products.toml.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-enum VariantInstallDocs {
-    TuiApp(String),
-    Text(String),
+#[serde(deny_unknown_fields)]
+struct VariantInstallDocs {
+    tui_app: Option<String>,
+    page: Option<String>,
+    text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
