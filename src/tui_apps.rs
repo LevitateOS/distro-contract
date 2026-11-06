@@ -73,41 +73,43 @@ pub struct Inspect {
     /// then render each with `arg <page>`.
     #[serde(default)]
     pub pages: Option<Pages>,
-    /// Tool invocations a headless run must never make, as `tool token…`: a call to
-    /// `tool` whose arguments contain every token is refused (e.g. `recpart apply --confirm`).
-    #[serde(default)]
-    pub refuse: Vec<String>,
     /// Patterns (regular expressions) for screen text that depends on data the app shows
     /// rather than on the app, masked before snapshots are compared.
     #[serde(default)]
     pub mask: Vec<String>,
-    /// App-relative directories put first on PATH in headless runs (stand-in tools).
+    /// App-relative directories put first on PATH in headless runs. Each must hold a
+    /// stand-in for every tool in `tools`, so a headless run never reaches a real one.
     #[serde(default)]
     pub path: Vec<String>,
-    /// Scripted sessions `cargo xtask check tui` runs: keys typed one step at a time,
-    /// with text each resulting screen must show.
+    /// Named states of the app: how to launch it and the keys that reach the state.
+    /// `cargo xtask check tui` runs each and checks the text its steps expect; the
+    /// story gallery (`cargo xtask stories`) opens each live.
     #[serde(default)]
-    pub walks: Vec<Walk>,
+    pub stories: Vec<Story>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Walk {
+pub struct Story {
     pub name: String,
-    /// Extra environment for this walk (e.g. making a stand-in tool fail).
+    /// Arguments for the app.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Extra environment (e.g. making a stand-in tool fail).
     #[serde(default)]
     pub env: BTreeMap<String, String>,
-    pub steps: Vec<WalkStep>,
+    #[serde(default)]
+    pub steps: Vec<StoryStep>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WalkStep {
-    /// Keys to type (printf escapes), empty for the first screen.
+pub struct StoryStep {
+    /// Keys to type (printf escapes), empty for the screen as it is.
     #[serde(default)]
     pub keys: String,
-    /// Text the screen must contain afterwards.
-    pub expect: String,
+    /// Text the screen must show afterwards.
+    pub expect: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
