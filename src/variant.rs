@@ -1333,6 +1333,8 @@ fn invalid_ring2(manifest_path: &Path, message: impl Into<String>) -> VariantCon
 fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> SourceContract {
     SourceContract {
         rootfs_source: RootfsSourceContract {
+            network_hosts: ring3_sources.rootfs_source.network_hosts.clone(),
+            preseed_network_hosts: ring3_sources.rootfs_source.preseed_network_hosts.clone(),
             inputs: ring3_sources.rootfs_source.inputs.clone(),
             kind: match ring3_sources.rootfs_source.kind {
                 VariantRootfsSourceKind::RecipeRpmDvd => RootfsSourceKind::RecipeRpmDvd,
@@ -1595,6 +1597,10 @@ struct VariantRing3Sources {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantRootfsSource {
+    #[serde(default)]
+    network_hosts: Vec<String>,
+    #[serde(default)]
+    preseed_network_hosts: Vec<String>,
     #[serde(default)]
     inputs: BTreeMap<String, String>,
     kind: VariantRootfsSourceKind,
