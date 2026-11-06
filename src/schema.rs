@@ -11,24 +11,6 @@ pub const BOOT_REQUIRED_KERNEL_CMDLINE_BASE: &[&str] = &["audit=1", "inst.sshd=0
 /// Shared live-boot services that must be present across all distros.
 pub const BOOT_REQUIRED_LIVE_SERVICES_BASE: &[&str] = &["sshd"];
 
-/// Canonical install interaction mode for live-tools.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum InstallExperience {
-    Ux,
-    AutomatedSsh,
-}
-
-impl InstallExperience {
-    /// The name in `scenarios.toml` and in the live ISO's install-experience
-    /// marker file.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Ux => "ux",
-            Self::AutomatedSsh => "automated_ssh",
-        }
-    }
-}
-
 /// Automated login policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthMode {
@@ -188,7 +170,6 @@ pub enum OpenRcInittab {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverlayContract {
     pub kind: OverlayKind,
-    pub issue_message: Option<String>,
     pub openrc_inittab: Option<OpenRcInittab>,
     pub seed_overlay: Option<String>,
 }
@@ -222,13 +203,22 @@ pub struct BootPayloadContract {
     pub producers: Vec<PayloadProducerContract>,
 }
 
-/// Canonical install-docs frontend selection for live-tools runtime payload.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InstallDocsFrontend {
-    /// The variant's own install guide, shown in a pager. `guide` is a
-    /// repo-relative path to the text file.
-    PlainText { guide: String },
-    BunBundle,
+/// The live ISO's install screen (`[install_ux]` in the variant's products.toml):
+/// a shell beside the install docs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallUxContract {
+    /// Absolute path of the shell in the install screen.
+    pub shell: String,
+    pub docs: InstallDocs,
+}
+
+/// What the install screen shows as docs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallDocs {
+    /// A TUI app under `tui/apps`, by its `bin` name.
+    TuiApp(String),
+    /// A text file, resolved to a path on the build host.
+    Text(std::path::PathBuf),
 }
 
 /// Canonical live-tools runtime action declaration.
@@ -248,18 +238,6 @@ pub enum RuntimeActionContract {
     ApkPackages {
         packages: Vec<String>,
     },
-    InstallModePayload {
-        interactive_shell: String,
-        ux_docs_frontend: InstallDocsFrontend,
-    },
-}
-
-/// Resolved live-tools runtime policy by install-experience branch.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LiveToolsRuntimeContract {
-    pub common_actions: Vec<RuntimeActionContract>,
-    pub ux_actions: Vec<RuntimeActionContract>,
-    pub automated_ssh_actions: Vec<RuntimeActionContract>,
 }
 
 /// Canonical Ring 2 execution config used by the builder.
@@ -268,7 +246,8 @@ pub struct ProductConfigContract {
     pub live_overlay: OverlayContract,
     pub boot_live: BootPayloadContract,
     pub boot_installed: Option<BootPayloadContract>,
-    pub live_tools: LiveToolsRuntimeContract,
+    pub live_tools_actions: Vec<RuntimeActionContract>,
+    pub install_ux: InstallUxContract,
 }
 
 /// Artifact transform declaration.
@@ -358,7 +337,6 @@ pub struct LiveToolsScenario {
     /// Serial console lines that mean the live system is up when the serial
     /// console runs the install UX instead of a shell (login prompt, issue).
     pub serial_ready_patterns: Vec<String>,
-    pub install_experience: InstallExperience,
     pub evidence: ScriptEvidence,
 }
 

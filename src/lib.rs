@@ -25,9 +25,9 @@ pub use runtime::{
 };
 pub use schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
-    BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocsFrontend,
-    InstallExperience, InstallScenario, KernelBuildContract, LiveEnvironmentScenario,
-    LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
+    BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
+    InstallScenario, InstallUxContract, KernelBuildContract, LiveEnvironmentScenario,
+    LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
     PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, RecipeOutputKind,
     ReleaseContract, RootfsMutability, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
     RuntimeActionContract, RuntimePolicyScenario, ScenarioContract, ScriptEvidence, SourceContract,

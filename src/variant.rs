@@ -18,13 +18,13 @@ use crate::error::{ContractScope, ViolationCode};
 use crate::fs_layout::{validate_layout, LayoutRequirement};
 use crate::schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
-    BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocsFrontend,
-    InstallExperience, InstallScenario, KernelBuildContract, LiveEnvironmentScenario,
-    LiveToolsRuntimeContract, LiveToolsScenario, OpenRcInittab, OverlayContract, OverlayKind,
-    PayloadProducerContract, ProductConfigContract, ProductContract, ProductDecl, ReleaseContract,
-    RootfsMutability, RootfsSourceContract, RootfsSourceKind, RuntimeActionContract,
-    RuntimePolicyScenario, ScenarioContract, ScriptEvidence, SourceContract, ToolsScenario,
-    TransformContract, BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
+    BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocs, InstallScenario,
+    InstallUxContract, KernelBuildContract, LiveEnvironmentScenario, LiveToolsScenario,
+    OpenRcInittab, OverlayContract, OverlayKind, PayloadProducerContract, ProductConfigContract,
+    ProductContract, ProductDecl, ReleaseContract, RootfsMutability, RootfsSourceContract,
+    RootfsSourceKind, RuntimeActionContract, RuntimePolicyScenario, ScenarioContract,
+    ScriptEvidence, SourceContract, ToolsScenario, TransformContract,
+    BOOT_REQUIRED_KERNEL_CMDLINE_BASE, BOOT_REQUIRED_LIVE_SERVICES_BASE,
 };
 
 const VARIANTS_DIR: &str = "distro/variants";
@@ -915,11 +915,18 @@ fn product_config_contract_from_ring_manifest(
                 .map(|producers| BootPayloadContract { producers })
             })
             .transpose()?,
-        live_tools: live_tools_runtime_contract_from_ring_manifest(
+        live_tools_actions: runtime_actions_for_profile_group(
             manifest_path,
-            &ring2_manifest.ring2_products.live_tools,
+            &ring2_manifest.ring2_products.live_tools.logical_name,
+            ring2_manifest
+                .ring2_products
+                .live_tools
+                .runtime_profiles
+                .as_deref(),
             ring2_manifest.ring2_runtime_profiles.as_ref(),
+            "ring2_products.live_tools.runtime_profiles",
         )?,
+        install_ux: install_ux_contract(manifest_path, &ring2_manifest.install_ux)?,
     })
 }
 
@@ -968,7 +975,6 @@ fn overlay_contract_from_ring_manifest(
 
     Ok(OverlayContract {
         kind,
-        issue_message: ring_overlay.issue_message.clone(),
         openrc_inittab,
         seed_overlay,
     })
@@ -1092,33 +1098,25 @@ fn payload_producer_contract_from_ring_manifest(
     })
 }
 
-fn live_tools_runtime_contract_from_ring_manifest(
+fn install_ux_contract(
     manifest_path: &Path,
-    live_tools: &VariantProductDecl,
-    runtime_profiles: Option<&BTreeMap<String, VariantRing2RuntimeProfile>>,
-) -> Result<LiveToolsRuntimeContract, VariantContractLoadError> {
-    Ok(LiveToolsRuntimeContract {
-        common_actions: runtime_actions_for_profile_group(
-            manifest_path,
-            &live_tools.logical_name,
-            live_tools.runtime_profiles.as_deref(),
-            runtime_profiles,
-            "ring2_products.live_tools.runtime_profiles",
-        )?,
-        ux_actions: runtime_actions_for_profile_group(
-            manifest_path,
-            &live_tools.logical_name,
-            live_tools.runtime_profiles_ux.as_deref(),
-            runtime_profiles,
-            "ring2_products.live_tools.runtime_profiles_ux",
-        )?,
-        automated_ssh_actions: runtime_actions_for_profile_group(
-            manifest_path,
-            &live_tools.logical_name,
-            live_tools.runtime_profiles_automated_ssh.as_deref(),
-            runtime_profiles,
-            "ring2_products.live_tools.runtime_profiles_automated_ssh",
-        )?,
+    install_ux: &VariantInstallUx,
+) -> Result<InstallUxContract, VariantContractLoadError> {
+    Ok(InstallUxContract {
+        shell: normalize_absolute_string(&install_ux.shell, "install_ux.shell", manifest_path)?,
+        docs: match &install_ux.docs {
+            VariantInstallDocs::TuiApp(name) => InstallDocs::TuiApp(normalize_non_empty_string(
+                name,
+                "install_ux.docs.tui_app",
+                manifest_path,
+            )?),
+            VariantInstallDocs::Text(guide) => {
+                let guide =
+                    normalize_relative_string(guide, "install_ux.docs.text", manifest_path)?;
+                let dir = manifest_path.parent().unwrap_or(Path::new("."));
+                InstallDocs::Text(dir.join(guide))
+            }
+        },
     })
 }
 
@@ -1225,37 +1223,6 @@ fn runtime_action_contract_from_ring_manifest(
             }
             RuntimeActionContract::ApkPackages { packages }
         }
-        VariantRing2RuntimeAction::InstallModePayload {
-            interactive_shell,
-            ux_docs_frontend,
-            ux_docs_guide,
-        } => RuntimeActionContract::InstallModePayload {
-            interactive_shell: normalize_absolute_string(
-                interactive_shell,
-                "interactive_shell",
-                manifest_path,
-            )?,
-            ux_docs_frontend: match (ux_docs_frontend, ux_docs_guide.as_deref()) {
-                (VariantInstallDocsFrontend::PlainText, Some(guide)) => {
-                    InstallDocsFrontend::PlainText {
-                        guide: normalize_relative_string(guide, "ux_docs_guide", manifest_path)?,
-                    }
-                }
-                (VariantInstallDocsFrontend::PlainText, None) => {
-                    return Err(invalid_ring2(
-                        manifest_path,
-                        "runtime action 'install_mode_payload' with ux_docs_frontend = \"plain_text\" must set ux_docs_guide to the variant's install guide text file",
-                    ));
-                }
-                (VariantInstallDocsFrontend::BunBundle, None) => InstallDocsFrontend::BunBundle,
-                (VariantInstallDocsFrontend::BunBundle, Some(_)) => {
-                    return Err(invalid_ring2(
-                        manifest_path,
-                        "runtime action 'install_mode_payload' sets ux_docs_guide, which only ux_docs_frontend = \"plain_text\" uses",
-                    ));
-                }
-            },
-        },
     })
 }
 
@@ -1448,10 +1415,6 @@ fn scenario_contract_from_ring_manifest(scenarios: &VariantScenarios) -> Scenari
         live_tools: LiveToolsScenario {
             required_tools: scenarios.live_tools.required_tools.clone(),
             serial_ready_patterns: scenarios.live_tools.serial_ready_patterns.clone(),
-            install_experience: match scenarios.live_tools.install_experience {
-                VariantInstallExperience::Ux => InstallExperience::Ux,
-                VariantInstallExperience::AutomatedSsh => InstallExperience::AutomatedSsh,
-            },
             evidence: ScriptEvidence {
                 script_path: scenarios.live_tools.evidence.script_path.clone(),
                 pass_marker: scenarios.live_tools.evidence.pass_marker.clone(),
@@ -1672,6 +1635,24 @@ struct VariantRing2ProductsManifest {
     ring2_products: VariantRing2Products,
     ring2_payload_profiles: Option<BTreeMap<String, VariantRing2PayloadProfile>>,
     ring2_runtime_profiles: Option<BTreeMap<String, VariantRing2RuntimeProfile>>,
+    install_ux: VariantInstallUx,
+}
+
+/// `[install_ux]`: the live ISO's install screen.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VariantInstallUx {
+    shell: String,
+    docs: VariantInstallDocs,
+}
+
+/// `docs = { tui_app = "install-docs" }` or `docs = { text = "install-guide.txt" }`,
+/// a text path relative to products.toml.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+enum VariantInstallDocs {
+    TuiApp(String),
+    Text(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1693,8 +1674,6 @@ struct VariantProductDecl {
     extends: Option<String>,
     payload_profile: Option<String>,
     runtime_profiles: Option<Vec<String>>,
-    runtime_profiles_ux: Option<Vec<String>>,
-    runtime_profiles_automated_ssh: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1704,7 +1683,7 @@ struct VariantRing2PayloadProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum VariantRing2PayloadProducer {
     CopyTree {
         source: String,
@@ -1727,13 +1706,6 @@ enum VariantRing2PayloadProducer {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum VariantInstallDocsFrontend {
-    PlainText,
-    BunBundle,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantRing2RuntimeProfile {
@@ -1741,7 +1713,7 @@ struct VariantRing2RuntimeProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum VariantRing2RuntimeAction {
     ToolPayloadWorkspaceBinary {
         package: String,
@@ -1757,11 +1729,6 @@ enum VariantRing2RuntimeAction {
     ApkPackages {
         packages: Vec<String>,
     },
-    InstallModePayload {
-        interactive_shell: String,
-        ux_docs_frontend: VariantInstallDocsFrontend,
-        ux_docs_guide: Option<String>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1771,7 +1738,6 @@ struct VariantOverlayProductDecl {
     description: String,
     extends: Option<String>,
     overlay_kind: String,
-    issue_message: Option<String>,
     openrc_inittab: Option<String>,
     seed_overlay: Option<String>,
 }
@@ -1872,7 +1838,6 @@ struct VariantLiveToolsScenario {
     required_tools: Vec<String>,
     #[serde(default)]
     serial_ready_patterns: Vec<String>,
-    install_experience: VariantInstallExperience,
     evidence: VariantEvidence,
 }
 
@@ -1921,11 +1886,4 @@ struct VariantRuntimePolicyScenario {
 enum VariantRootfsMutability {
     Mutable,
     Immutable,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum VariantInstallExperience {
-    Ux,
-    AutomatedSsh,
 }
