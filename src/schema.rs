@@ -18,6 +18,17 @@ pub enum InstallExperience {
     AutomatedSsh,
 }
 
+impl InstallExperience {
+    /// The name in `scenarios.toml` and in the live ISO's install-experience
+    /// marker file.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ux => "ux",
+            Self::AutomatedSsh => "automated_ssh",
+        }
+    }
+}
+
 /// Automated login policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuthMode {
