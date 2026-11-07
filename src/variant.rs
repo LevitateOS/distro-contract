@@ -1108,6 +1108,11 @@ fn install_ux_contract(
         shell: normalize_absolute_string(&install_ux.shell, "install_ux.shell", manifest_path)?,
         docs,
         apps,
+        hub: install_ux
+            .hub
+            .as_deref()
+            .map(|hub| normalize_non_empty_string(hub, "install_ux.hub", manifest_path))
+            .transpose()?,
     })
 }
 
@@ -1627,6 +1632,8 @@ struct VariantInstallUx {
     docs: VariantInstallDocs,
     #[serde(default)]
     apps: Vec<String>,
+    #[serde(default)]
+    hub: Option<String>,
 }
 
 /// `docs = { tui_app = "install-docs", page = "installation", args = [...] }`.

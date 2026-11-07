@@ -209,6 +209,9 @@ pub struct InstallUxContract {
     /// TUI apps under `tui/apps`, by name, that the live ISO carries besides the docs
     /// app: each is a command on PATH, for the shell beside the docs.
     pub apps: Vec<String>,
+    /// The TUI app the install screen runs in place of the bare shell (it opens the
+    /// shell itself on request), by name; it ships like the other apps.
+    pub hub: Option<String>,
 }
 
 /// The docs the install screen shows: a TUI app under `tui/apps`, by its `bin` name,
