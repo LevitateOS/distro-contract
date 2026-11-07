@@ -82,8 +82,8 @@ pub struct Inspect {
     #[serde(default)]
     pub path: Vec<String>,
     /// Named states of the app: how to launch it and the keys that reach the state.
-    /// `cargo xtask check tui` runs each and checks the text its steps expect; the
-    /// story gallery (`cargo xtask stories`) opens each live.
+    /// `cargo xtask check tui` runs each and checks the text its steps expect;
+    /// `cargo xtask inspect --story` renders one.
     #[serde(default)]
     pub stories: Vec<Story>,
 }
