@@ -1,34 +1,29 @@
 # distro-contract
 
-Conformance schema + validation engine for LevitateOS variant contracts.
+The variant contract of LevitateOS and AcornOS: the schema of
+`distro/variants/<id>/distro.toml`, its loader and rules, and checks of built
+artifacts against it.
 
-## Purpose
-
-This crate enforces canonical declaration integrity plus build-runtime provenance:
-
-- Define the canonical conformance contract schema
-- Load canonical contracts from the ring/owner manifest family in `distro/variants/*`
-- Validate anti-gaming and consistency rules
-- Validate build-runtime provenance against real outputs (`build-host/kernel/kconfig`, `kernel.release`, `vmlinuz`, modules path)
-- Return deterministic violation reports
-
-Runtime checks validate required artifact payload, filesystem layout, kernel provenance and live-environment correctness against explicit product artifacts. Diagnostics identify the build owner or named scenario; there is no numbered checkpoint ladder or later-stage payload prohibition.
-
-It does **not** own runtime testing (QEMU/scenarios) and does **not** own
-builder/component/disk interfaces.
+A variant directory holds `distro.toml`, the kernel configuration `kconfig`,
+signing keys under `keys/` and release hooks under `hooks/`. The Rust types in
+`schema.rs` are the TOML shape (`deny_unknown_fields`): adding a field means
+adding it to the type and the file.
 
 ## Public API
 
-- `ConformanceContract`: full declaration schema
-  - canonical owners: `identity`, `build`, `sources`, `products`, `transforms`, `scenarios`, `release`, `artifacts`
-- `load_variant_contract_bundle_for_distro_from(&Path, &str) -> Result<LoadedVariantContract, VariantContractLoadError>`
-- `validate_contract(&ConformanceContract) -> ConformanceReport`
-- `require_valid_contract(&ConformanceContract) -> Result<(), ConformanceError>`
-- `validate_build_runtime(&ConformanceContract, &Path, &Path) -> ConformanceReport`
-- `require_valid_build_runtime(&ConformanceContract, &Path, &Path) -> Result<(), ConformanceError>`
-- `validate_build_runtime_with_split_artifact_roots(&ConformanceContract, &Path, &Path, &Path) -> ConformanceReport`
-- `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts) -> ConformanceReport`
-
-## Schema Version
-
-Current contract schema version: `6` (`CONTRACT_SCHEMA_VERSION`).
+- `load(repo_root, distro_id) -> Result<Variant, LoadError>`: reads
+  `distro.toml` once, validates every rule in one pass (each bad value is one
+  `Violation` under its field path, such as
+  `product_config.install_ux.consoles[1]`), and derives `contract.artifacts`
+  from the transforms. There is no unvalidated load.
+- `Variant { id, repo_root, dir, manifest, contract }`, with
+  `Variant::path(rel)` for files beside `distro.toml`.
+- `distro_ids(repo_root)`: the directories under `distro/variants` that hold a
+  `distro.toml`.
+- `validate_build_runtime(&Variant, &BuildRuntimeArtifacts)` and
+  `validate_live_boot_runtime(&BootScenario, &LiveBootRuntimeArtifacts)`:
+  checks of built artifacts (kernel provenance against `kconfig` and the pin;
+  live-boot SSH, locale and merged-/usr wiring), returning `Vec<Violation>`.
+- `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
+  (`7`).
+- `tui_apps`: discovery of the TUI apps under `tui/apps`.

@@ -1,121 +1,101 @@
-//! Conformance validation errors and reports.
+//! Contract violations and load errors.
 
 use std::fmt;
+use std::path::PathBuf;
 
-/// Contract owner or runtime scenario associated with a violation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ContractScope {
-    Build,
-    LiveBoot,
-    LiveTools,
-    Install,
-    InstalledBoot,
-    AutomatedLogin,
-    Runtime,
-}
-
-impl ContractScope {
-    pub fn canonical_name(self) -> &'static str {
-        match self {
-            Self::Build => "build",
-            Self::LiveBoot => "live-boot",
-            Self::LiveTools => "live-tools",
-            Self::Install => "install",
-            Self::InstalledBoot => "installed-boot",
-            Self::AutomatedLogin => "automated-login",
-            Self::Runtime => "runtime",
-        }
-    }
-}
-
-impl fmt::Display for ContractScope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.canonical_name())
-    }
-}
-
-/// Stable violation codes for machine-readable error handling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ViolationCode {
-    InvalidSchemaVersion,
-    MissingValue,
-    WhitespaceValue,
-    PlaceholderValue,
-    InvalidToken,
-    DuplicateEntry,
-    GenericSuccessPattern,
-    PatternSetOverlap,
-    MissingRequiredToolInLiveTools,
-    InvalidAuthDeclaration,
-    LoginPromptNotInInstalledBootPatterns,
-    InvalidPathDeclaration,
-    InvalidMetadataKey,
-    MissingBaselineMetadata,
-    MissingBaselineArtifact,
-    InvalidEvidenceDeclaration,
-    RecipeKernelOrchestrationRequired,
-    InvalidKernelProvenance,
-    UnsupportedModuleInstallPath,
-    MissingRequiredKernelOutput,
-}
-
-/// One contract violation.
+/// One problem, under the field (a `distro.toml` path such as
+/// `sources.rootfs_source.recipe_script`) or the artifact it concerns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
-    pub code: ViolationCode,
-    pub scope: Option<ContractScope>,
     pub field: String,
     pub message: String,
 }
 
+impl Violation {
+    pub fn new(field: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            field: field.into(),
+            message: message.into(),
+        }
+    }
+}
+
 impl fmt::Display for Violation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.scope {
-            Some(scope) => write!(
-                f,
-                "{}.{} [{:?}]: {}",
-                scope, self.field, self.code, self.message
-            ),
-            None => write!(f, "{} [{:?}]: {}", self.field, self.code, self.message),
-        }
+        write!(f, "{}: {}", self.field, self.message)
     }
 }
 
-/// Full validation report.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConformanceReport {
-    pub distro_id: String,
-    pub schema_version: u32,
-    pub violations: Vec<Violation>,
+/// Why a variant did not load.
+#[derive(Debug)]
+pub enum LoadError {
+    /// No `distro/variants/<id>/distro.toml`.
+    UnknownVariant {
+        distro_id: String,
+        manifest: PathBuf,
+        known: Vec<String>,
+    },
+    Read {
+        manifest: PathBuf,
+        source: std::io::Error,
+    },
+    /// The file is not TOML of the contract's shape (unknown or missing field,
+    /// wrong type); the message names the field and line.
+    Parse {
+        manifest: PathBuf,
+        source: toml::de::Error,
+    },
+    /// The file parsed, and these values break the contract's rules.
+    Invalid {
+        manifest: PathBuf,
+        violations: Vec<Violation>,
+    },
 }
 
-impl ConformanceReport {
-    pub fn passed(&self) -> bool {
-        self.violations.is_empty()
-    }
-}
-
-/// Error returned when contract validation fails.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConformanceError {
-    pub report: ConformanceReport,
-}
-
-impl fmt::Display for ConformanceError {
+impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "conformance validation failed for '{}' with {} violation(s)",
-            self.report.distro_id,
-            self.report.violations.len()
-        )?;
-
-        for violation in &self.report.violations {
-            writeln!(f, "- {}", violation)?;
+        match self {
+            Self::UnknownVariant {
+                distro_id,
+                manifest,
+                known,
+            } => write!(
+                f,
+                "unknown variant '{distro_id}': no {} (variants: {})",
+                manifest.display(),
+                known.join(", ")
+            ),
+            Self::Read { manifest, source } => {
+                write!(f, "reading {}: {source}", manifest.display())
+            }
+            Self::Parse { manifest, source } => {
+                write!(f, "parsing {}: {source}", manifest.display())
+            }
+            Self::Invalid {
+                manifest,
+                violations,
+            } => {
+                write!(
+                    f,
+                    "{} has {} problem(s):",
+                    manifest.display(),
+                    violations.len()
+                )?;
+                for violation in violations {
+                    write!(f, "\n- {violation}")?;
+                }
+                Ok(())
+            }
         }
-
-        Ok(())
     }
 }
 
-impl std::error::Error for ConformanceError {}
+impl std::error::Error for LoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Read { source, .. } => Some(source),
+            Self::Parse { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
