@@ -205,6 +205,9 @@ pub struct InstallUxContract {
     /// takes over when the install screen ends.
     pub shell: String,
     pub docs: InstallDocs,
+    /// TUI apps under `tui/apps`, by name, that the live ISO carries besides the docs
+    /// app: each is a command on PATH, for the shell beside the docs.
+    pub apps: Vec<String>,
 }
 
 /// What the install screen shows as docs.

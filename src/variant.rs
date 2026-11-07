@@ -1105,10 +1105,22 @@ fn install_ux_contract(
             ))
         }
     };
+    let mut apps = Vec::new();
+    for app in &install_ux.apps {
+        let app = normalize_non_empty_string(app, "install_ux.apps", manifest_path)?;
+        if apps.contains(&app) {
+            return Err(invalid_ring2(
+                manifest_path,
+                format!("install_ux.apps lists '{app}' twice"),
+            ));
+        }
+        apps.push(app);
+    }
     Ok(InstallUxContract {
         consoles,
         shell: normalize_absolute_string(&install_ux.shell, "install_ux.shell", manifest_path)?,
         docs,
+        apps,
     })
 }
 
@@ -1624,6 +1636,8 @@ struct VariantInstallUx {
     consoles: Vec<String>,
     shell: String,
     docs: VariantInstallDocs,
+    #[serde(default)]
+    apps: Vec<String>,
 }
 
 /// `docs = { tui_app = "install-docs", page = "installation" }` or
