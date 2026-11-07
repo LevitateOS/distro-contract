@@ -918,6 +918,18 @@ fn validate_build_contract(violations: &mut Vec<Violation>, contract: &Conforman
 
 fn validate_ring3_sources(violations: &mut Vec<Violation>, contract: &ConformanceContract) {
     let rootfs_source = &contract.sources.rootfs_source;
+    if rootfs_source
+        .storage_max_objects
+        .is_some_and(|objects| !(1..=1_000_000).contains(&objects))
+    {
+        push_violation(
+            violations,
+            None,
+            "sources.rootfs_source.storage_max_objects",
+            ViolationCode::InvalidToken,
+            "recipe storage object limit must be between 1 and 1000000",
+        );
+    }
     for (field, value) in [
         ("sources.rootfs_source.memory_mib", rootfs_source.memory_mib),
         (

@@ -1308,6 +1308,7 @@ fn invalid_ring2(manifest_path: &Path, message: impl Into<String>) -> VariantCon
 fn source_contract_from_ring_manifest(ring3_sources: &VariantRing3Sources) -> SourceContract {
     SourceContract {
         rootfs_source: RootfsSourceContract {
+            storage_max_objects: ring3_sources.rootfs_source.storage_max_objects,
             memory_mib: ring3_sources.rootfs_source.memory_mib,
             preseed_memory_mib: ring3_sources.rootfs_source.preseed_memory_mib,
             network_hosts: ring3_sources.rootfs_source.network_hosts.clone(),
@@ -1580,6 +1581,7 @@ struct VariantRing3Sources {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantRootfsSource {
+    storage_max_objects: Option<u64>,
     memory_mib: Option<u64>,
     preseed_memory_mib: Option<u64>,
     #[serde(default)]

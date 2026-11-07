@@ -113,6 +113,7 @@ pub enum RecipeOutputKind {
 /// Canonical rootfs source policy declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootfsSourceContract {
+    pub storage_max_objects: Option<u64>,
     pub memory_mib: Option<u64>,
     pub preseed_memory_mib: Option<u64>,
     pub network_hosts: Vec<String>,
