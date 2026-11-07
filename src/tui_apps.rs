@@ -96,6 +96,9 @@ pub struct Inspect {
 #[serde(deny_unknown_fields)]
 pub struct Story {
     pub name: String,
+    /// What case it shows, in a sentence (`cargo xtask tui list <app>` prints it).
+    #[serde(default)]
+    pub about: Option<String>,
     /// Arguments for the app.
     #[serde(default)]
     pub args: Vec<String>,
