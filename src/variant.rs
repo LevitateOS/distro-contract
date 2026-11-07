@@ -1077,33 +1077,20 @@ fn install_ux_contract(
             Ok(console.clone())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let docs = match (&install_ux.docs.tui_app, &install_ux.docs.text) {
-        (Some(app), None) => InstallDocs::TuiApp {
-            app: normalize_non_empty_string(app, "install_ux.docs.tui_app", manifest_path)?,
-            page: install_ux
-                .docs
-                .page
-                .as_deref()
-                .map(|page| normalize_non_empty_string(page, "install_ux.docs.page", manifest_path))
-                .transpose()?,
-        },
-        (None, Some(guide)) => {
-            if install_ux.docs.page.is_some() {
-                return Err(invalid_ring2(
-                    manifest_path,
-                    "install_ux.docs.page applies only to a tui_app",
-                ));
-            }
-            let guide = normalize_relative_string(guide, "install_ux.docs.text", manifest_path)?;
-            let dir = manifest_path.parent().unwrap_or(Path::new("."));
-            InstallDocs::Text(dir.join(guide))
-        }
-        _ => {
-            return Err(invalid_ring2(
-                manifest_path,
-                "install_ux.docs must set exactly one of tui_app or text",
-            ))
-        }
+    let docs = InstallDocs {
+        app: normalize_non_empty_string(&install_ux.docs.tui_app, "install_ux.docs.tui_app", manifest_path)?,
+        page: install_ux
+            .docs
+            .page
+            .as_deref()
+            .map(|page| normalize_non_empty_string(page, "install_ux.docs.page", manifest_path))
+            .transpose()?,
+        args: install_ux
+            .docs
+            .args
+            .iter()
+            .map(|arg| normalize_non_empty_string(arg, "install_ux.docs.args", manifest_path))
+            .collect::<Result<_, _>>()?,
     };
     let mut apps = Vec::new();
     for app in &install_ux.apps {
@@ -1642,14 +1629,14 @@ struct VariantInstallUx {
     apps: Vec<String>,
 }
 
-/// `docs = { tui_app = "install-docs", page = "installation" }` or
-/// `docs = { text = "install-guide.txt" }`, a path relative to products.toml.
+/// `docs = { tui_app = "install-docs", page = "installation", args = [...] }`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VariantInstallDocs {
-    tui_app: Option<String>,
+    tui_app: String,
     page: Option<String>,
-    text: Option<String>,
+    #[serde(default)]
+    args: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

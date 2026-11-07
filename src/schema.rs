@@ -211,14 +211,14 @@ pub struct InstallUxContract {
     pub apps: Vec<String>,
 }
 
-/// What the install screen shows as docs.
+/// The docs the install screen shows: a TUI app under `tui/apps`, by its `bin` name,
+/// started with `args` and opened at `page` (with the flag its manifest's
+/// `inspect.pages.arg` names) or at its first page.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InstallDocs {
-    /// A TUI app under `tui/apps`, by its `bin` name, opened at `page` (with the
-    /// flag its manifest's `inspect.pages.arg` names) or at its first page.
-    TuiApp { app: String, page: Option<String> },
-    /// A text file, resolved to a path on the build host.
-    Text(std::path::PathBuf),
+pub struct InstallDocs {
+    pub app: String,
+    pub page: Option<String>,
+    pub args: Vec<String>,
 }
 
 /// Canonical live-tools runtime action declaration.
