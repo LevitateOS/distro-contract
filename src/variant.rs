@@ -1202,19 +1202,6 @@ fn runtime_action_contract_from_ring_manifest(
                 .transpose()?,
             destination: normalize_relative_string(destination, "destination", manifest_path)?,
         },
-        VariantRing2RuntimeAction::ApkPackages { packages } => {
-            let packages = packages
-                .iter()
-                .map(|package| normalize_non_empty_string(package, "packages", manifest_path))
-                .collect::<Result<Vec<_>, _>>()?;
-            if packages.is_empty() {
-                return Err(invalid_ring2(
-                    manifest_path,
-                    "runtime action 'apk_packages' must declare at least one package",
-                ));
-            }
-            RuntimeActionContract::ApkPackages { packages }
-        }
     })
 }
 
@@ -1719,9 +1706,6 @@ enum VariantRing2RuntimeAction {
         binary: Option<String>,
         target: Option<String>,
         destination: String,
-    },
-    ApkPackages {
-        packages: Vec<String>,
     },
 }
 

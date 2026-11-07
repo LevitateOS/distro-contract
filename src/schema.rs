@@ -231,9 +231,6 @@ pub enum RuntimeActionContract {
         target: Option<String>,
         destination: String,
     },
-    ApkPackages {
-        packages: Vec<String>,
-    },
 }
 
 /// Canonical Ring 2 execution config used by the builder.
