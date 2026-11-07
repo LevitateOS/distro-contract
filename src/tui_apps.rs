@@ -18,6 +18,8 @@ const APPS_PREFIX: &str = "tui/apps/";
 pub struct TuiApp {
     /// The app's one name: `bin` key, directory name, `@levitate/<name>`.
     pub name: String,
+    /// One line on what the app is for: `description` in its package.json.
+    pub description: String,
     /// Absolute app directory.
     pub dir: PathBuf,
     /// Entry file, relative to `dir`.
@@ -51,6 +53,8 @@ struct RootManifest {
 #[derive(Deserialize)]
 struct AppManifest {
     name: String,
+    /// One line on what the app is for (its `--help` summary too).
+    description: String,
     #[serde(default)]
     bin: BTreeMap<String, String>,
     #[serde(default)]
@@ -179,6 +183,7 @@ fn load(dir: &Path) -> Result<TuiApp, TuiAppError> {
     }
     Ok(TuiApp {
         name,
+        description: manifest.description,
         dir: dir.to_path_buf(),
         entry: PathBuf::from(entry),
         tools: manifest.levitate.tools,
