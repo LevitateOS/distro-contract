@@ -2,6 +2,8 @@
 //! once. The builder, xtask and install-tests read these; none spells a
 //! product or scenario name of its own.
 
+use distro_profile::Flavour;
+
 /// A product: a rootfs tree plus layers, which the builder prepares and,
 /// for a release product, assembles into a bootable ISO.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -45,13 +47,27 @@ impl ProductId {
         }
     }
 
-    /// The product whose rootfs this one starts from.
+    /// The system the product's rootfs is, and so what an ISO of it
+    /// installs and recab stages from it: the base system, or the base
+    /// system with the variant's desktop (`[desktop]` of its contract).
+    pub fn flavour(self) -> Flavour {
+        match self {
+            Self::LiveDesktop => Flavour::Desktop,
+            _ => Flavour::Base,
+        }
+    }
+
+    /// The product whose rootfs this one starts from, unchanged. A product
+    /// without one builds the system of its [`flavour`](Self::flavour) from
+    /// the variant's rootfs recipe: base-rootfs the base system, live-desktop
+    /// the desktop system (the base and desktop locks in one tree, so the
+    /// desktop packages' setup runs over the whole system). A parent always
+    /// has its child's flavour.
     pub fn parent(self) -> Option<ProductId> {
         match self {
-            Self::BaseRootfs => None,
+            Self::BaseRootfs | Self::LiveDesktop => None,
             Self::LiveBoot | Self::InstalledBoot => Some(Self::BaseRootfs),
             Self::LiveTools => Some(Self::LiveBoot),
-            Self::LiveDesktop => Some(Self::LiveTools),
         }
     }
 
@@ -130,12 +146,13 @@ pub enum ScenarioId {
     AutomatedLogin,
     Runtime,
     AbUpdate,
+    DesktopBoot,
 }
 
 impl ScenarioId {
-    /// Every scenario, in the order `test all` runs them. Every variant has
-    /// every scenario.
-    pub const ALL: [ScenarioId; 8] = [
+    /// Every scenario, in run order. Every variant has every scenario;
+    /// `test all` runs those [`in_test_all`](Self::in_test_all).
+    pub const ALL: [ScenarioId; 9] = [
         ScenarioId::BuildPreflight,
         ScenarioId::LiveBoot,
         ScenarioId::LiveTools,
@@ -144,6 +161,7 @@ impl ScenarioId {
         ScenarioId::AutomatedLogin,
         ScenarioId::Runtime,
         ScenarioId::AbUpdate,
+        ScenarioId::DesktopBoot,
     ];
 
     /// The name the CLIs take, and the scenario's state and output key.
@@ -157,6 +175,7 @@ impl ScenarioId {
             Self::AutomatedLogin => "automated-login",
             Self::Runtime => "runtime",
             Self::AbUpdate => "ab-update",
+            Self::DesktopBoot => "desktop-boot",
         }
     }
 
@@ -170,6 +189,7 @@ impl ScenarioId {
             Self::AutomatedLogin => "Automated Login",
             Self::Runtime => "Runtime",
             Self::AbUpdate => "A/B Update",
+            Self::DesktopBoot => "Desktop Boot",
         }
     }
 
@@ -184,6 +204,7 @@ impl ScenarioId {
             Self::AutomatedLogin => "root logs in on the installed system",
             Self::Runtime => "the installed system has its tools",
             Self::AbUpdate => "the installed system stages the release into slot B and trials, commits and rolls it back",
+            Self::DesktopBoot => "the live-desktop ISO boots into the desktop with no failed service",
         }
     }
 
@@ -196,6 +217,7 @@ impl ScenarioId {
             Self::BuildPreflight => iso(ProductId::BaseRootfs),
             Self::LiveBoot => iso(ProductId::LiveBoot),
             Self::LiveTools | Self::Install => iso(ProductId::LiveTools),
+            Self::DesktopBoot => iso(ProductId::LiveDesktop),
             Self::InstalledBoot | Self::AutomatedLogin | Self::Runtime => ScenarioInput {
                 iso: None,
                 install_run: true,
@@ -211,7 +233,16 @@ impl ScenarioId {
     /// Whether `cargo xtask run` can boot the scenario's input for you: a
     /// scenario that only boots its input, an ISO or the installed disk.
     pub fn is_runnable(self) -> bool {
-        matches!(self, Self::LiveBoot | Self::LiveTools | Self::InstalledBoot)
+        matches!(self, Self::LiveBoot | Self::LiveTools | Self::InstalledBoot | Self::DesktopBoot)
+    }
+
+    /// Whether `test all` runs the scenario. desktop-boot does not: its
+    /// input, the live-desktop ISO, is a build of its own (the desktop's
+    /// packages, a 2.6 GB tree, about 6 GiB of build memory) that the base
+    /// loop never makes, so `test all` would always report it missing. It
+    /// runs by name: `cargo xtask test desktop-boot <distro>`.
+    pub fn in_test_all(self) -> bool {
+        self != Self::DesktopBoot
     }
 }
 

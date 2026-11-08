@@ -154,6 +154,8 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
 
     let (field, preseed) = at!(c.sources.rootfs_source.preseed_recipe_script);
     ck.repo_file(field, preseed);
+    let (field, preseed) = at!(c.desktop.preseed_recipe_script);
+    ck.repo_file(field, preseed);
 
     let (field, base) = at!(c.sources.rootfs_source.base);
     let release = format!("{field}.release");

@@ -11,8 +11,19 @@
 //! declare; [`APPS`] are commands for the shell beside the docs. Paths are
 //! relative to a layer's root.
 
-/// Consoles whose getty starts the install screen.
+/// Consoles whose getty starts the install screen. On a desktop system the
+/// first virtual console belongs to the display manager, so the desktop ISO
+/// runs the screen on the serial console and from a terminal in the desktop.
 pub const CONSOLES: &[&str] = &["tty1", "ttyS0"];
+/// The account the live desktop's display manager logs in without asking,
+/// and its password, which the session's terminal gives the privilege tool
+/// to start the install screen as root.
+pub const LIVE_DESKTOP_USER: &str = "live";
+pub const LIVE_DESKTOP_PASSWORD: &str = "live";
+/// [`LIVE_DESKTOP_PASSWORD`] as its shadow entry holds it: SHA-512 crypt(3)
+/// (`openssl passwd -6 -salt levitatelive live`).
+pub const LIVE_DESKTOP_PASSWORD_HASH: &str =
+    "$6$levitatelive$gd32U/FgYPx5fKb7hWNVgHyOe/jU8fN9PcDDOixIiO2MXYnwP/vE7z/VbXv3zOtMgMloqA1u2HabT6us.1vV3.";
 /// The shell the hub opens and the login shell that takes over when the screen ends.
 pub const SHELL: &str = "/bin/bash";
 /// The left pane: the install steps in order, with the shell one key away (a TUI

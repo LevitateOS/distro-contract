@@ -112,17 +112,20 @@ pub struct SourceContract {
     pub rootfs_source: RootfsSourceContract,
 }
 
-/// The graphical desktop the `live-desktop` product adds over live-tools
-/// (`profile.desktop` names which: Plasma or LXQt).
+/// The graphical desktop of the desktop system, the rootfs of the
+/// `live-desktop` product (`profile.desktop` names which: Plasma or LXQt).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContract {
     /// What the desktop needs from the base release, beside the base
     /// packages (not locked yet; see docs/desktop.md).
     pub packages: Vec<String>,
-    /// The display manager's unit (systemd) or service (OpenRC); the product
-    /// enables it and the system boots to the graphical target.
+    /// The display manager's unit (systemd) or service (OpenRC); the desktop
+    /// system enables it and boots to the graphical target.
     pub display_manager: String,
+    /// Downloads the desktop lock's packages, which the rootfs recipe
+    /// installs over the base lock's when it builds the desktop system.
+    pub preseed_recipe_script: String,
 }
 
 /// A variant's whole contract: the shape of its `distro.toml`.
