@@ -4,11 +4,11 @@
 //! built artifacts against it.
 
 pub mod error;
+pub mod install_ux;
 pub mod registry;
 pub mod runs;
 pub mod runtime;
 pub mod schema;
-pub mod tui_apps;
 mod validate;
 pub mod variant;
 
@@ -20,8 +20,7 @@ pub use runtime::{
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use runs::Missing;
 pub use schema::{
-    ArtifactNames, ConformanceContract, DistroIdentity, InstallDocs,
-    InstallUxContract, InstalledContract, LiveContract, LiveService,
+    ArtifactNames, ConformanceContract, DistroIdentity, InstalledContract, LiveContract, LiveService,
     LiveUkis, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
     SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, LIVE_KERNEL_CMDLINE, UPDATE_TOOLS,
 };

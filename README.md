@@ -14,7 +14,7 @@ adding it to the type and the file.
 
 - `load(repo_root, distro_id) -> Result<Variant, LoadError>`: reads
   `distro.toml` once, validates every rule in one pass (each bad value is one
-  `Violation` under its field path, such as `install_ux.consoles[1]`). It
+  `Violation` under its field path, such as `live.kernel_cmdline[1]`). It
   derives the names that follow from the ids (`identity.iso_label` = `os_id`
   in capitals, `identity.default_hostname` = `os_id`, `identity.login_prompt`
   = `<os_id> login:`, and
@@ -43,4 +43,6 @@ adding it to the type and the file.
   live-boot SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
   (`8`).
-- `tui_apps`: discovery of the TUI apps under `tui/apps`.
+- `install_ux`: the live install screen, the same on every variant: its
+  consoles, apps and docs page, and the paths and names the builder, the
+  split pane and the install tests share.

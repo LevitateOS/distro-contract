@@ -140,38 +140,6 @@ pub struct SourceContract {
     pub rootfs_source: RootfsSourceContract,
 }
 
-/// The live ISO's install screen: a shell beside the install docs.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InstallUxContract {
-    /// Consoles whose getty starts the install screen (`tty1`, `ttyS0`). A serial
-    /// console runs it only when the boot asks for it; otherwise it gets the shell.
-    pub consoles: Vec<String>,
-    /// Absolute path of the shell beside the docs, and of the login shell that
-    /// takes over when the install screen ends.
-    pub shell: String,
-    pub docs: InstallDocs,
-    /// TUI apps under `tui/apps`, by name, that the live ISO carries besides the docs
-    /// app: each is a command on PATH, for the shell beside the docs.
-    #[serde(default)]
-    pub apps: Vec<String>,
-    /// The TUI app the install screen runs in place of the bare shell (it opens the
-    /// shell itself on request), by name; it ships like the other apps.
-    pub hub: Option<String>,
-}
-
-/// The docs the install screen shows: a TUI app under `tui/apps`, by its `bin` name,
-/// started with `args` and opened at `page` (with the flag its manifest's
-/// `inspect.pages.arg` names) or at its first page.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InstallDocs {
-    pub app: String,
-    pub page: Option<String>,
-    #[serde(default)]
-    pub args: Vec<String>,
-}
-
 /// A service the live system runs besides the installed system's (the live
 /// system is the installed rootfs plus the live overlay, so it runs what the
 /// installed system runs: time sync, audit, D-Bus, the network). Every live
@@ -226,7 +194,6 @@ pub struct ConformanceContract {
     /// The base facts the variant differs in.
     pub profile: Profile,
     pub sources: SourceContract,
-    pub install_ux: InstallUxContract,
     pub live: LiveContract,
     pub installed: InstalledContract,
     /// Derived from `identity` and `installed` when the contract loads.

@@ -57,12 +57,6 @@ impl Check<'_> {
         self.value(field, value, None)
     }
 
-    fn optional_name(&mut self, field: &str, value: &Option<String>) {
-        if let Some(value) = value {
-            self.name(field, value);
-        }
-    }
-
     /// A list of distinct values, each passing `rule`.
     fn list(&mut self, field: &str, values: &[String], required: bool, rule: Option<Rule>) {
         if required && values.is_empty() {
@@ -114,27 +108,6 @@ fn relative_path(value: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("'{value}' must be a relative path without '..'"))
-    }
-}
-
-fn absolute_path(value: &str) -> Result<(), String> {
-    let path = Path::new(value);
-    if path.is_absolute() && !path.components().any(|part| part == Component::ParentDir) {
-        Ok(())
-    } else {
-        Err(format!("'{value}' must be an absolute path without '..'"))
-    }
-}
-
-fn console(value: &str) -> Result<(), String> {
-    let digits = value
-        .strip_prefix("ttyS")
-        .or_else(|| value.strip_prefix("tty"))
-        .unwrap_or("");
-    if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
-        Ok(())
-    } else {
-        Err(format!("'{value}' is not ttyN or ttySN"))
     }
 }
 
@@ -193,7 +166,6 @@ pub(crate) fn validate(
 
     check_kernel(&mut ck, c);
     check_sources(&mut ck, c);
-    check_install_ux(&mut ck, c);
     check_layers(&mut ck, c);
     ck.violations
 }
@@ -281,25 +253,6 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
     }
 }
 
-fn check_install_ux(ck: &mut Check, c: &ConformanceContract) {
-    let (field, consoles) = at!(c.install_ux.consoles);
-    ck.list(field, consoles, true, Some(console));
-    let (field, shell) = at!(c.install_ux.shell);
-    ck.value(field, shell, Some(absolute_path));
-    let (field, app) = at!(c.install_ux.docs.app);
-    ck.name(field, app);
-    let (field, page) = at!(c.install_ux.docs.page);
-    ck.optional_name(field, page);
-    let (field, args) = at!(c.install_ux.docs.args);
-    for (index, arg) in args.iter().enumerate() {
-        ck.name(&format!("{field}[{index}]"), arg);
-    }
-    let (field, apps) = at!(c.install_ux.apps);
-    ck.list(field, apps, false, None);
-    let (field, hub) = at!(c.install_ux.hub);
-    ck.optional_name(field, hub);
-}
-
 /// `[live]` and `[installed]` hold only what the variant adds to the shared
 /// lists, so a value already given to every variant is a mistake.
 fn check_layers(ck: &mut Check, c: &ConformanceContract) {
@@ -325,4 +278,5 @@ fn check_layers(ck: &mut Check, c: &ConformanceContract) {
             );
         }
     }
+
 }
