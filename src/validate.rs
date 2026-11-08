@@ -172,39 +172,18 @@ fn check_kernel(ck: &mut Check, _c: &ConformanceContract) {
 
 fn check_sources(ck: &mut Check, c: &ConformanceContract) {
     let source = &c.sources.rootfs_source;
-    let (field, objects) = at!(c.sources.rootfs_source.storage_max_objects);
-    if objects.is_some_and(|n| !(1..=1_000_000).contains(&n)) {
-        ck.fail(field, "must be between 1 and 1000000");
-    }
-    for (field, mib) in [
-        at!(c.sources.rootfs_source.memory_mib),
-        at!(c.sources.rootfs_source.preseed_memory_mib),
-    ] {
-        if mib.is_some_and(|n| !(16..=1_048_576).contains(&n)) {
-            ck.fail(field, "must be between 16 and 1048576 MiB");
-        }
-    }
-
     let (field, script) = at!(c.sources.rootfs_source.recipe_script);
     ck.repo_file(field, script);
 
     let (field, preseed) = at!(c.sources.rootfs_source.preseed_recipe_script);
-    let (outputs_field, outputs) = at!(c.sources.rootfs_source.preseed_outputs);
     match preseed {
         Some(script) => {
             ck.repo_file(field, script);
-            if outputs.is_empty() {
-                ck.fail(outputs_field, "must name the preseed recipe's outputs and their kinds");
-            }
         }
         None => {
             ck.fail(field, "is required: it downloads the base's locked packages");
         }
     }
-    for name in outputs.keys() {
-        ck.name(&format!("{outputs_field}.{name}"), name);
-    }
-
     let (field, inputs) = at!(c.sources.rootfs_source.inputs);
     for (name, path) in inputs {
         let field = format!("{field}.{name}");

@@ -105,33 +105,16 @@ pub struct PackageBaseContract {
     pub packages: Vec<String>,
 }
 
-/// Filesystem kinds required by a recipe consumer's named output contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RecipeOutputKind {
-    File,
-    Directory,
-}
-
 /// Rootfs source policy.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RootfsSourceContract {
-    pub storage_max_objects: Option<u64>,
-    pub memory_mib: Option<u64>,
-    pub preseed_memory_mib: Option<u64>,
-    #[serde(default)]
-    pub network_hosts: Vec<String>,
-    #[serde(default)]
-    pub preseed_network_hosts: Vec<String>,
     /// Recipe inputs by name: repo-relative files.
     #[serde(default)]
     pub inputs: BTreeMap<String, String>,
     pub kind: RootfsSourceKind,
     pub recipe_script: String,
     pub preseed_recipe_script: Option<String>,
-    #[serde(default)]
-    pub preseed_outputs: BTreeMap<String, RecipeOutputKind>,
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
     pub base: PackageBaseContract,
