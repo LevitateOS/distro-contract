@@ -94,12 +94,4 @@ fn derive_names(contract: &mut ConformanceContract) {
     contract.identity.default_hostname = os_id.clone();
     contract.identity.login_prompt = format!("{os_id} login:");
     contract.artifacts = ArtifactNames::derive(&os_id, contract.installed.initramfs);
-    let source = &mut contract.sources.rootfs_source;
-    if contract.profile.packages == distro_profile::PackageBackend::Rpm {
-        source.rpm_base = Some(crate::schema::RpmBaseContract {
-            fedora_release: source.base.release.parse().unwrap_or(0),
-            signing_key: source.base.signing_key.clone(),
-            packages: source.base.packages.clone(),
-        });
-    }
 }

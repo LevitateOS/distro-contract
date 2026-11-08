@@ -21,7 +21,7 @@ pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use runs::Missing;
 pub use schema::{
     ArtifactNames, ConformanceContract, DistroIdentity, InstalledContract, LiveContract, LiveService,
-    LiveUkis, PackageBaseContract, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
+    LiveUkis, PackageBaseContract, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind,
     SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, UPDATE_TOOLS,
 };
 pub use schema::{locales, system_commands};

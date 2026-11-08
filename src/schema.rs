@@ -106,15 +106,6 @@ pub struct PackageBaseContract {
     pub packages: Vec<String>,
 }
 
-/// `base` of an RPM variant in the shape `cargo xtask base lock` reads until
-/// it reads `base` for both backends; derived when the contract loads.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RpmBaseContract {
-    pub fedora_release: u32,
-    pub signing_key: String,
-    pub packages: Vec<String>,
-}
-
 /// Filesystem kinds required by a recipe consumer's named output contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -145,9 +136,6 @@ pub struct RootfsSourceContract {
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
     pub base: PackageBaseContract,
-    /// Derived from `base` for an RPM variant (not in the file).
-    #[serde(skip)]
-    pub rpm_base: Option<RpmBaseContract>,
 }
 
 /// Source ownership.
