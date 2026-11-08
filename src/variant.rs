@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::LoadError;
-use crate::schema::{ArtifactIdentity, ConformanceContract, TransformContract};
+use crate::schema::{ArtifactNames, ConformanceContract};
 
 const VARIANTS_DIR: &str = "distro/variants";
 const MANIFEST: &str = "distro.toml";
@@ -57,7 +57,6 @@ pub fn load(repo_root: &Path, distro_id: &str) -> Result<Variant, LoadError> {
             violations,
         });
     }
-    contract.artifacts = artifact_identity(&contract.transforms);
     Ok(Variant {
         id: distro_id.to_string(),
         repo_root: repo_root.to_path_buf(),
@@ -93,24 +92,7 @@ fn derive_names(contract: &mut ConformanceContract, distro_id: &str) {
     let os_id = contract.identity.os_id.clone();
     contract.identity.iso_label = os_id.to_ascii_uppercase();
     contract.identity.default_hostname = os_id.clone();
+    contract.identity.login_prompt = format!("{os_id} login:");
     contract.build.kernel.localversion = format!("-{distro_id}");
-    contract.scenarios.automated_login.login_prompt_pattern = format!("{os_id} login:");
-}
-
-fn artifact_identity(transforms: &TransformContract) -> ArtifactIdentity {
-    ArtifactIdentity {
-        rootfs_name: transforms.rootfs_image.output().to_string(),
-        initramfs_live_output: transforms.initramfs_live.output().to_string(),
-        iso_filename: transforms.iso.output().to_string(),
-        initramfs_installed_output: transforms
-            .initramfs_installed
-            .as_ref()
-            .map(|t| t.output().to_string()),
-        installed_uki_outputs: transforms
-            .installed_uki
-            .as_ref()
-            .map(|t| t.output_names.clone())
-            .unwrap_or_default(),
-        disk_image_output: transforms.disk_image.as_ref().map(|t| t.output().to_string()),
-    }
+    contract.artifacts = ArtifactNames::derive(&os_id, contract.installed.initramfs);
 }

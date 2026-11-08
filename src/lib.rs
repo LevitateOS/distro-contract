@@ -1,7 +1,9 @@
 //! The variant contract: the schema of `distro/variants/<id>/distro.toml`,
-//! its loader and rules, and checks of built artifacts against it.
+//! its loader and rules, the names derived from it, the registry of products
+//! and scenarios, and checks of built artifacts against it.
 
 pub mod error;
+pub mod registry;
 pub mod runtime;
 pub mod schema;
 pub mod tui_apps;
@@ -13,15 +15,12 @@ pub use runtime::{
     validate_build_runtime, validate_live_boot_runtime, BuildRuntimeArtifacts,
     LiveBootRuntimeArtifacts,
 };
+pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use schema::{
-    ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
-    BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
-    InstallScenario, InstallUxContract, KernelBuildContract, LiveEnvironmentScenario,
-    LiveToolsScenario, PayloadProducerContract,
-    ProductConfigContract, ProductContract, ProductDecl, RecipeOutputKind, ReleaseContract,
-    RootfsMutability, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
-    RuntimeActionContract, RuntimePolicyScenario, ScenarioContract, ScriptEvidence,
-    SourceContract, ToolsScenario, TransformContract, CONTRACT_SCHEMA_VERSION,
+    ArtifactNames, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
+    InstallUxContract, InstalledContract, KernelBuildContract, LiveContract, LiveService,
+    LiveUkis, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
+    SourceContract, CONTRACT_SCHEMA_VERSION, INSTALLED_TOOLS, LIVE_KERNEL_CMDLINE, LIVE_TOOLS,
 };
 pub use variant::{distro_ids, load, Variant};
 

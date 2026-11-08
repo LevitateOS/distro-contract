@@ -5,9 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::Violation;
-use crate::schema::BootScenario;
-use distro_profile::{InitSystem, Libc, Profile};
+use crate::schema::{ConformanceContract, LiveService};
 use crate::variant::Variant;
+use distro_profile::{InitSystem, Libc};
 
 /// The build outputs `validate_build_runtime` checks.
 #[derive(Debug, Clone)]
@@ -144,13 +144,14 @@ pub fn validate_build_runtime(
     out.0
 }
 
-/// Check the live boot's rootfs and overlay for working SSH, a UTF-8 locale
-/// and (systemd) merged /usr, as the variant's profile (init, libc) has them.
+/// Check the live boot's rootfs and overlay for working SSH, the live
+/// services, a UTF-8 locale and (systemd) merged /usr, as the variant's
+/// profile (init, libc) has them.
 pub fn validate_live_boot_runtime(
-    profile: &Profile,
-    live_boot: &BootScenario,
+    contract: &ConformanceContract,
     artifacts: &LiveBootRuntimeArtifacts,
 ) -> Vec<Violation> {
+    let profile = &contract.profile;
     let mut out = Missing(Vec::new());
     out.file(&artifacts.rootfs_image, "live-boot rootfs image");
     out.file(&artifacts.initramfs_live, "live-boot initramfs");
@@ -172,7 +173,7 @@ pub fn validate_live_boot_runtime(
         return out.0;
     }
     let overlay = &artifacts.live_overlay_dir;
-    let services = "scenarios.live_boot.required_live_services";
+    let services = "live.services";
 
     let sshd_service = match profile.init {
         InitSystem::Systemd => "usr/lib/systemd/system/sshd.service",
@@ -223,28 +224,15 @@ pub fn validate_live_boot_runtime(
                 format!("missing /run/sshd tmpfiles policy (or {})", local_tmpfiles.display()),
             );
         }
-        let anaconda = rootfs.join("usr/lib/systemd/system/anaconda-sshd.service");
-        if is_file(&anaconda) && !live_boot.required_kernel_cmdline.iter().any(|t| t == "inst.sshd=0") {
-            out.push(
-                "scenarios.live_boot.required_kernel_cmdline",
-                format!(
-                    "{} exists, so the cmdline needs 'inst.sshd=0' (it races sshd.service for port 22)",
-                    anaconda.display()
-                ),
-            );
-        }
     } else {
         out.symlink(&overlay.join("etc/runlevels/default/sshd"), "OpenRC sshd runlevel symlink");
-        let wants = |name: &str| live_boot.required_live_services.iter().any(|s| s == name);
-        if wants("networking") {
+        if contract.live_services().contains(&LiveService::Network) {
             out.file(&rootfs.join("etc/init.d/networking"), "OpenRC networking service");
             out.file(&rootfs.join("etc/network/interfaces"), "network interfaces config");
             out.symlink(
                 &overlay.join("etc/runlevels/boot/networking"),
                 "OpenRC networking runlevel symlink",
             );
-        }
-        if wants("dhcpcd") {
             out.file(&rootfs.join("etc/init.d/dhcpcd"), "OpenRC dhcpcd service");
             out.symlink(
                 &overlay.join("etc/runlevels/default/dhcpcd"),

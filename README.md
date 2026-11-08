@@ -13,13 +13,19 @@ adding it to the type and the file.
 
 - `load(repo_root, distro_id) -> Result<Variant, LoadError>`: reads
   `distro.toml` once, validates every rule in one pass (each bad value is one
-  `Violation` under its field path, such as
-  `product_config.install_ux.consoles[1]`), and derives `contract.artifacts`
-  from the transforms. It also derives the names that follow from the id
-  (`identity.iso_label` = `os_id` in capitals, `identity.default_hostname` =
-  `os_id`, `build.kernel.localversion` = `-<id>`,
-  `scenarios.automated_login.login_prompt_pattern` = `<os_id> login:`), so no
-  file spells them. There is no unvalidated load.
+  `Violation` under its field path, such as `install_ux.consoles[1]`). It
+  derives the names that follow from the ids (`identity.iso_label` = `os_id`
+  in capitals, `identity.default_hostname` = `os_id`, `identity.login_prompt`
+  = `<os_id> login:`, `build.kernel.localversion` = `-<id>`, and
+  `contract.artifacts`: `<os_id>-x86_64-<product>.iso`, the live UKIs by role,
+  `filesystem.erofs`, ...), so no file spells them. There is no unvalidated
+  load.
+- `registry`: `ProductId` and `ScenarioId`, the products and scenarios every
+  variant has, each named once with its title, parent, release flag, inputs
+  and order. The builder, xtask and install-tests name none of their own.
+- `contract.live`, `contract.installed`: what the variant adds to the shared
+  lists; `live_services()`/`live_service_units()`, `live_kernel_cmdline()`,
+  `live_tools()` and `installed_tools()` give the whole lists.
 - `contract.profile`: the variant's `[profile]` (`distro_profile::Profile`,
   re-exported as `profile`): package backend, init system, libc, privilege
   tool, desktop and kernel line. Every live tool is built for the libc. The
@@ -30,9 +36,9 @@ adding it to the type and the file.
 - `distro_ids(repo_root)`: the directories under `distro/variants` that hold a
   `distro.toml`.
 - `validate_build_runtime(&Variant, &BuildRuntimeArtifacts)` and
-  `validate_live_boot_runtime(&Profile, &BootScenario, &LiveBootRuntimeArtifacts)`:
+  `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts)`:
   checks of built artifacts (kernel provenance against `kconfig` and the pin;
-  live-boot SSH, locale and merged-/usr wiring), returning `Vec<Violation>`.
+  live-boot SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
-  (`7`).
+  (`8`).
 - `tui_apps`: discovery of the TUI apps under `tui/apps`.

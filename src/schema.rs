@@ -2,41 +2,13 @@
 
 use std::collections::BTreeMap;
 
-use distro_profile::Profile;
+use distro_profile::{InitSystem, Profile};
+
+use crate::registry::ProductId;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 7;
-
-/// Automated login policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuthMode {
-    /// Automated login uses deterministic distro-provided credentials.
-    DefaultPasswordLogin,
-    /// Automated login credentials are provisioned out-of-band.
-    ProvisionedCredentials,
-}
-
-/// Runtime-policy rootfs model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RootfsMutability {
-    /// Writable install model.
-    Mutable,
-    /// Read-only/immutable install model.
-    Immutable,
-}
-
-/// A scenario's on-ISO script and the marker its output must contain.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ScriptEvidence {
-    /// On-ISO scenario script filename (for example `live-tools.sh`).
-    pub script_path: String,
-    /// Marker the script prints when it passes: its name in capitals plus `PASSED`.
-    pub pass_marker: String,
-}
+pub const CONTRACT_SCHEMA_VERSION: u32 = 8;
 
 /// Identity metadata for a distro contract.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -51,17 +23,62 @@ pub struct DistroIdentity {
     /// `os_id`; derived when the contract loads (not in the file).
     #[serde(skip)]
     pub default_hostname: String,
+    /// `<default_hostname> login:`, the installed system's login prompt; derived
+    /// when the contract loads (not in the file).
+    #[serde(skip)]
+    pub login_prompt: String,
 }
 
-/// Artifact names, derived from the transforms when the contract loads (not in the file).
+/// The live UKIs, by role.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ArtifactIdentity {
-    pub rootfs_name: String,
-    pub initramfs_live_output: String,
-    pub iso_filename: String,
-    pub initramfs_installed_output: Option<String>,
-    pub installed_uki_outputs: Vec<String>,
-    pub disk_image_output: Option<String>,
+pub struct LiveUkis {
+    /// The default boot entry.
+    pub live: String,
+    /// Boots to the live init's emergency shell.
+    pub emergency: String,
+    /// Boots with the live init's debug output.
+    pub debug: String,
+}
+
+/// The file names of a variant's build outputs, derived from `os_id` when the
+/// contract loads (not in the file).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ArtifactNames {
+    pub rootfs: String,
+    pub overlay: String,
+    pub initramfs_live: String,
+    /// The installed system's own initramfs, which the ISO carries, when the
+    /// variant's installed system boots through one (`installed.initramfs`).
+    pub initramfs_installed: Option<String>,
+    pub live_uki: LiveUkis,
+    /// The name an ISO is published under: `<os_id>-x86_64.iso`.
+    pub release_iso: String,
+    /// `<os_id>-x86_64`.
+    iso_stem: String,
+}
+
+impl ArtifactNames {
+    pub(crate) fn derive(os_id: &str, installed_initramfs: bool) -> Self {
+        let iso_stem = format!("{os_id}-x86_64");
+        Self {
+            rootfs: "filesystem.erofs".to_string(),
+            overlay: "overlayfs.erofs".to_string(),
+            initramfs_live: "initramfs-live.cpio.gz".to_string(),
+            initramfs_installed: installed_initramfs.then(|| "initramfs-installed.img".to_string()),
+            live_uki: LiveUkis {
+                live: format!("{os_id}-live.efi"),
+                emergency: format!("{os_id}-emergency.efi"),
+                debug: format!("{os_id}-debug.efi"),
+            },
+            release_iso: format!("{iso_stem}.iso"),
+            iso_stem,
+        }
+    }
+
+    /// A release product's ISO: `<os_id>-x86_64-<product>.iso`.
+    pub fn iso(&self, product: ProductId) -> String {
+        format!("{}-{}.iso", self.iso_stem, product.name())
+    }
 }
 
 /// What the variant pins about its build: the kernel. The kernel's
@@ -143,61 +160,6 @@ pub struct SourceContract {
     pub rootfs_source: RootfsSourceContract,
 }
 
-/// Product declaration with a stable logical identity.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProductDecl {
-    pub logical_name: String,
-    pub description: String,
-    /// Immediate parent product in the product composition DAG, if any.
-    pub extends: Option<String>,
-}
-
-/// The products a variant builds.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProductContract {
-    pub rootfs_base: ProductDecl,
-    pub live_overlay: ProductDecl,
-    pub boot_live: ProductDecl,
-    pub live_tools: ProductDecl,
-    pub boot_installed: Option<ProductDecl>,
-    pub kernel_staging: ProductDecl,
-}
-
-/// One step that shapes a boot payload from the rootfs (paths are relative
-/// to the rootfs and the payload).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum PayloadProducerContract {
-    CopyTree {
-        source: String,
-        destination: String,
-    },
-    CopySymlink {
-        source: String,
-        destination: String,
-    },
-    CopyFile {
-        source: String,
-        destination: String,
-        #[serde(default)]
-        optional: bool,
-    },
-    WriteText {
-        path: String,
-        content: String,
-        mode: Option<u32>,
-    },
-}
-
-/// A boot payload's producers, in order.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BootPayloadContract {
-    pub producers: Vec<PayloadProducerContract>,
-}
-
 /// The live ISO's install screen: a shell beside the install docs.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -230,171 +192,57 @@ pub struct InstallDocs {
     pub args: Vec<String>,
 }
 
-/// A workspace binary the live-tools product carries, built for the
-/// profile's libc.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-pub enum RuntimeActionContract {
-    ToolPayloadWorkspaceBinary {
-        package: String,
-        binary: Option<String>,
-    },
-    RootfsWorkspaceBinary {
-        package: String,
-        binary: Option<String>,
-        /// Path in the rootfs.
-        destination: String,
-    },
+/// A service the live system runs besides sshd, which every live system runs;
+/// the init system names its units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveService {
+    Ssh,
+    Audit,
+    Network,
 }
 
-/// How the builder assembles the products.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProductConfigContract {
-    pub boot_live: BootPayloadContract,
-    /// Present exactly when `products.boot_installed` is.
-    pub boot_installed: Option<BootPayloadContract>,
-    #[serde(default)]
-    pub live_tools_actions: Vec<RuntimeActionContract>,
-    pub install_ux: InstallUxContract,
-}
-
-/// Artifact transform declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ArtifactTransform {
-    pub logical_name: String,
-    /// Immediate dependency identities in the build graph: product or
-    /// upstream artifact logical names.
-    pub dependencies: Vec<String>,
-    pub output_names: Vec<String>,
-    pub format: String,
-    pub extra_cmdline: Option<String>,
-}
-
-impl ArtifactTransform {
-    /// The transform's output file name (validation guarantees exactly one,
-    /// except for the UKI transforms).
-    pub fn output(&self) -> &str {
-        &self.output_names[0]
+impl LiveService {
+    /// The units (systemd) or services (OpenRC) that provide it.
+    pub fn units(self, init: InitSystem) -> &'static [&'static str] {
+        match (self, init) {
+            (Self::Ssh, _) => &["sshd"],
+            (Self::Audit, _) => &["auditd"],
+            (Self::Network, InitSystem::Systemd) => &["NetworkManager"],
+            (Self::Network, InitSystem::Openrc) => &["networking", "dhcpcd"],
+        }
     }
 }
 
-/// The artifacts built from the products.
+/// What the live system has that the shared lists do not give every variant.
+/// Each list holds only this variant's additions.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TransformContract {
-    pub rootfs_image: ArtifactTransform,
-    pub overlay_image: ArtifactTransform,
-    pub initramfs_live: ArtifactTransform,
-    pub initramfs_installed: Option<ArtifactTransform>,
-    /// Outputs in order: live, emergency, debug.
-    pub live_uki: ArtifactTransform,
-    pub installed_uki: Option<ArtifactTransform>,
-    pub iso: ArtifactTransform,
-    pub disk_image: Option<ArtifactTransform>,
-}
-
-/// Validation and runtime scenarios (not build-graph owners).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ScenarioContract {
-    pub live_boot: BootScenario,
-    pub live_environment: LiveEnvironmentScenario,
-    pub live_tools: LiveToolsScenario,
-    pub install: InstallScenario,
-    pub installed_boot: BootScenario,
-    pub automated_login: AutomatedLoginScenario,
-    pub installed_tools: ToolsScenario,
-    pub runtime_policy: RuntimePolicyScenario,
-}
-
-/// Release outputs and metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReleaseContract {
-    /// The ISO output, then the disk image output if there is one.
-    pub primary_outputs: Vec<String>,
-    pub supporting_artifacts: Vec<String>,
-    pub metadata_outputs: Vec<String>,
-    pub metadata_facts: Vec<String>,
-}
-
-/// Boot-scenario declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BootScenario {
-    /// Console lines that mean the boot succeeded (the serial test protocol's
-    /// readiness marker always does).
-    pub success_patterns: Vec<String>,
-    /// Console lines that mean the boot failed.
-    pub fatal_patterns: Vec<String>,
-    /// Console lines that report a failed service: recorded, not fatal.
+pub struct LiveContract {
+    /// Services the live system runs besides sshd.
     #[serde(default)]
-    pub service_failure_patterns: Vec<String>,
-    /// Required kernel cmdline tokens for booting this scenario.
-    pub required_kernel_cmdline: Vec<String>,
-    /// Required live services that must be available in this scenario.
-    pub required_live_services: Vec<String>,
-    pub evidence: ScriptEvidence,
-}
-
-/// Shared live-environment service requirements.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LiveEnvironmentScenario {
-    pub required_services: Vec<String>,
-}
-
-/// Tool-scenario declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ToolsScenario {
-    pub required_tools: Vec<String>,
-    pub evidence: ScriptEvidence,
-}
-
-/// Live-tools scenario declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LiveToolsScenario {
-    pub required_tools: Vec<String>,
-    /// Serial console lines that mean the live system is up when the serial
-    /// console runs the install UX instead of a shell (login prompt, issue).
+    pub services: Vec<LiveService>,
+    /// Kernel command line tokens of every live boot besides the shared ones
+    /// and the init system's.
     #[serde(default)]
-    pub serial_ready_patterns: Vec<String>,
-    pub evidence: ScriptEvidence,
+    pub kernel_cmdline: Vec<String>,
+    /// Commands the live-tools ISO has besides the shared ones.
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
-/// Install-scenario declaration.
+/// What the installed system has that the shared lists do not give every
+/// variant.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct InstallScenario {
-    pub required_tools: Vec<String>,
-    pub required_services: Vec<String>,
-    pub evidence: ScriptEvidence,
-}
-
-/// Automated-login scenario declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AutomatedLoginScenario {
-    pub auth_mode: AuthMode,
-    pub default_username: Option<String>,
-    pub default_password: Option<String>,
-    /// `<os_id> login:`; derived when the contract loads (not in the file).
-    #[serde(skip)]
-    pub login_prompt_pattern: String,
-    pub evidence: ScriptEvidence,
-}
-
-/// Runtime-policy scenario declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RuntimePolicyScenario {
-    pub rootfs_mutability: RootfsMutability,
-    pub mutable_required_rw_paths: Vec<String>,
-    pub immutable_required_ro_paths: Vec<String>,
+pub struct InstalledContract {
+    /// The installed system boots through its own initramfs, built from the
+    /// rootfs it installs (`initramfs-installed.img`, which the ISO carries).
+    pub initramfs: bool,
+    /// Commands the installed system has besides the shared ones and the
+    /// privilege tool.
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 /// A variant's whole contract: the shape of its `distro.toml`.
@@ -407,12 +255,84 @@ pub struct ConformanceContract {
     pub profile: Profile,
     pub build: BuildContract,
     pub sources: SourceContract,
-    pub products: ProductContract,
-    pub product_config: ProductConfigContract,
-    pub transforms: TransformContract,
-    pub scenarios: ScenarioContract,
-    pub release: ReleaseContract,
-    /// Derived from `transforms` when the contract loads.
+    pub install_ux: InstallUxContract,
+    pub live: LiveContract,
+    pub installed: InstalledContract,
+    /// Derived from `identity` and `installed` when the contract loads.
     #[serde(skip)]
-    pub artifacts: ArtifactIdentity,
+    pub artifacts: ArtifactNames,
+}
+
+/// Kernel command line tokens of every live boot of every variant. `audit=1`
+/// keeps the audit trail from the first process; `inst.sshd=0` keeps
+/// Anaconda's sshd off port 22 where its unit exists.
+pub const LIVE_KERNEL_CMDLINE: &[&str] = &["console=ttyS0,115200n8", "console=tty0", "audit=1", "inst.sshd=0"];
+
+/// Commands every live-tools ISO has: the install tools and what the install
+/// guide uses.
+pub const LIVE_TOOLS: &[&str] = &[
+    "recpart", "recstrap", "recfstab", "recchroot", "recsetup", "sfdisk", "mkfs.ext4", "ip", "ping",
+    "curl", "lspci", "lsusb", "less", "grep", "find",
+];
+
+/// Commands every installed system has, besides its privilege tool.
+pub const INSTALLED_TOOLS: &[&str] =
+    &["ip", "ssh", "mount", "umount", "dmesg", "ps", "ls", "cat", "recab", "recstrap"];
+
+/// The live kernel command line every variant of `init` has: the shared
+/// tokens, then the init system's.
+pub(crate) fn shared_live_cmdline(init: InitSystem) -> impl Iterator<Item = &'static str> {
+    let init_tokens: &[&str] = match init {
+        InitSystem::Systemd => &["systemd.show_status=0", "rd.systemd.show_status=0"],
+        InitSystem::Openrc => &[],
+    };
+    LIVE_KERNEL_CMDLINE.iter().chain(init_tokens).copied()
+}
+
+impl ConformanceContract {
+    /// The services every live boot runs: sshd, then the variant's.
+    pub fn live_services(&self) -> Vec<LiveService> {
+        std::iter::once(LiveService::Ssh)
+            .chain(self.live.services.iter().copied())
+            .collect()
+    }
+
+    /// The init system's units for `live_services`, sorted.
+    pub fn live_service_units(&self) -> Vec<String> {
+        let mut units: Vec<String> = self
+            .live_services()
+            .into_iter()
+            .flat_map(|service| service.units(self.profile.init))
+            .map(|unit| unit.to_string())
+            .collect();
+        units.sort();
+        units
+    }
+
+    /// Every live boot's kernel command line: the shared tokens, the init
+    /// system's, then the variant's.
+    pub fn live_kernel_cmdline(&self) -> Vec<String> {
+        shared_live_cmdline(self.profile.init)
+            .map(|token| token.to_string())
+            .chain(self.live.kernel_cmdline.iter().cloned())
+            .collect()
+    }
+
+    /// The commands the live-tools ISO has.
+    pub fn live_tools(&self) -> Vec<String> {
+        LIVE_TOOLS
+            .iter()
+            .map(|tool| tool.to_string())
+            .chain(self.live.tools.iter().cloned())
+            .collect()
+    }
+
+    /// The commands the installed system has, its privilege tool first.
+    pub fn installed_tools(&self) -> Vec<String> {
+        std::iter::once(self.profile.privilege.as_str())
+            .chain(INSTALLED_TOOLS.iter().copied())
+            .map(|tool| tool.to_string())
+            .chain(self.installed.tools.iter().cloned())
+            .collect()
+    }
 }
