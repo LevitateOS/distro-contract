@@ -213,10 +213,6 @@ impl ScenarioId {
     pub fn is_runnable(self) -> bool {
         matches!(self, Self::LiveBoot | Self::LiveTools | Self::InstalledBoot)
     }
-
-    pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|scenario| scenario.key() == key)
-    }
 }
 
 impl std::fmt::Display for ScenarioId {

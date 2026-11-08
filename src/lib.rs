@@ -20,11 +20,11 @@ pub use runtime::{
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use runs::Missing;
 pub use schema::{
-    ArtifactNames, ConformanceContract, DistroIdentity, LiveContract, LiveService,
-    LiveUkis, PackageBaseContract, RootfsSourceContract, RootfsSourceKind,
+    ArtifactNames, ConformanceContract, DistroIdentity,
+    LiveUkis, PackageBaseContract, RootfsSourceContract,
     SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, UPDATE_TOOLS,
 };
-pub use schema::{locales, system_commands};
+pub use schema::{capabilities_text, locales, system_commands};
 pub use variant::{distro_ids, load, Variant};
 
 /// The profile vocabulary, re-exported for the contract's readers.

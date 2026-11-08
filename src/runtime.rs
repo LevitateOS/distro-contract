@@ -6,9 +6,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::Violation;
-use crate::schema::{locales, system_commands, ConformanceContract, LiveService};
+use crate::schema::{locales, system_commands, ConformanceContract};
 use crate::variant::Variant;
-use distro_profile::{InitSystem, Libc};
+use distro_profile::{InitSystem, Libc, PackageBackend};
 
 /// The build outputs `validate_build_runtime` checks.
 #[derive(Debug, Clone)]
@@ -148,7 +148,7 @@ pub fn validate_live_boot_runtime(
     check_locale(&mut out, rootfs, profile.libc == Libc::Musl);
     check_capabilities(&mut out, rootfs, contract);
 
-    if profile.init == InitSystem::Systemd {
+    if profile.packages == PackageBackend::Rpm {
         for (link, target) in [
             ("bin", "usr/bin"),
             ("sbin", "usr/sbin"),
@@ -163,11 +163,18 @@ pub fn validate_live_boot_runtime(
                 );
             }
         }
+    }
+
+    if profile.init == InitSystem::Systemd {
         out.file(
             &rootfs.join("usr/lib/systemd/system/sshd-keygen@.service"),
             "systemd sshd keygen unit",
         );
         out.dir(&rootfs.join("var/empty/sshd"), "OpenSSH privilege-separation directory");
+        out.symlink(
+            &rootfs.join("etc/systemd/system/multi-user.target.wants/NetworkManager.service"),
+            "NetworkManager enablement symlink",
+        );
         out.symlink(
             &overlay.join("etc/systemd/system/multi-user.target.wants/sshd.service"),
             "sshd enablement symlink",
@@ -182,13 +189,11 @@ pub fn validate_live_boot_runtime(
         }
     } else {
         out.symlink(&overlay.join("etc/runlevels/default/sshd"), "OpenRC sshd runlevel symlink");
-        if contract.live_services().contains(&LiveService::Network) {
-            out.file(&rootfs.join("etc/init.d/networkmanager"), "OpenRC NetworkManager service");
-            out.symlink(
-                &overlay.join("etc/runlevels/default/networkmanager"),
-                "OpenRC NetworkManager runlevel symlink",
-            );
-        }
+        out.file(&rootfs.join("etc/init.d/networkmanager"), "OpenRC NetworkManager service");
+        out.symlink(
+            &rootfs.join("etc/runlevels/default/networkmanager"),
+            "OpenRC NetworkManager runlevel symlink",
+        );
     }
     out.0
 }

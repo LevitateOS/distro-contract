@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::path::{Component, Path};
 
 use crate::error::Violation;
-use crate::schema::{ConformanceContract, LiveService, RootfsSourceKind, CONTRACT_SCHEMA_VERSION};
+use crate::schema::{ConformanceContract, CONTRACT_SCHEMA_VERSION};
 
 /// `at!(c.a.b)` is the field path `"a.b"` and a reference to the value, so the
 /// path in a report is spelt by the field access itself.
@@ -117,22 +117,6 @@ fn os_id(value: &str) -> Result<(), String> {
     )
 }
 
-fn input_name(value: &str) -> Result<(), String> {
-    only(
-        value,
-        |c| c.is_ascii_alphanumeric() || c == '_' || c == '-',
-        "letters, digits, '_' or '-'",
-    )
-}
-
-fn define_name(value: &str) -> Result<(), String> {
-    only(
-        value,
-        |c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_',
-        "uppercase letters, digits and '_'",
-    )
-}
-
 /// Every rule, over the whole contract.
 pub(crate) fn validate(
     c: &ConformanceContract,
@@ -158,50 +142,18 @@ pub(crate) fn validate(
     let (field, value) = at!(c.identity.os_id);
     ck.value(field, value, Some(os_id));
 
-    check_kernel(&mut ck, c);
+    ck.variant_file("kconfig", "kconfig");
     check_sources(&mut ck, c);
-    check_layers(&mut ck, c);
     ck.violations
 }
 
-/// The kernel's pin is the kernel recipe's (`kernel/metadata.rhai`); the
-/// variant has its kernel line (`profile.kernel_line`) and `kconfig`.
-fn check_kernel(ck: &mut Check, _c: &ConformanceContract) {
-    ck.variant_file("kconfig", "kconfig");
-}
 
 fn check_sources(ck: &mut Check, c: &ConformanceContract) {
-    let source = &c.sources.rootfs_source;
     let (field, script) = at!(c.sources.rootfs_source.recipe_script);
     ck.repo_file(field, script);
 
     let (field, preseed) = at!(c.sources.rootfs_source.preseed_recipe_script);
-    match preseed {
-        Some(script) => {
-            ck.repo_file(field, script);
-        }
-        None => {
-            ck.fail(field, "is required: it downloads the base's locked packages");
-        }
-    }
-    let (field, inputs) = at!(c.sources.rootfs_source.inputs);
-    for (name, path) in inputs {
-        let field = format!("{field}.{name}");
-        if ck.value(&field, name, Some(input_name)) {
-            ck.repo_file(&field, path);
-        }
-    }
-
-    let (field, defines) = at!(c.sources.rootfs_source.defines);
-    if source.kind == RootfsSourceKind::RecipeRpmSet && !defines.is_empty() {
-        ck.fail(field, "must be empty for kind = 'recipe_rpm_set'");
-    }
-    for (key, value) in defines {
-        let field = format!("{field}.{key}");
-        if ck.value(&field, key, Some(define_name)) {
-            ck.name(&field, value);
-        }
-    }
+    ck.repo_file(field, preseed);
 
     let (field, base) = at!(c.sources.rootfs_source.base);
     let release = format!("{field}.release");
@@ -213,19 +165,4 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
     }
     ck.variant_file(&format!("{field}.signing_key"), &base.signing_key);
     ck.list(&format!("{field}.packages"), &base.packages, true, None);
-}
-
-/// `[live]` and `[installed]` hold only what the variant adds to the shared
-/// lists, so a value already given to every variant is a mistake.
-fn check_layers(ck: &mut Check, c: &ConformanceContract) {
-    let (field, services) = at!(c.live.services);
-    let mut seen = HashSet::new();
-    for (index, service) in services.iter().enumerate() {
-        let field = format!("{field}[{index}]");
-        if *service == LiveService::Ssh {
-            ck.fail(field, "every live system runs sshd; list only the other services");
-        } else if !seen.insert(service) {
-            ck.fail(field, format!("{service:?} is listed twice"));
-        }
-    }
 }

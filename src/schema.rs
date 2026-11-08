@@ -1,8 +1,6 @@
 //! The variant contract: these types are the shape of `distro/variants/<id>/distro.toml`.
 
-use std::collections::BTreeMap;
-
-use distro_profile::{InitSystem, Profile};
+use distro_profile::Profile;
 
 use crate::registry::ProductId;
 use serde::Deserialize;
@@ -80,15 +78,6 @@ impl ArtifactNames {
     }
 }
 
-/// How the rootfs source is acquired.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RootfsSourceKind {
-    /// A locked set of RPMs from a Fedora release and its updates.
-    RecipeRpmSet,
-    RecipeCustom,
-}
-
 /// What the rootfs takes from its base distribution, the same shape for
 /// every package backend (`profile.packages`). `cargo xtask base lock
 /// <distro>` resolves the packages and their dependencies from the release
@@ -101,7 +90,8 @@ pub struct PackageBaseContract {
     /// The key the release signs its packages with, relative to the variant
     /// directory.
     pub signing_key: String,
-    /// What the system needs; the lock adds their dependencies.
+    /// What the system needs. The apk lock adds their dependencies; the rpm
+    /// lock takes only these, so each shared library is named too.
     pub packages: Vec<String>,
 }
 
@@ -109,14 +99,9 @@ pub struct PackageBaseContract {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RootfsSourceContract {
-    /// Recipe inputs by name: repo-relative files.
-    #[serde(default)]
-    pub inputs: BTreeMap<String, String>,
-    pub kind: RootfsSourceKind,
     pub recipe_script: String,
-    pub preseed_recipe_script: Option<String>,
-    #[serde(default)]
-    pub defines: BTreeMap<String, String>,
+    /// Downloads the base's locked packages.
+    pub preseed_recipe_script: String,
     pub base: PackageBaseContract,
 }
 
@@ -127,45 +112,13 @@ pub struct SourceContract {
     pub rootfs_source: RootfsSourceContract,
 }
 
-/// A service the live system runs besides the installed system's (the live
-/// system is the installed rootfs plus the live overlay, so it runs what the
-/// installed system runs: time sync, audit, D-Bus, the network). Every live
-/// system runs sshd; the init system names the units.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LiveService {
-    Ssh,
-    Network,
-}
-
-impl LiveService {
-    /// The units (systemd) or services (OpenRC) that provide it.
-    pub fn units(self, init: InitSystem) -> &'static [&'static str] {
-        match (self, init) {
-            (Self::Ssh, _) => &["sshd"],
-            (Self::Network, InitSystem::Systemd) => &["NetworkManager"],
-            (Self::Network, InitSystem::Openrc) => &["networkmanager"],
-        }
-    }
-}
-
-/// What the live system has that the shared lists do not give every variant.
-/// Each list holds only this variant's additions.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LiveContract {
-    /// Services the live system runs besides sshd.
-    #[serde(default)]
-    pub services: Vec<LiveService>,
-}
-
 /// The graphical desktop the `live-desktop` product adds over live-tools
 /// (`profile.desktop` names which: Plasma or LXQt).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContract {
     /// What the desktop needs from the base release, beside the base
-    /// packages; the lock adds their dependencies.
+    /// packages (not locked yet; see docs/desktop.md).
     pub packages: Vec<String>,
     /// The display manager's unit (systemd) or service (OpenRC); the product
     /// enables it and the system boots to the graphical target.
@@ -181,7 +134,6 @@ pub struct ConformanceContract {
     /// The base facts the variant differs in.
     pub profile: Profile,
     pub sources: SourceContract,
-    pub live: LiveContract,
     pub desktop: DesktopContract,
     /// Derived from `identity` when the contract loads.
     #[serde(skip)]
@@ -191,6 +143,11 @@ pub struct ConformanceContract {
 /// What every system provides, live and installed, on every variant:
 /// `capabilities.txt`, which the rootfs producers also read.
 const CAPABILITIES: &str = include_str!("../capabilities.txt");
+
+/// `capabilities.txt` itself: the rootfs recipes' `capabilities` input.
+pub fn capabilities_text() -> &'static str {
+    CAPABILITIES
+}
 
 fn capabilities(kind: &'static str) -> impl Iterator<Item = &'static str> {
     CAPABILITIES.lines().filter_map(move |line| {
@@ -217,23 +174,11 @@ pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchro
 pub const UPDATE_TOOLS: &[&str] = &["recab", "recstrap"];
 
 impl ConformanceContract {
-    /// The services every live boot runs: sshd, then the variant's.
-    pub fn live_services(&self) -> Vec<LiveService> {
-        std::iter::once(LiveService::Ssh)
-            .chain(self.live.services.iter().copied())
-            .collect()
-    }
-
-    /// The init system's units for `live_services`, sorted.
+    /// The init system's units every live boot runs: sshd. (NetworkManager and
+    /// the rest are the installed system's, which `installed-system.rhai`
+    /// enables.)
     pub fn live_service_units(&self) -> Vec<String> {
-        let mut units: Vec<String> = self
-            .live_services()
-            .into_iter()
-            .flat_map(|service| service.units(self.profile.init))
-            .map(|unit| unit.to_string())
-            .collect();
-        units.sort();
-        units
+        vec!["sshd".to_string()]
     }
 
     /// The commands the installed system has: its privilege tool, the update
