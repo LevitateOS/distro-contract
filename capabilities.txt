@@ -34,11 +34,13 @@ command fdisk
 command sfdisk
 command mkfs.ext4
 
-# Network.
+# Network: NetworkManager (wired and WiFi, over wpa_supplicant) and iw.
 command ip
 command ping
 command curl
 command ssh
+command nmcli
+command iw
 
 # Hardware diagnostics.
 command lspci
