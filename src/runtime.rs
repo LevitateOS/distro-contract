@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::error::Violation;
 use crate::schema::BootScenario;
+use distro_profile::{InitSystem, Libc, Profile};
 use crate::variant::Variant;
 
 /// The build outputs `validate_build_runtime` checks.
@@ -144,8 +145,9 @@ pub fn validate_build_runtime(
 }
 
 /// Check the live boot's rootfs and overlay for working SSH, a UTF-8 locale
-/// and (systemd) merged /usr.
+/// and (systemd) merged /usr, as the variant's profile (init, libc) has them.
 pub fn validate_live_boot_runtime(
+    profile: &Profile,
     live_boot: &BootScenario,
     artifacts: &LiveBootRuntimeArtifacts,
 ) -> Vec<Violation> {
@@ -172,15 +174,14 @@ pub fn validate_live_boot_runtime(
     let overlay = &artifacts.live_overlay_dir;
     let services = "scenarios.live_boot.required_live_services";
 
-    let systemd = is_file(&rootfs.join("usr/lib/systemd/system/sshd.service"));
-    let openrc = is_file(&rootfs.join("etc/init.d/sshd"));
-    if !systemd && !openrc {
+    let sshd_service = match profile.init {
+        InitSystem::Systemd => "usr/lib/systemd/system/sshd.service",
+        InitSystem::Openrc => "etc/init.d/sshd",
+    };
+    if !is_file(&rootfs.join(sshd_service)) {
         out.push(
             services,
-            format!(
-                "{} has neither usr/lib/systemd/system/sshd.service nor etc/init.d/sshd",
-                rootfs.display()
-            ),
+            format!("{} has no {sshd_service} ({} sshd service)", rootfs.display(), profile.init),
         );
         return out.0;
     }
@@ -188,9 +189,9 @@ pub fn validate_live_boot_runtime(
     out.file(&rootfs.join("usr/sbin/sshd"), "OpenSSH daemon");
     out.file(&rootfs.join("etc/ssh/sshd_config"), "sshd config");
     out.dir(&rootfs.join("usr/share/empty.sshd"), "empty sshd directory");
-    check_locale(&mut out, &rootfs, openrc && !systemd);
+    check_locale(&mut out, &rootfs, profile.libc == Libc::Musl);
 
-    if systemd {
+    if profile.init == InitSystem::Systemd {
         for (link, target) in [
             ("bin", "usr/bin"),
             ("sbin", "usr/sbin"),
@@ -255,7 +256,7 @@ pub fn validate_live_boot_runtime(
 }
 
 /// `etc/locale.conf` sets `LANG=C.UTF-8`, and the C.UTF-8 locale is there
-/// (glibc's compiled one, or on OpenRC also musl's).
+/// (glibc's compiled one, or with musl also musl's).
 fn check_locale(out: &mut Missing, rootfs: &Path, musl_allowed: bool) {
     let locale_conf = rootfs.join("etc/locale.conf");
     if out.file(&locale_conf, "locale config (LANG=C.UTF-8)") {

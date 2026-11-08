@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use distro_profile::Profile;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
@@ -43,8 +44,12 @@ pub struct ScriptEvidence {
 pub struct DistroIdentity {
     pub os_name: String,
     pub os_id: String,
+    /// `os_id` in capitals; derived when the contract loads (not in the file).
+    #[serde(skip)]
     pub iso_label: String,
     pub os_version: String,
+    /// `os_id`; derived when the contract loads (not in the file).
+    #[serde(skip)]
     pub default_hostname: String,
 }
 
@@ -73,7 +78,9 @@ pub struct BuildContract {
 pub struct KernelBuildContract {
     pub version: String,
     pub sha256: String,
-    /// `CONFIG_LOCALVERSION` of `kconfig`: `-` and the variant name.
+    /// `CONFIG_LOCALVERSION` of `kconfig`: `-` and the variant id; derived when
+    /// the contract loads (not in the file).
+    #[serde(skip)]
     pub localversion: String,
 }
 
@@ -158,21 +165,6 @@ pub struct ProductContract {
     pub kernel_staging: ProductDecl,
 }
 
-/// Supported overlay implementation for live boot products.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum OverlayKind {
-    Systemd,
-    OpenRc,
-}
-
-/// Live-overlay execution policy.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OverlayContract {
-    pub kind: OverlayKind,
-}
-
 /// One step that shapes a boot payload from the rootfs (paths are relative
 /// to the rootfs and the payload).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -238,19 +230,18 @@ pub struct InstallDocs {
     pub args: Vec<String>,
 }
 
-/// A workspace binary the live-tools product carries.
+/// A workspace binary the live-tools product carries, built for the
+/// profile's libc.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RuntimeActionContract {
     ToolPayloadWorkspaceBinary {
         package: String,
         binary: Option<String>,
-        target: Option<String>,
     },
     RootfsWorkspaceBinary {
         package: String,
         binary: Option<String>,
-        target: Option<String>,
         /// Path in the rootfs.
         destination: String,
     },
@@ -260,7 +251,6 @@ pub enum RuntimeActionContract {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductConfigContract {
-    pub live_overlay: OverlayContract,
     pub boot_live: BootPayloadContract,
     /// Present exactly when `products.boot_installed` is.
     pub boot_installed: Option<BootPayloadContract>,
@@ -392,6 +382,8 @@ pub struct AutomatedLoginScenario {
     pub auth_mode: AuthMode,
     pub default_username: Option<String>,
     pub default_password: Option<String>,
+    /// `<os_id> login:`; derived when the contract loads (not in the file).
+    #[serde(skip)]
     pub login_prompt_pattern: String,
     pub evidence: ScriptEvidence,
 }
@@ -411,6 +403,8 @@ pub struct RuntimePolicyScenario {
 pub struct ConformanceContract {
     pub schema_version: u32,
     pub identity: DistroIdentity,
+    /// The base facts the variant differs in.
+    pub profile: Profile,
     pub build: BuildContract,
     pub sources: SourceContract,
     pub products: ProductContract,

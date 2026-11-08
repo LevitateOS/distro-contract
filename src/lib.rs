@@ -17,10 +17,14 @@ pub use schema::{
     ArtifactIdentity, ArtifactTransform, AuthMode, AutomatedLoginScenario, BootPayloadContract,
     BootScenario, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
     InstallScenario, InstallUxContract, KernelBuildContract, LiveEnvironmentScenario,
-    LiveToolsScenario, OverlayContract, OverlayKind, PayloadProducerContract,
+    LiveToolsScenario, PayloadProducerContract,
     ProductConfigContract, ProductContract, ProductDecl, RecipeOutputKind, ReleaseContract,
     RootfsMutability, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
     RuntimeActionContract, RuntimePolicyScenario, ScenarioContract, ScriptEvidence,
     SourceContract, ToolsScenario, TransformContract, CONTRACT_SCHEMA_VERSION,
 };
 pub use variant::{distro_ids, load, Variant};
+
+/// The profile vocabulary, re-exported for the contract's readers.
+pub use distro_profile as profile;
+pub use distro_profile::Profile;

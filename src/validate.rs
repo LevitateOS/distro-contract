@@ -227,12 +227,7 @@ pub(crate) fn validate(
         );
     }
 
-    for (field, value) in [
-        at!(c.identity.os_name),
-        at!(c.identity.iso_label),
-        at!(c.identity.os_version),
-        at!(c.identity.default_hostname),
-    ] {
+    for (field, value) in [at!(c.identity.os_name), at!(c.identity.os_version)] {
         ck.name(field, value);
     }
     let (field, value) = at!(c.identity.os_id);
@@ -253,8 +248,12 @@ fn check_kernel(ck: &mut Check, c: &ConformanceContract) {
     ck.value(field, value, Some(kernel_version));
     let (field, value) = at!(c.build.kernel.sha256);
     ck.value(field, value, Some(sha256));
-    let (field, value) = at!(c.build.kernel.localversion);
-    ck.value(field, value, Some(localversion));
+    // Derived from the variant id, which therefore has to make a valid one.
+    ck.value(
+        "build.kernel.localversion (from the variant id)",
+        &c.build.kernel.localversion,
+        Some(localversion),
+    );
 }
 
 fn check_sources(ck: &mut Check, c: &ConformanceContract) {
@@ -363,25 +362,21 @@ fn check_products(ck: &mut Check, c: &ConformanceContract) {
     let (field, actions) = at!(c.product_config.live_tools_actions);
     for (index, action) in actions.iter().enumerate() {
         let field = format!("{field}[{index}]");
-        let (package, binary, target) = match action {
-            RuntimeActionContract::ToolPayloadWorkspaceBinary {
-                package,
-                binary,
-                target,
-            } => (package, binary, target),
+        let (package, binary) = match action {
+            RuntimeActionContract::ToolPayloadWorkspaceBinary { package, binary } => {
+                (package, binary)
+            }
             RuntimeActionContract::RootfsWorkspaceBinary {
                 package,
                 binary,
-                target,
                 destination,
             } => {
                 ck.relative_path(&format!("{field}.destination"), destination);
-                (package, binary, target)
+                (package, binary)
             }
         };
         ck.name(&format!("{field}.package"), package);
         ck.optional_name(&format!("{field}.binary"), binary);
-        ck.optional_name(&format!("{field}.target"), target);
     }
 
     let (field, consoles) = at!(c.product_config.install_ux.consoles);

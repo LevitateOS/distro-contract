@@ -49,6 +49,7 @@ pub fn load(repo_root: &Path, distro_id: &str) -> Result<Variant, LoadError> {
             manifest: manifest.clone(),
             source,
         })?;
+    derive_names(&mut contract, distro_id);
     let violations = crate::validate::validate(&contract, repo_root, &dir);
     if !violations.is_empty() {
         return Err(LoadError::Invalid {
@@ -85,6 +86,15 @@ pub fn distro_ids(repo_root: &Path) -> Vec<String> {
 /// A variant id is one plain path component.
 fn is_variant_id(id: &str) -> bool {
     !id.is_empty() && !id.contains(['/', '\\']) && id != "." && id != ".."
+}
+
+/// The names that follow from the variant id and `os_id`, so no file spells them.
+fn derive_names(contract: &mut ConformanceContract, distro_id: &str) {
+    let os_id = contract.identity.os_id.clone();
+    contract.identity.iso_label = os_id.to_ascii_uppercase();
+    contract.identity.default_hostname = os_id.clone();
+    contract.build.kernel.localversion = format!("-{distro_id}");
+    contract.scenarios.automated_login.login_prompt_pattern = format!("{os_id} login:");
 }
 
 fn artifact_identity(transforms: &TransformContract) -> ArtifactIdentity {
