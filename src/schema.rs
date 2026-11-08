@@ -90,9 +90,14 @@ pub struct PackageBaseContract {
     /// The key the release signs its packages with, relative to the variant
     /// directory.
     pub signing_key: String,
-    /// What the system needs. The apk lock adds their dependencies; the rpm
-    /// lock takes only these, so each shared library is named too.
+    /// What the system wants. Both locks add the dependencies (requires and
+    /// provides), so only the top-level packages are named.
     pub packages: Vec<String>,
+    /// Capabilities the image supplies itself, so the rpm lock does not pull
+    /// a package for them (Fedora's `system-release` would add fedora-release,
+    /// which ships its own os-release).
+    #[serde(default)]
+    pub provided_elsewhere: Vec<String>,
 }
 
 /// Rootfs source policy.
@@ -117,8 +122,9 @@ pub struct SourceContract {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContract {
-    /// What the desktop needs from the base release, beside the base
-    /// packages (not locked yet; see docs/desktop.md).
+    /// What the desktop wants from the base release, beside the base
+    /// packages. `cargo xtask base lock` locks their dependencies minus the
+    /// base lock's packages in the desktop lock.
     pub packages: Vec<String>,
     /// The display manager's unit (systemd) or service (OpenRC); the desktop
     /// system enables it and boots to the graphical target.
