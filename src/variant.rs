@@ -93,5 +93,5 @@ fn derive_names(contract: &mut ConformanceContract) {
     contract.identity.iso_label = os_id.to_ascii_uppercase();
     contract.identity.default_hostname = os_id.clone();
     contract.identity.login_prompt = format!("{os_id} login:");
-    contract.artifacts = ArtifactNames::derive(&os_id, contract.installed.initramfs);
+    contract.artifacts = ArtifactNames::derive(&os_id);
 }

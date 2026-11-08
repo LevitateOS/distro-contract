@@ -47,9 +47,8 @@ pub struct ArtifactNames {
     pub rootfs: String,
     pub overlay: String,
     pub initramfs_live: String,
-    /// The installed system's own initramfs, which the ISO carries, when the
-    /// variant's installed system boots through one (`installed.initramfs`).
-    pub initramfs_installed: Option<String>,
+    /// The installed system's own initramfs, which the ISO carries.
+    pub initramfs_installed: String,
     pub live_uki: LiveUkis,
     /// The name an ISO is published under: `<os_id>-x86_64.iso`.
     pub release_iso: String,
@@ -58,13 +57,13 @@ pub struct ArtifactNames {
 }
 
 impl ArtifactNames {
-    pub(crate) fn derive(os_id: &str, installed_initramfs: bool) -> Self {
+    pub(crate) fn derive(os_id: &str) -> Self {
         let iso_stem = format!("{os_id}-x86_64");
         Self {
             rootfs: "filesystem.erofs".to_string(),
             overlay: "overlayfs.erofs".to_string(),
             initramfs_live: "initramfs-live.cpio.gz".to_string(),
-            initramfs_installed: installed_initramfs.then(|| "initramfs-installed.img".to_string()),
+            initramfs_installed: "initramfs-installed.img".to_string(),
             live_uki: LiveUkis {
                 live: format!("{os_id}-live.efi"),
                 emergency: format!("{os_id}-emergency.efi"),
@@ -190,15 +189,6 @@ pub struct DesktopContract {
     pub display_manager: String,
 }
 
-/// How the installed system differs from every variant's.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InstalledContract {
-    /// The installed system boots through its own initramfs, built from the
-    /// rootfs it installs (`initramfs-installed.img`, which the ISO carries).
-    pub initramfs: bool,
-}
-
 /// A variant's whole contract: the shape of its `distro.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -210,8 +200,7 @@ pub struct ConformanceContract {
     pub sources: SourceContract,
     pub live: LiveContract,
     pub desktop: DesktopContract,
-    pub installed: InstalledContract,
-    /// Derived from `identity` and `installed` when the contract loads.
+    /// Derived from `identity` when the contract loads.
     #[serde(skip)]
     pub artifacts: ArtifactNames,
 }

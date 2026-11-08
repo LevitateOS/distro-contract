@@ -20,7 +20,7 @@ pub use runtime::{
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use runs::Missing;
 pub use schema::{
-    ArtifactNames, ConformanceContract, DistroIdentity, InstalledContract, LiveContract, LiveService,
+    ArtifactNames, ConformanceContract, DistroIdentity, LiveContract, LiveService,
     LiveUkis, PackageBaseContract, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind,
     SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, UPDATE_TOOLS,
 };
