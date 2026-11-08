@@ -161,7 +161,7 @@ impl LiveService {
         match (self, init) {
             (Self::Ssh, _) => &["sshd"],
             (Self::Network, InitSystem::Systemd) => &["NetworkManager"],
-            (Self::Network, InitSystem::Openrc) => &["networking", "dhcpcd"],
+            (Self::Network, InitSystem::Openrc) => &["networkmanager"],
         }
     }
 }

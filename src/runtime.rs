@@ -183,16 +183,10 @@ pub fn validate_live_boot_runtime(
     } else {
         out.symlink(&overlay.join("etc/runlevels/default/sshd"), "OpenRC sshd runlevel symlink");
         if contract.live_services().contains(&LiveService::Network) {
-            out.file(&rootfs.join("etc/init.d/networking"), "OpenRC networking service");
-            out.file(&rootfs.join("etc/network/interfaces"), "network interfaces config");
+            out.file(&rootfs.join("etc/init.d/networkmanager"), "OpenRC NetworkManager service");
             out.symlink(
-                &overlay.join("etc/runlevels/boot/networking"),
-                "OpenRC networking runlevel symlink",
-            );
-            out.file(&rootfs.join("etc/init.d/dhcpcd"), "OpenRC dhcpcd service");
-            out.symlink(
-                &overlay.join("etc/runlevels/default/dhcpcd"),
-                "OpenRC dhcpcd runlevel symlink",
+                &overlay.join("etc/runlevels/default/networkmanager"),
+                "OpenRC NetworkManager runlevel symlink",
             );
         }
     }
