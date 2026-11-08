@@ -173,6 +173,10 @@ pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchro
 /// The workspace tools the installed system has (A/B updates).
 pub const UPDATE_TOOLS: &[&str] = &["recab", "recstrap"];
 
+/// The TUI apps (under `tui/apps`, by `bin` name) the installed system carries as
+/// commands, on every distro; the builder compiles them into the system rootfs.
+pub const SYSTEM_TUI_APPS: &[&str] = &["recab-tui"];
+
 impl ConformanceContract {
     /// The init system's units every live boot runs: sshd. (NetworkManager and
     /// the rest are the installed system's, which `installed-system.rhai`
@@ -182,10 +186,11 @@ impl ConformanceContract {
     }
 
     /// The commands the installed system has: its privilege tool, the update
-    /// tools and every system's commands.
+    /// tools, its TUI apps and every system's commands.
     pub fn installed_tools(&self) -> Vec<String> {
         std::iter::once(self.profile.privilege.as_str())
             .chain(UPDATE_TOOLS.iter().copied())
+            .chain(SYSTEM_TUI_APPS.iter().copied())
             .chain(system_commands())
             .map(|tool| tool.to_string())
             .collect()
