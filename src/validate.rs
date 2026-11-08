@@ -7,8 +7,7 @@ use std::path::{Component, Path};
 
 use crate::error::Violation;
 use crate::schema::{
-    shared_live_cmdline, ConformanceContract, LiveService, RootfsSourceKind, CONTRACT_SCHEMA_VERSION, INSTALLED_TOOLS,
-    LIVE_TOOLS,
+    shared_live_cmdline, ConformanceContract, LiveService, RootfsSourceKind, CONTRACT_SCHEMA_VERSION,
 };
 
 /// `at!(c.a.b)` is the field path `"a.b"` and a reference to the value, so the
@@ -137,14 +136,6 @@ fn console(value: &str) -> Result<(), String> {
     } else {
         Err(format!("'{value}' is not ttyN or ttySN"))
     }
-}
-
-fn command(value: &str) -> Result<(), String> {
-    only(
-        value,
-        |c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'),
-        "a command name",
-    )
 }
 
 fn cmdline_token(value: &str) -> Result<(), String> {
@@ -369,21 +360,6 @@ fn check_layers(ck: &mut Check, c: &ConformanceContract) {
                 format!("{field}[{index}]"),
                 format!("'{token}' is already on every live boot of this init system"),
             );
-        }
-    }
-
-    for (field, tools, shared) in [
-        (at!(c.live.tools).0, &c.live.tools, LIVE_TOOLS),
-        (at!(c.installed.tools).0, &c.installed.tools, INSTALLED_TOOLS),
-    ] {
-        ck.list(field, tools, false, Some(command));
-        for (index, tool) in tools.iter().enumerate() {
-            if shared.contains(&tool.as_str()) || tool == c.profile.privilege.as_str() {
-                ck.fail(
-                    format!("{field}[{index}]"),
-                    format!("'{tool}' is on every variant already (shared list or privilege tool)"),
-                );
-            }
         }
     }
 }

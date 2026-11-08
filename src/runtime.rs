@@ -1,11 +1,12 @@
-//! Checks of built artifacts against the contract: kernel provenance and the
-//! live boot's SSH, locale and merged-/usr wiring.
+//! Checks of built artifacts against the contract: kernel provenance, the
+//! shared capabilities (`capabilities.txt`) and the live boot's SSH, locale
+//! and merged-/usr wiring.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::Violation;
-use crate::schema::{ConformanceContract, LiveService};
+use crate::schema::{locales, system_commands, ConformanceContract, LiveService};
 use crate::variant::Variant;
 use distro_profile::{InitSystem, Libc};
 
@@ -191,6 +192,7 @@ pub fn validate_live_boot_runtime(
     out.file(&rootfs.join("etc/ssh/sshd_config"), "sshd config");
     out.dir(&rootfs.join("usr/share/empty.sshd"), "empty sshd directory");
     check_locale(&mut out, &rootfs, profile.libc == Libc::Musl);
+    check_capabilities(&mut out, &rootfs, contract);
 
     if profile.init == InitSystem::Systemd {
         for (link, target) in [
@@ -273,5 +275,38 @@ fn check_locale(out: &mut Missing, rootfs: &Path, musl_allowed: bool) {
             rootfs.display().to_string(),
             format!("missing the UTF-8 locale (one of {expected})"),
         );
+    }
+}
+
+/// The rootfs has every system command and the privilege tool on PATH, and
+/// every shared locale.
+fn check_capabilities(out: &mut Missing, rootfs: &Path, contract: &ConformanceContract) {
+    let privilege = contract.profile.privilege.as_str();
+    for command in std::iter::once(privilege).chain(system_commands()) {
+        let on_path = ["usr/bin", "usr/sbin", "bin", "sbin"]
+            .iter()
+            .any(|dir| fs::symlink_metadata(rootfs.join(dir).join(command)).is_ok());
+        if !on_path {
+            out.push(
+                rootfs.display().to_string(),
+                format!("missing the command '{command}' (capabilities.txt)"),
+            );
+        }
+    }
+    let musl = contract.profile.libc == Libc::Musl;
+    for locale in locales() {
+        let found = if musl {
+            is_file(&rootfs.join(format!("usr/share/i18n/locales/musl/{locale}.UTF-8")))
+        } else {
+            [format!("{locale}.utf8"), locale.to_string()]
+                .iter()
+                .any(|dir| is_file(&rootfs.join("usr/lib/locale").join(dir).join("LC_CTYPE")))
+        };
+        if !found {
+            out.push(
+                rootfs.display().to_string(),
+                format!("missing the locale {locale}.UTF-8 (capabilities.txt)"),
+            );
+        }
     }
 }

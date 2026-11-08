@@ -1,0 +1,66 @@
+# What every system provides, live and installed, on every variant. Each
+# variant's packages provide it; the rootfs producers check it when they build
+# (the rootfs source takes this file as its `capabilities` input), the contract
+# checks the built rootfs (`validate_live_boot_runtime`) and the live-tools and
+# runtime scenarios run every command. One entry per line: `command <name>` is
+# on PATH, `locale <name>` is a UTF-8 locale users can pick.
+
+# The login shell and the userland users and scripts meet.
+command bash
+command sh
+command ls
+command cat
+command grep
+command find
+command sed
+command awk
+command diff
+command ps
+command tar
+command gzip
+command less
+command vi
+command vim
+command loadkeys
+
+# Disks: what the install guide runs.
+command mount
+command umount
+command dmesg
+command lsblk
+command blkid
+command wipefs
+command fdisk
+command sfdisk
+command mkfs.ext4
+
+# Network.
+command ip
+command ping
+command curl
+command ssh
+
+# Hardware diagnostics.
+command lspci
+command lsusb
+command smartctl
+command hdparm
+command htop
+
+# The locales musl-locales has; glibc's langpacks cover the same languages.
+locale cs_CZ
+locale de_CH
+locale de_DE
+locale en_GB
+locale en_US
+locale es_ES
+locale fi_FI
+locale fr_FR
+locale it_IT
+locale nb_NO
+locale nl_NL
+locale pt_BR
+locale pt_PT
+locale ru_RU
+locale sr_RS
+locale sv_SE

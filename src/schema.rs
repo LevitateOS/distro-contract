@@ -192,13 +192,14 @@ pub struct InstallDocs {
     pub args: Vec<String>,
 }
 
-/// A service the live system runs besides sshd, which every live system runs;
-/// the init system names its units.
+/// A service the live system runs besides the installed system's (the live
+/// system is the installed rootfs plus the live overlay, so it runs what the
+/// installed system runs: time sync, audit, D-Bus, the network). Every live
+/// system runs sshd; the init system names the units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LiveService {
     Ssh,
-    Audit,
     Network,
 }
 
@@ -207,7 +208,6 @@ impl LiveService {
     pub fn units(self, init: InitSystem) -> &'static [&'static str] {
         match (self, init) {
             (Self::Ssh, _) => &["sshd"],
-            (Self::Audit, _) => &["auditd"],
             (Self::Network, InitSystem::Systemd) => &["NetworkManager"],
             (Self::Network, InitSystem::Openrc) => &["networking", "dhcpcd"],
         }
@@ -226,23 +226,15 @@ pub struct LiveContract {
     /// and the init system's.
     #[serde(default)]
     pub kernel_cmdline: Vec<String>,
-    /// Commands the live-tools ISO has besides the shared ones.
-    #[serde(default)]
-    pub tools: Vec<String>,
 }
 
-/// What the installed system has that the shared lists do not give every
-/// variant.
+/// How the installed system differs from every variant's.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstalledContract {
     /// The installed system boots through its own initramfs, built from the
     /// rootfs it installs (`initramfs-installed.img`, which the ISO carries).
     pub initramfs: bool,
-    /// Commands the installed system has besides the shared ones and the
-    /// privilege tool.
-    #[serde(default)]
-    pub tools: Vec<String>,
 }
 
 /// A variant's whole contract: the shape of its `distro.toml`.
@@ -268,16 +260,33 @@ pub struct ConformanceContract {
 /// Anaconda's sshd off port 22 where its unit exists.
 pub const LIVE_KERNEL_CMDLINE: &[&str] = &["console=ttyS0,115200n8", "console=tty0", "audit=1", "inst.sshd=0"];
 
-/// Commands every live-tools ISO has: the install tools and what the install
-/// guide uses.
-pub const LIVE_TOOLS: &[&str] = &[
-    "recpart", "recstrap", "recfstab", "recchroot", "recsetup", "sfdisk", "mkfs.ext4", "ip", "ping",
-    "curl", "lspci", "lsusb", "less", "grep", "find",
-];
+/// What every system provides, live and installed, on every variant:
+/// `capabilities.txt`, which the rootfs producers also read.
+const CAPABILITIES: &str = include_str!("../capabilities.txt");
 
-/// Commands every installed system has, besides its privilege tool.
-pub const INSTALLED_TOOLS: &[&str] =
-    &["ip", "ssh", "mount", "umount", "dmesg", "ps", "ls", "cat", "recab", "recstrap"];
+fn capabilities(kind: &'static str) -> impl Iterator<Item = &'static str> {
+    CAPABILITIES.lines().filter_map(move |line| {
+        let (entry, name) = line.trim().split_once(' ')?;
+        (entry == kind).then(|| name.trim())
+    })
+}
+
+/// The commands every system's rootfs has (`command` in `capabilities.txt`).
+pub fn system_commands() -> impl Iterator<Item = &'static str> {
+    capabilities("command")
+}
+
+/// The UTF-8 locales every system has (`locale` in `capabilities.txt`), as
+/// `<language>_<TERRITORY>`.
+pub fn locales() -> impl Iterator<Item = &'static str> {
+    capabilities("locale")
+}
+
+/// The install tools the live ISO adds to the installed system's commands.
+pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchroot", "recsetup"];
+
+/// The workspace tools the installed system has (A/B updates).
+pub const UPDATE_TOOLS: &[&str] = &["recab", "recstrap"];
 
 /// The live kernel command line every variant of `init` has: the shared
 /// tokens, then the init system's.
@@ -318,21 +327,25 @@ impl ConformanceContract {
             .collect()
     }
 
-    /// The commands the live-tools ISO has.
-    pub fn live_tools(&self) -> Vec<String> {
-        LIVE_TOOLS
-            .iter()
+    /// The commands the installed system has: its privilege tool, the update
+    /// tools and every system's commands.
+    pub fn installed_tools(&self) -> Vec<String> {
+        std::iter::once(self.profile.privilege.as_str())
+            .chain(UPDATE_TOOLS.iter().copied())
+            .chain(system_commands())
             .map(|tool| tool.to_string())
-            .chain(self.live.tools.iter().cloned())
             .collect()
     }
 
-    /// The commands the installed system has, its privilege tool first.
-    pub fn installed_tools(&self) -> Vec<String> {
-        std::iter::once(self.profile.privilege.as_str())
-            .chain(INSTALLED_TOOLS.iter().copied())
+    /// The commands the live-tools ISO has: the install tools, then the
+    /// installed system's.
+    pub fn live_tools(&self) -> Vec<String> {
+        let installed = self.installed_tools();
+        INSTALL_TOOLS
+            .iter()
             .map(|tool| tool.to_string())
-            .chain(self.installed.tools.iter().cloned())
+            .filter(|tool| !installed.contains(tool))
+            .chain(installed.iter().cloned())
             .collect()
     }
 }

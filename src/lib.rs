@@ -22,8 +22,9 @@ pub use schema::{
     ArtifactNames, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
     InstallUxContract, InstalledContract, KernelBuildContract, LiveContract, LiveService,
     LiveUkis, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
-    SourceContract, CONTRACT_SCHEMA_VERSION, INSTALLED_TOOLS, LIVE_KERNEL_CMDLINE, LIVE_TOOLS,
+    SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, LIVE_KERNEL_CMDLINE, UPDATE_TOOLS,
 };
+pub use schema::{locales, system_commands};
 pub use variant::{distro_ids, load, Variant};
 
 /// The profile vocabulary, re-exported for the contract's readers.
