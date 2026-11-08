@@ -6,9 +6,7 @@ use std::collections::HashSet;
 use std::path::{Component, Path};
 
 use crate::error::Violation;
-use crate::schema::{
-    shared_live_cmdline, ConformanceContract, LiveService, RootfsSourceKind, CONTRACT_SCHEMA_VERSION,
-};
+use crate::schema::{ConformanceContract, LiveService, RootfsSourceKind, CONTRACT_SCHEMA_VERSION};
 
 /// `at!(c.a.b)` is the field path `"a.b"` and a reference to the value, so the
 /// path in a report is spelt by the field access itself.
@@ -109,10 +107,6 @@ fn relative_path(value: &str) -> Result<(), String> {
     } else {
         Err(format!("'{value}' must be a relative path without '..'"))
     }
-}
-
-fn cmdline_token(value: &str) -> Result<(), String> {
-    only(value, |c| !c.is_whitespace(), "a single cmdline token")
 }
 
 fn os_id(value: &str) -> Result<(), String> {
@@ -255,17 +249,4 @@ fn check_layers(ck: &mut Check, c: &ConformanceContract) {
             ck.fail(field, format!("{service:?} is listed twice"));
         }
     }
-
-    let shared_cmdline: Vec<&str> = shared_live_cmdline(c.profile.init).collect();
-    let (field, cmdline) = at!(c.live.kernel_cmdline);
-    ck.list(field, cmdline, false, Some(cmdline_token));
-    for (index, token) in cmdline.iter().enumerate() {
-        if shared_cmdline.contains(&token.as_str()) {
-            ck.fail(
-                format!("{field}[{index}]"),
-                format!("'{token}' is already on every live boot of this init system"),
-            );
-        }
-    }
-
 }

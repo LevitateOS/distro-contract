@@ -30,8 +30,8 @@ pub struct LiveBootRuntimeArtifacts {
     pub initramfs_live: PathBuf,
     pub overlay_image: PathBuf,
     pub live_overlay_dir: PathBuf,
-    /// A file holding the path of the rootfs source tree.
-    pub rootfs_source_pointer: PathBuf,
+    /// The rootfs tree the rootfs image was packed from.
+    pub rootfs_source_dir: PathBuf,
 }
 
 fn is_file(path: &Path) -> bool {
@@ -123,18 +123,8 @@ pub fn validate_live_boot_runtime(
     out.file(&artifacts.overlay_image, "live-boot overlay image");
     out.dir(&artifacts.live_overlay_dir, "live-boot overlay source directory");
 
-    let pointer = &artifacts.rootfs_source_pointer;
-    let Some(source) = read_trimmed(pointer) else {
-        out.push(pointer.display().to_string(), "missing live-boot rootfs source pointer");
-        return out.0;
-    };
-    let source = PathBuf::from(source);
-    let rootfs = if source.is_absolute() {
-        source
-    } else {
-        pointer.parent().unwrap_or(Path::new(".")).join(source)
-    };
-    if !out.dir(&rootfs, "live-boot rootfs source directory") {
+    let rootfs = &artifacts.rootfs_source_dir;
+    if !out.dir(rootfs, "live-boot rootfs source directory") {
         return out.0;
     }
     let overlay = &artifacts.live_overlay_dir;
@@ -155,8 +145,8 @@ pub fn validate_live_boot_runtime(
     out.file(&rootfs.join("usr/sbin/sshd"), "OpenSSH daemon");
     out.file(&rootfs.join("etc/ssh/sshd_config"), "sshd config");
     out.dir(&rootfs.join("usr/share/empty.sshd"), "empty sshd directory");
-    check_locale(&mut out, &rootfs, profile.libc == Libc::Musl);
-    check_capabilities(&mut out, &rootfs, contract);
+    check_locale(&mut out, rootfs, profile.libc == Libc::Musl);
+    check_capabilities(&mut out, rootfs, contract);
 
     if profile.init == InitSystem::Systemd {
         for (link, target) in [

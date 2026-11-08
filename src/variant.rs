@@ -23,7 +23,7 @@ pub struct Variant {
 }
 
 impl Variant {
-    /// A file beside `distro.toml` (`kconfig`, `keys/...`, `hooks/...`).
+    /// A file beside `distro.toml` (`kconfig`, `keys/...`).
     pub fn path(&self, relative: impl AsRef<Path>) -> PathBuf {
         self.dir.join(relative)
     }

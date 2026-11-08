@@ -6,7 +6,7 @@ artifacts against it.
 
 A variant directory holds `distro.toml`, the options of its kernel line
 `kconfig` (applied after `_shared/kconfig`),
-signing keys under `keys/` and release hooks under `hooks/`. The Rust types in
+and signing keys under `keys/`. The Rust types in
 `schema.rs` are the TOML shape (`deny_unknown_fields`): adding a field means
 adding it to the type and the file.
 
@@ -14,7 +14,7 @@ adding it to the type and the file.
 
 - `load(repo_root, distro_id) -> Result<Variant, LoadError>`: reads
   `distro.toml` once, validates every rule in one pass (each bad value is one
-  `Violation` under its field path, such as `live.kernel_cmdline[1]`). It
+  `Violation` under its field path, such as `live.services[1]`). It
   derives the names that follow from the ids (`identity.iso_label` = `os_id`
   in capitals, `identity.default_hostname` = `os_id`, `identity.login_prompt`
   = `<os_id> login:`, and
@@ -25,7 +25,7 @@ adding it to the type and the file.
   variant has, each named once with its title, parent, release flag, inputs
   and order. The builder, xtask and install-tests name none of their own.
 - `contract.live`, `contract.installed`: what the variant adds to the shared
-  lists; `live_services()`/`live_service_units()`, `live_kernel_cmdline()`,
+  lists; `live_services()`/`live_service_units()`,
   `live_tools()` and `installed_tools()` give the whole lists.
 - `contract.profile`: the variant's `[profile]` (`distro_profile::Profile`,
   re-exported as `profile`): package backend, init system, libc, privilege

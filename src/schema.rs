@@ -187,10 +187,6 @@ pub struct LiveContract {
     /// Services the live system runs besides sshd.
     #[serde(default)]
     pub services: Vec<LiveService>,
-    /// Kernel command line tokens of every live boot besides the shared ones
-    /// and the init system's.
-    #[serde(default)]
-    pub kernel_cmdline: Vec<String>,
 }
 
 /// How the installed system differs from every variant's.
@@ -217,11 +213,6 @@ pub struct ConformanceContract {
     #[serde(skip)]
     pub artifacts: ArtifactNames,
 }
-
-/// Kernel command line tokens of every live boot of every variant. `audit=1`
-/// keeps the audit trail from the first process; `inst.sshd=0` keeps
-/// Anaconda's sshd off port 22 where its unit exists.
-pub const LIVE_KERNEL_CMDLINE: &[&str] = &["console=ttyS0,115200n8", "console=tty0", "audit=1", "inst.sshd=0"];
 
 /// What every system provides, live and installed, on every variant:
 /// `capabilities.txt`, which the rootfs producers also read.
@@ -251,16 +242,6 @@ pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchro
 /// The workspace tools the installed system has (A/B updates).
 pub const UPDATE_TOOLS: &[&str] = &["recab", "recstrap"];
 
-/// The live kernel command line every variant of `init` has: the shared
-/// tokens, then the init system's.
-pub(crate) fn shared_live_cmdline(init: InitSystem) -> impl Iterator<Item = &'static str> {
-    let init_tokens: &[&str] = match init {
-        InitSystem::Systemd => &["systemd.show_status=0", "rd.systemd.show_status=0"],
-        InitSystem::Openrc => &[],
-    };
-    LIVE_KERNEL_CMDLINE.iter().chain(init_tokens).copied()
-}
-
 impl ConformanceContract {
     /// The services every live boot runs: sshd, then the variant's.
     pub fn live_services(&self) -> Vec<LiveService> {
@@ -279,15 +260,6 @@ impl ConformanceContract {
             .collect();
         units.sort();
         units
-    }
-
-    /// Every live boot's kernel command line: the shared tokens, the init
-    /// system's, then the variant's.
-    pub fn live_kernel_cmdline(&self) -> Vec<String> {
-        shared_live_cmdline(self.profile.init)
-            .map(|token| token.to_string())
-            .chain(self.live.kernel_cmdline.iter().cloned())
-            .collect()
     }
 
     /// The commands the installed system has: its privilege tool, the update

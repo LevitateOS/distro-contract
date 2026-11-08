@@ -22,7 +22,7 @@ pub use runs::Missing;
 pub use schema::{
     ArtifactNames, ConformanceContract, DistroIdentity, InstalledContract, LiveContract, LiveService,
     LiveUkis, PackageBaseContract, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
-    SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, LIVE_KERNEL_CMDLINE, UPDATE_TOOLS,
+    SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, UPDATE_TOOLS,
 };
 pub use schema::{locales, system_commands};
 pub use variant::{distro_ids, load, Variant};
