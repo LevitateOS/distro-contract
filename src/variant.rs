@@ -49,7 +49,7 @@ pub fn load(repo_root: &Path, distro_id: &str) -> Result<Variant, LoadError> {
             manifest: manifest.clone(),
             source,
         })?;
-    derive_names(&mut contract, distro_id);
+    derive_names(&mut contract);
     let violations = crate::validate::validate(&contract, repo_root, &dir);
     if !violations.is_empty() {
         return Err(LoadError::Invalid {
@@ -88,11 +88,10 @@ fn is_variant_id(id: &str) -> bool {
 }
 
 /// The names that follow from the variant id and `os_id`, so no file spells them.
-fn derive_names(contract: &mut ConformanceContract, distro_id: &str) {
+fn derive_names(contract: &mut ConformanceContract) {
     let os_id = contract.identity.os_id.clone();
     contract.identity.iso_label = os_id.to_ascii_uppercase();
     contract.identity.default_hostname = os_id.clone();
     contract.identity.login_prompt = format!("{os_id} login:");
-    contract.build.kernel.localversion = format!("-{distro_id}");
     contract.artifacts = ArtifactNames::derive(&os_id, contract.installed.initramfs);
 }

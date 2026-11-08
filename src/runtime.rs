@@ -83,38 +83,13 @@ impl Missing {
     }
 }
 
-fn kconfig_localversion(kconfig: &str) -> Option<String> {
-    let value = kconfig
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("CONFIG_LOCALVERSION="))?
-        .trim();
-    Some(
-        value
-            .strip_prefix('"')
-            .and_then(|v| v.strip_suffix('"'))
-            .unwrap_or(value)
-            .to_string(),
-    )
-}
-
-/// Check the kernel build and the boot images against the variant's kernel pin.
+/// Check that the kernel build and the boot images exist. Whether the kernel is
+/// the pinned one is the kernel recipe's check (`distro_builder::kernel`).
 pub fn validate_build_runtime(
-    variant: &Variant,
+    _variant: &Variant,
     artifacts: &BuildRuntimeArtifacts,
 ) -> Vec<Violation> {
-    let kernel = &variant.contract.build.kernel;
     let mut out = Missing(Vec::new());
-
-    let kconfig = variant.path("kconfig");
-    match fs::read_to_string(&kconfig).ok().as_deref().map(kconfig_localversion) {
-        None => out.push("kconfig", format!("cannot read {}", kconfig.display())),
-        Some(None) => out.push("kconfig", "sets no CONFIG_LOCALVERSION"),
-        Some(Some(found)) if found != kernel.localversion => out.push(
-            "build.kernel.localversion",
-            format!("kconfig sets CONFIG_LOCALVERSION='{found}', not '{}'", kernel.localversion),
-        ),
-        Some(Some(_)) => {}
-    }
 
     out.file(&artifacts.kernel_image, "kernel image");
     out.file(&artifacts.rootfs_image, "rootfs image");
@@ -128,17 +103,6 @@ pub fn validate_build_runtime(
             "missing or empty kernel.release",
         ),
         Some(release) => {
-            if !release.starts_with(&kernel.version) {
-                out.push(
-                    "build.kernel.version",
-                    format!("the built kernel is '{release}', not version {}", kernel.version),
-                );
-            } else if !release.ends_with(&kernel.localversion) {
-                out.push(
-                    "build.kernel.localversion",
-                    format!("the built kernel '{release}' does not end with {}", kernel.localversion),
-                );
-            }
             out.dir(&artifacts.kernel_modules.join(&release), "kernel modules");
         }
     }

@@ -19,8 +19,8 @@ pub use runtime::{
 };
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use schema::{
-    ArtifactNames, BuildContract, ConformanceContract, DistroIdentity, InstallDocs,
-    InstallUxContract, InstalledContract, KernelBuildContract, LiveContract, LiveService,
+    ArtifactNames, ConformanceContract, DistroIdentity, InstallDocs,
+    InstallUxContract, InstalledContract, LiveContract, LiveService,
     LiveUkis, RecipeOutputKind, RootfsSourceContract, RootfsSourceKind, RpmBaseContract,
     SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, LIVE_KERNEL_CMDLINE, UPDATE_TOOLS,
 };

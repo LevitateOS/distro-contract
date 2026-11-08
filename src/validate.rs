@@ -150,35 +150,6 @@ fn os_id(value: &str) -> Result<(), String> {
     )
 }
 
-fn kernel_version(value: &str) -> Result<(), String> {
-    only(value, |c| c.is_ascii_digit() || c == '.', "a version of digits and dots")?;
-    if value.contains('.') {
-        Ok(())
-    } else {
-        Err(format!("'{value}' is not a version like 6.12.71"))
-    }
-}
-
-fn sha256(value: &str) -> Result<(), String> {
-    if value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit()) {
-        Ok(())
-    } else {
-        Err(format!("'{value}' is not 64 hex digits"))
-    }
-}
-
-fn localversion(value: &str) -> Result<(), String> {
-    match value.strip_prefix('-') {
-        Some(rest) if !rest.is_empty() => only(
-            rest,
-            |c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_',
-            "'-' and lowercase letters, digits or '_'",
-        )
-        .map_err(|_| format!("'{value}' is not '-' and lowercase letters, digits or '_'")),
-        _ => Err(format!("'{value}' is not '-' and lowercase letters, digits or '_'")),
-    }
-}
-
 fn input_name(value: &str) -> Result<(), String> {
     only(
         value,
@@ -227,18 +198,10 @@ pub(crate) fn validate(
     ck.violations
 }
 
-fn check_kernel(ck: &mut Check, c: &ConformanceContract) {
+/// The kernel's pin is the kernel recipe's (`kernel/metadata.rhai`); the
+/// variant has its kernel line (`profile.kernel_line`) and `kconfig`.
+fn check_kernel(ck: &mut Check, _c: &ConformanceContract) {
     ck.variant_file("kconfig", "kconfig");
-    let (field, value) = at!(c.build.kernel.version);
-    ck.value(field, value, Some(kernel_version));
-    let (field, value) = at!(c.build.kernel.sha256);
-    ck.value(field, value, Some(sha256));
-    // Derived from the variant id, which therefore has to make a valid one.
-    ck.value(
-        "build.kernel.localversion (from the variant id)",
-        &c.build.kernel.localversion,
-        Some(localversion),
-    );
 }
 
 fn check_sources(ck: &mut Check, c: &ConformanceContract) {

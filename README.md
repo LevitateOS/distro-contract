@@ -4,7 +4,8 @@ The variant contract of LevitateOS and AcornOS: the schema of
 `distro/variants/<id>/distro.toml`, its loader and rules, and checks of built
 artifacts against it.
 
-A variant directory holds `distro.toml`, the kernel configuration `kconfig`,
+A variant directory holds `distro.toml`, the options of its kernel line
+`kconfig` (applied after `_shared/kconfig`),
 signing keys under `keys/` and release hooks under `hooks/`. The Rust types in
 `schema.rs` are the TOML shape (`deny_unknown_fields`): adding a field means
 adding it to the type and the file.
@@ -16,7 +17,7 @@ adding it to the type and the file.
   `Violation` under its field path, such as `install_ux.consoles[1]`). It
   derives the names that follow from the ids (`identity.iso_label` = `os_id`
   in capitals, `identity.default_hostname` = `os_id`, `identity.login_prompt`
-  = `<os_id> login:`, `build.kernel.localversion` = `-<id>`, and
+  = `<os_id> login:`, and
   `contract.artifacts`: `<os_id>-x86_64-<product>.iso`, the live UKIs by role,
   `filesystem.erofs`, ...), so no file spells them. There is no unvalidated
   load.
@@ -37,7 +38,8 @@ adding it to the type and the file.
   `distro.toml`.
 - `validate_build_runtime(&Variant, &BuildRuntimeArtifacts)` and
   `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts)`:
-  checks of built artifacts (kernel provenance against `kconfig` and the pin;
+  checks of built artifacts (the kernel bundle's files, whose pin the kernel
+  recipe checks;
   live-boot SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
   (`8`).

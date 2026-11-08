@@ -81,26 +81,6 @@ impl ArtifactNames {
     }
 }
 
-/// What the variant pins about its build: the kernel. The kernel's
-/// configuration is `kconfig` beside `distro.toml`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BuildContract {
-    pub kernel: KernelBuildContract,
-}
-
-/// Kernel source pin.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct KernelBuildContract {
-    pub version: String,
-    pub sha256: String,
-    /// `CONFIG_LOCALVERSION` of `kconfig`: `-` and the variant id; derived when
-    /// the contract loads (not in the file).
-    #[serde(skip)]
-    pub localversion: String,
-}
-
 /// How the rootfs source is acquired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -245,7 +225,6 @@ pub struct ConformanceContract {
     pub identity: DistroIdentity,
     /// The base facts the variant differs in.
     pub profile: Profile,
-    pub build: BuildContract,
     pub sources: SourceContract,
     pub install_ux: InstallUxContract,
     pub live: LiveContract,
