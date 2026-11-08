@@ -9,15 +9,17 @@ pub enum ProductId {
     BaseRootfs,
     LiveBoot,
     LiveTools,
+    LiveDesktop,
     InstalledBoot,
 }
 
 impl ProductId {
     /// Every product, parents before the products built on them.
-    pub const ALL: [ProductId; 4] = [
+    pub const ALL: [ProductId; 5] = [
         ProductId::BaseRootfs,
         ProductId::LiveBoot,
         ProductId::LiveTools,
+        ProductId::LiveDesktop,
         ProductId::InstalledBoot,
     ];
 
@@ -27,6 +29,7 @@ impl ProductId {
             Self::BaseRootfs => "base-rootfs",
             Self::LiveBoot => "live-boot",
             Self::LiveTools => "live-tools",
+            Self::LiveDesktop => "live-desktop",
             Self::InstalledBoot => "installed-boot",
         }
     }
@@ -37,6 +40,7 @@ impl ProductId {
             Self::BaseRootfs => "Base Rootfs",
             Self::LiveBoot => "Live Boot",
             Self::LiveTools => "Live Tools",
+            Self::LiveDesktop => "Live Desktop",
             Self::InstalledBoot => "Installed Boot",
         }
     }
@@ -47,6 +51,7 @@ impl ProductId {
             Self::BaseRootfs => None,
             Self::LiveBoot | Self::InstalledBoot => Some(Self::BaseRootfs),
             Self::LiveTools => Some(Self::LiveBoot),
+            Self::LiveDesktop => Some(Self::LiveTools),
         }
     }
 

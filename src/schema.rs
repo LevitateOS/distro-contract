@@ -189,6 +189,19 @@ pub struct LiveContract {
     pub services: Vec<LiveService>,
 }
 
+/// The graphical desktop the `live-desktop` product adds over live-tools
+/// (`profile.desktop` names which: Plasma or LXQt).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopContract {
+    /// What the desktop needs from the base release, beside the base
+    /// packages; the lock adds their dependencies.
+    pub packages: Vec<String>,
+    /// The display manager's unit (systemd) or service (OpenRC); the product
+    /// enables it and the system boots to the graphical target.
+    pub display_manager: String,
+}
+
 /// How the installed system differs from every variant's.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -208,6 +221,7 @@ pub struct ConformanceContract {
     pub profile: Profile,
     pub sources: SourceContract,
     pub live: LiveContract,
+    pub desktop: DesktopContract,
     pub installed: InstalledContract,
     /// Derived from `identity` and `installed` when the contract loads.
     #[serde(skip)]
