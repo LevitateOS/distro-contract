@@ -203,13 +203,9 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
                 ck.fail(outputs_field, "must name the preseed recipe's outputs and their kinds");
             }
         }
-        None if source.kind == RootfsSourceKind::RecipeRpmSet => {
-            ck.fail(field, "is required for kind = 'recipe_rpm_set'");
+        None => {
+            ck.fail(field, "is required: it downloads the base's locked packages");
         }
-        None if !outputs.is_empty() => {
-            ck.fail(outputs_field, "needs a preseed_recipe_script");
-        }
-        None => {}
     }
     for name in outputs.keys() {
         ck.name(&format!("{outputs_field}.{name}"), name);
@@ -234,23 +230,16 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
         }
     }
 
-    let (field, rpm_base) = at!(c.sources.rootfs_source.rpm_base);
-    match (rpm_base, source.kind) {
-        (None, RootfsSourceKind::RecipeRpmSet) => {
-            ck.fail(field, "is required for kind = 'recipe_rpm_set'")
-        }
-        (Some(_), RootfsSourceKind::RecipeCustom) => {
-            ck.fail(field, "only applies to kind = 'recipe_rpm_set'")
-        }
-        (Some(base), RootfsSourceKind::RecipeRpmSet) => {
-            if base.fedora_release == 0 {
-                ck.fail(format!("{field}.fedora_release"), "must name a Fedora release");
-            }
-            ck.variant_file(&format!("{field}.signing_key"), &base.signing_key);
-            ck.list(&format!("{field}.packages"), &base.packages, true, None);
-        }
-        (None, RootfsSourceKind::RecipeCustom) => {}
+    let (field, base) = at!(c.sources.rootfs_source.base);
+    let release = format!("{field}.release");
+    if ck.name(&release, &base.release)
+        && c.profile.packages == distro_profile::PackageBackend::Rpm
+        && !base.release.parse::<u32>().is_ok_and(|n| n > 0)
+    {
+        ck.fail(release, "must be a Fedora release number");
     }
+    ck.variant_file(&format!("{field}.signing_key"), &base.signing_key);
+    ck.list(&format!("{field}.packages"), &base.packages, true, None);
 }
 
 /// `[live]` and `[installed]` hold only what the variant adds to the shared

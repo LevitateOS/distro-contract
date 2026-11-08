@@ -85,18 +85,32 @@ impl ArtifactNames {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RootfsSourceKind {
-    /// A locked set of RPMs from a Fedora release and its updates (`rpm_base`).
+    /// A locked set of RPMs from a Fedora release and its updates.
     RecipeRpmSet,
     RecipeCustom,
 }
 
-/// The RPMs a `recipe_rpm_set` rootfs takes from its Fedora base. The exact
-/// builds are locked by `cargo xtask base lock`.
+/// What the rootfs takes from its base distribution, the same shape for
+/// every package backend (`profile.packages`). `cargo xtask base lock
+/// <distro>` resolves the packages and their dependencies from the release
+/// into the backend's lock, which the rootfs recipes import.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct PackageBaseContract {
+    /// The release: Fedora's number (`45`) or Alpine's branch (`v3.24`).
+    pub release: String,
+    /// The key the release signs its packages with, relative to the variant
+    /// directory.
+    pub signing_key: String,
+    /// What the system needs; the lock adds their dependencies.
+    pub packages: Vec<String>,
+}
+
+/// `base` of an RPM variant in the shape `cargo xtask base lock` reads until
+/// it reads `base` for both backends; derived when the contract loads.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RpmBaseContract {
     pub fedora_release: u32,
-    /// The release's RPM signing key, relative to the variant directory.
     pub signing_key: String,
     pub packages: Vec<String>,
 }
@@ -130,6 +144,9 @@ pub struct RootfsSourceContract {
     pub preseed_outputs: BTreeMap<String, RecipeOutputKind>,
     #[serde(default)]
     pub defines: BTreeMap<String, String>,
+    pub base: PackageBaseContract,
+    /// Derived from `base` for an RPM variant (not in the file).
+    #[serde(skip)]
     pub rpm_base: Option<RpmBaseContract>,
 }
 
