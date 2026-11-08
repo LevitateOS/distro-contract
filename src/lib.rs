@@ -1,9 +1,11 @@
 //! The variant contract: the schema of `distro/variants/<id>/distro.toml`,
 //! its loader and rules, the names derived from it, the registry of products
-//! and scenarios, and checks of built artifacts against it.
+//! and scenarios, the `.artifacts` layout and run records, and checks of
+//! built artifacts against it.
 
 pub mod error;
 pub mod registry;
+pub mod runs;
 pub mod runtime;
 pub mod schema;
 pub mod tui_apps;
