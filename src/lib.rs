@@ -18,6 +18,7 @@ pub use runtime::{
     LiveBootRuntimeArtifacts,
 };
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
+pub use runs::Missing;
 pub use schema::{
     ArtifactNames, ConformanceContract, DistroIdentity, InstallDocs,
     InstallUxContract, InstalledContract, LiveContract, LiveService,

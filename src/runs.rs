@@ -155,6 +155,28 @@ impl RunManifest {
     }
 }
 
+/// A run something needs that has not happened: what a producer or the
+/// scenario runner reports, and only the front door (xtask) turns into the
+/// command that provides it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Missing {
+    /// No successful release of `product`, or it lost its ISO.
+    ReleaseIso { distro: String, product: ProductId },
+    /// No successful install run whose disk is still there.
+    InstallRun { distro: String },
+}
+
+impl std::fmt::Display for Missing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ReleaseIso { distro, product } => write!(f, "{distro} has no built {product} ISO"),
+            Self::InstallRun { distro } => write!(f, "{distro} has no successful install run with its disk"),
+        }
+    }
+}
+
+impl std::error::Error for Missing {}
+
 /// A run in progress: its directory and the manifest it keeps there.
 #[derive(Debug)]
 pub struct Run {
