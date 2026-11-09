@@ -20,7 +20,6 @@ command tar
 command gzip
 command less
 command vi
-command vim
 command loadkeys
 
 # Disks: what the install guide runs.
