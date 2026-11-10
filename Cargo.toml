@@ -15,3 +15,12 @@ distro-profile = { path = "../profile" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+
+anyhow = "1"
+levitate-recipe = { path = "../../tools/recipe" }
+sha2 = "0.10"
+hex = "0.4"
+ring = "0.17"
+semver = "1"
+url = "2"
+tar = "0.4"

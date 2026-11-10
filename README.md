@@ -42,7 +42,11 @@ adding it to the type and the file.
   recipe checks;
   live-boot SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
-  (`8`).
+  (`9`).
 - `install_ux`: the live install screen, the same on every variant: its
   consoles, apps and docs page, and the paths and names the builder, the
   split pane and the install tests share.
+
+`release` owns the versioned installed-system manifest, intended inventory,
+compatibility checks and distribution release trust shared by builder and recab.
+See [the release format](docs/releases.md).

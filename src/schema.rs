@@ -154,6 +154,9 @@ pub struct DesktopContract {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConformanceContract {
+    /// Release ordering and optional online source/distribution trust.
+    #[serde(default)]
+    pub release: crate::release::Policy,
     pub schema_version: u32,
     pub identity: DistroIdentity,
     /// The base facts the variant differs in.

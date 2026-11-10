@@ -6,6 +6,7 @@
 pub mod error;
 pub mod install_ux;
 pub mod registry;
+pub mod release;
 pub mod runs;
 pub mod runtime;
 pub mod schema;
