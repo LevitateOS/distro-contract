@@ -19,7 +19,7 @@ Member names cannot escape the release directory. The same layout can be served
 under an online release base URL. A channel's sequence is publisher-controlled;
 advancing an OS version string or a build clock never silently advances it.
 Imports accept the installed sequence or newer and refuse implicit downgrades.
-Recab discovery pins a newer release; installed-baseline advancement belongs to P09.
+Recab discovery pins a newer release; successful merge advances the prepared release baseline.
 
 `SystemInventory` records canonical paths, kinds, content fingerprints, numeric
 UID/GID, modes, raw xattrs and link identity using Recipe's existing target
@@ -107,7 +107,17 @@ behind a preparation or running operation. Actual producer, export and private
 verification copies still cost disk writes; logical verified byte counts are
 not device-write or SMART counters.
 
-`update apply` currently verifies and pins cached/media inputs to a preparation,
-blocking finalization until P09 merges the release or the selection is cancelled.
-It reports `awaiting_merge` and `merge_complete: false`; cancellation preserves
-prepared changes. It does not claim that selecting a release applies its files.
+`update apply` merges the pinned release against the retained release baseline
+and captured prepared system. Its structured `merge` reports redacted conflicts,
+revision, progress and recovery state. The candidate stays unavailable until
+conflicts/dependency work are resolved and the complete tree validates. Account
+baselines contain field/member fingerprints; raw account bodies remain only in
+protected system files. Local Recipe selection survives and required native
+reproduction runs through Recipe with the verified manifest as its bounded target
+input. Baseline advancement and boot-input selection happen only after success.
+
+The initial baseline is captured before installer personalization. An installation
+without it must explicitly adopt a verified original release; current personalized
+contents cannot stand in for O. Verified baselines retain the content-addressed
+release ID. Manifest/media staging uses this same merge and never formats the
+inactive filesystem. Raw artifact paths require their corresponding manifest.
