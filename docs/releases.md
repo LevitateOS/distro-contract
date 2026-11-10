@@ -19,7 +19,7 @@ Member names cannot escape the release directory. The same layout can be served
 under an online release base URL. A channel's sequence is publisher-controlled;
 advancing an OS version string or a build clock never silently advances it.
 Imports accept the installed sequence or newer and refuse implicit downgrades.
-Release selection and installed-baseline advancement belong to P08/P09.
+Recab discovery pins a newer release; installed-baseline advancement belongs to P09.
 
 `SystemInventory` records canonical paths, kinds, content fingerprints, numeric
 UID/GID, modes, raw xattrs and link identity using Recipe's existing target
@@ -45,8 +45,10 @@ optional `source = { index, recipe }` and optional
 `trust = { ed25519 = "<64 lowercase hex characters>" }`. An enabled source must
 use HTTPS (or loopback HTTP for a local fixture) without credentials or a
 fragment, name an existing repository recipe,
-and declare distribution release trust. Recipe acquisition and publishing the
-online index remain P08. Package-signing keys and `HOME_URL` are not release keys
+and declare distribution release trust. The builder packages that recipe at
+`/usr/share/recab/update-acquire.rhai`, fills its single configured-endpoint
+marker and rewrites the installed recipe path. Recab gives Recipe only a small
+request file, the configured endpoint and a bounded byte budget. Package-signing keys and `HOME_URL` are not release keys
 or update endpoints. The checked-in variants declare development sequence 1,
 without a production source or key; publishing a newer release must deliberately
 advance the sequence and configure the actual service/key.
@@ -74,3 +76,38 @@ I/O; these are not zero-write or SMART guarantees.
 Release policy is a regular slot-owned root file. Recab refuses symlinked or
 group/world-writable policy so shared mutable state cannot replace the
 distribution trust authority.
+
+
+## Online index and recovery
+
+The local publisher writes version 1 `index.json`: a positive monotonic index
+sequence, channel and at most 256 current release entries, one per
+(distro, architecture, init, libc, flavour). Each entry binds the complete release
+identity and the manifest/signature's relative paths, SHA256 and byte lengths.
+The detached signature covers exact index bytes with the installed distribution
+key. Its authoritative path is `index-signatures/<SHA256(index.json)>.sig`;
+`index.sig` is a convenience copy. Content-addressed signatures let a reader
+finish verifying an older index while publication advances atomically.
+
+Recab fetches metadata only through Recipe. It verifies the index before
+selecting a manifest, and that manifest before pinning payload URLs and hashes.
+Index and release high-water marks refuse rollback and same-sequence changes.
+They are scoped to the installed policy/profile/acquisition recipe, never to an
+untrusted key or source in the incoming release. HTTPS is required except for
+loopback HTTP fixtures. Index/manifest bodies are limited to 1 MiB; signatures
+are exactly 64 bytes. Payload requests use signed lengths and hashes.
+
+Check/download hold the recab operation lock without changing slot contents,
+preparation revisions, ledger or boot selection. Pins, status and completed
+transfers live under the private state directory. Retry uses a selected manifest
+ID, rehashes completed artifacts, and restarts the incomplete artifact. A
+successful download performs complete P07 validation before cache publication.
+Cached inputs are reverified offline; they are retained rather than collected
+behind a preparation or running operation. Actual producer, export and private
+verification copies still cost disk writes; logical verified byte counts are
+not device-write or SMART counters.
+
+`update apply` currently verifies and pins cached/media inputs to a preparation,
+blocking finalization until P09 merges the release or the selection is cancelled.
+It reports `awaiting_merge` and `merge_complete: false`; cancellation preserves
+prepared changes. It does not claim that selecting a release applies its files.

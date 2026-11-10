@@ -1,6 +1,6 @@
 //! The installed-system release set, identical on media and online. Signatures
 //! cover exact manifest bytes; the configured distribution key is the authority.
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use distro_profile::{Flavour, InitSystem, Libc};
 use levitate_recipe::target::{Entry, Manifest};
 use ring::signature::{self, KeyPair};
@@ -567,5 +567,106 @@ impl SystemInventory {
         };
         value.validate()?;
         Ok(value)
+    }
+}
+
+pub const INDEX: &str = "index.json";
+pub const INDEX_SIGNATURE: &str = "index.sig";
+pub const ACQUISITION_RECIPE: &str = "usr/share/recab/update-acquire.rhai";
+/// The only network authority the installed acquisition recipe needs.
+pub fn endpoint(index: &str) -> Result<String> {
+    let url = url::Url::parse(index)?;
+    Ok(format!(
+        "{}:{}",
+        url.host_str().context("update source host missing")?,
+        url.port_or_known_default()
+            .context("update source port missing")?
+    ))
+}
+impl Policy {
+    /// Variant recipes are repository paths; installed policy uses the packaged,
+    /// configured acquisition recipe rather than referring back to a checkout.
+    pub fn installed(&self) -> Self {
+        let mut policy = self.clone();
+        if let Some(source) = &mut policy.source {
+            source.recipe = ACQUISITION_RECIPE.into();
+        }
+        policy
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IndexEntry {
+    pub identity: Identity,
+    pub manifest: Artifact,
+    pub signature: Artifact,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseIndex {
+    pub schema_version: u32,
+    pub sequence: u64,
+    pub channel: String,
+    pub releases: Vec<IndexEntry>,
+}
+impl ReleaseIndex {
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        ensure!(bytes.len() <= MAX_MANIFEST, "release index exceeds 1 MiB");
+        let value: Self = serde_json::from_slice(bytes)?;
+        value.validate()?;
+        Ok(value)
+    }
+    pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.schema_version == 1 && self.sequence > 0 && self.releases.len() <= 256,
+            "invalid release index version/sequence/entry count"
+        );
+        token(&self.channel)?;
+        let mut identities = BTreeSet::new();
+        for entry in &self.releases {
+            let identity = &entry.identity;
+            token(&identity.distro)?;
+            token(&identity.channel)?;
+            ensure!(
+                identity.channel == self.channel
+                    && identity.sequence > 0
+                    && !identity.version.is_empty(),
+                "release index identity/channel mismatch"
+            );
+            ensure!(
+                identities.insert(serde_json::to_vec(&(
+                    &identity.distro,
+                    &identity.architecture,
+                    identity.init,
+                    identity.libc,
+                    identity.flavour
+                ))?),
+                "duplicate indexed release profile"
+            );
+            for artifact in [&entry.manifest, &entry.signature] {
+                relative(&artifact.path)?;
+                hash(&artifact.sha256)?;
+                ensure!(
+                    !artifact.path.contains([':', '?', '#', '%'])
+                        && !artifact.path.chars().any(char::is_whitespace),
+                    "unsafe index member URL"
+                );
+            }
+            ensure!(
+                entry.manifest.size > 0
+                    && entry.manifest.size <= MAX_MANIFEST as u64
+                    && entry.signature.size == 64,
+                "invalid indexed metadata size"
+            );
+            ensure!(
+                Path::new(&entry.manifest.path).file_name() == Some(std::ffi::OsStr::new(MANIFEST))
+                    && Path::new(&entry.signature.path).file_name()
+                        == Some(std::ffi::OsStr::new(SIGNATURE))
+                    && Path::new(&entry.manifest.path).parent()
+                        == Path::new(&entry.signature.path).parent(),
+                "indexed manifest/signature must be one release set"
+            );
+        }
+        Ok(())
     }
 }
