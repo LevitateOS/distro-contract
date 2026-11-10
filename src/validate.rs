@@ -177,6 +177,10 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
     ck.repo_file(field, preseed);
     let (field, preseed) = at!(c.desktop.preseed_recipe_script);
     ck.repo_file(field, preseed);
+    let (field, preseed) = at!(c.desktop.apps_build_preseed_recipe_script);
+    ck.repo_file(field, preseed);
+    let (field, root) = at!(c.desktop.apps_build_root_recipe_script);
+    ck.repo_file(field, root);
 
     let (field, base) = at!(c.sources.rootfs_source.base);
     let release = format!("{field}.release");

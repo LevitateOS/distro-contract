@@ -6,7 +6,7 @@ use crate::registry::ProductId;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 8;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 9;
 
 /// Identity metadata for a distro contract.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -136,6 +136,18 @@ pub struct DesktopContract {
     /// Downloads the desktop lock's packages, which the rootfs recipe
     /// installs over the base lock's when it builds the desktop system.
     pub preseed_recipe_script: String,
+    /// What compiling the desktop apps (`gui/`, [`DESKTOP_APPS`]) needs from
+    /// the base release beside the base packages: the compiler, CMake and
+    /// Qt's development files. `cargo xtask base lock` locks their
+    /// dependencies minus the base lock's packages in the apps-build lock,
+    /// in the same run as the desktop lock, so both name the same Qt. None of
+    /// these packages is in an image.
+    pub apps_build_packages: Vec<String>,
+    /// Downloads the apps-build lock's packages.
+    pub apps_build_preseed_recipe_script: String,
+    /// Makes the root the desktop apps are compiled in: the base lock's and
+    /// the apps-build lock's packages as one root image.
+    pub apps_build_root_recipe_script: String,
 }
 
 /// A variant's whole contract: the shape of its `distro.toml`.
@@ -189,6 +201,19 @@ pub const UPDATE_TOOLS: &[&str] = &["recab", "recstrap"];
 /// The TUI apps (under `tui/apps`, by `bin` name) the installed system carries as
 /// commands, on every distro; the builder compiles them into the system rootfs.
 pub const SYSTEM_TUI_APPS: &[&str] = &["recab-tui"];
+
+/// The desktop apps (under `gui/`, by program name) the desktop system
+/// carries, on every distro: each a program in `/usr/bin` with a menu entry.
+/// The builder compiles them against the distro's own Qt and puts them into
+/// the desktop system's rootfs.
+pub const DESKTOP_APPS: &[&str] = &["recipe-gui", "recab-gui", "disk-gui"];
+
+/// Where each desktop app's menu entry is, by the same order.
+pub const DESKTOP_APP_ENTRIES: &[&str] = &[
+    "usr/share/applications/org.levitateos.recipe.desktop",
+    "usr/share/applications/org.levitateos.recab.desktop",
+    "usr/share/applications/org.levitateos.disk.desktop",
+];
 
 impl ConformanceContract {
     /// The init system's units every live boot runs: sshd. (NetworkManager and
