@@ -117,12 +117,17 @@ fn os_id(value: &str) -> Result<(), String> {
     )
 }
 
-/// The variant's wallpapers, beside `distro.toml`: 3840x2160 JPEGs, the
-/// desktop system's background under a light and under a dark look. Each is
-/// (the rootfs recipe's input, the file).
-pub const WALLPAPERS: [(&str, &str); 2] = [
+/// The variant's branding, beside `distro.toml`, which the desktop system
+/// shows: the wallpapers (3840x2160 JPEGs) for a light and for a dark look,
+/// and the mark (24px, and the 16px micro mark) in ink for a light surface
+/// and in paper for a dark one. Each is (the rootfs recipe's input, the file).
+pub const BRANDING: [(&str, &str); 6] = [
     ("wallpaper_light", "branding/wallpaper-light.jpg"),
     ("wallpaper_dark", "branding/wallpaper-dark.jpg"),
+    ("logo_ink", "branding/logo-ink.svg"),
+    ("logo_paper", "branding/logo-paper.svg"),
+    ("logo_micro_ink", "branding/logo-micro-ink.svg"),
+    ("logo_micro_paper", "branding/logo-micro-paper.svg"),
 ];
 
 /// Every rule, over the whole contract.
@@ -151,7 +156,7 @@ pub(crate) fn validate(
     ck.value(field, value, Some(os_id));
 
     ck.variant_file("kconfig", "kconfig");
-    for (_, file) in WALLPAPERS {
+    for (_, file) in BRANDING {
         ck.variant_file(file, file);
     }
     check_sources(&mut ck, c);

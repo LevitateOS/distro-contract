@@ -25,7 +25,7 @@ pub use schema::{
     SourceContract, CONTRACT_SCHEMA_VERSION, INSTALL_TOOLS, SYSTEM_TUI_APPS, UPDATE_TOOLS,
 };
 pub use schema::{capabilities_text, locales, system_commands};
-pub use validate::WALLPAPERS;
+pub use validate::BRANDING;
 pub use variant::{distro_ids, load, Variant};
 
 /// The profile vocabulary, re-exported for the contract's readers.
