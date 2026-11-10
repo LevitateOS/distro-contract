@@ -33,6 +33,9 @@ pub const HUB: &str = "install-hub";
 pub const DOCS: &str = "install-docs";
 /// The page the docs open at, the same slug on every distro.
 pub const DOCS_PAGE: &str = "installation";
+/// Tells the docs they are the install screen's second pane: they draw their band
+/// flat and without the distro's name, so the two panes read as one screen.
+pub const DOCS_PANE: &str = "--pane";
 /// TUI apps the live ISO carries besides the hub and the docs.
 pub const APPS: &[&str] = &["disk-plan", "base-system", "system-setup"];
 
