@@ -18,6 +18,10 @@ pub struct DistroIdentity {
     #[serde(skip)]
     pub iso_label: String,
     pub os_version: String,
+    /// The OS's website (os-release `HOME_URL`, and the browser's homepage);
+    /// an OS without one of its own leaves it out.
+    #[serde(default)]
+    pub home_url: Option<String>,
     /// `os_id`; derived when the contract loads (not in the file).
     #[serde(skip)]
     pub default_hostname: String,

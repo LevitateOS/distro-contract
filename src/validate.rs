@@ -154,6 +154,11 @@ pub(crate) fn validate(
     }
     let (field, value) = at!(c.identity.os_id);
     ck.value(field, value, Some(os_id));
+    if let Some(url) = &c.identity.home_url {
+        if !url.starts_with("https://") || url.contains(char::is_whitespace) || url.contains('"') {
+            ck.fail("identity.home_url", format!("must be an https:// URL, got {url:?}"));
+        }
+    }
 
     ck.variant_file("kconfig", "kconfig");
     for (_, file) in BRANDING {
