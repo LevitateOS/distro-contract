@@ -18,7 +18,7 @@ pub const SOURCE_CONFIG: &str = "usr/lib/recab/update-source.json";
 pub const MAX_MANIFEST: usize = 1024 * 1024;
 pub const MAX_INVENTORY: u64 = 64 * 1024 * 1024;
 pub const STATE_MAJOR: u32 = 2;
-pub const STATE_MINOR: u32 = 3;
+pub const STATE_MINOR: u32 = 4;
 pub const BOOT_PROTOCOL: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
