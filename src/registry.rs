@@ -204,7 +204,7 @@ impl ScenarioId {
             Self::AutomatedLogin => "root logs in on the installed system",
             Self::Runtime => "the installed system has its tools",
             Self::AbUpdate => "the installed system stages the release into slot B and trials, commits and rolls it back",
-            Self::DesktopBoot => "the live-desktop ISO boots into the desktop with no failed service",
+            Self::DesktopBoot => "the live-desktop ISO boots into the desktop with no failed service and with its desktop apps",
         }
     }
 
