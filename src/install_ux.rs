@@ -34,7 +34,7 @@ pub const DOCS: &str = "install-docs";
 /// The page the docs open at, the same slug on every distro.
 pub const DOCS_PAGE: &str = "installation";
 /// TUI apps the live ISO carries besides the hub and the docs.
-pub const APPS: &[&str] = &["disk-plan", "base-system"];
+pub const APPS: &[&str] = &["disk-plan", "base-system", "system-setup"];
 
 macro_rules! bin_dir {
     () => {
