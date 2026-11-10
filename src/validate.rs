@@ -117,6 +117,14 @@ fn os_id(value: &str) -> Result<(), String> {
     )
 }
 
+/// The variant's wallpapers, beside `distro.toml`: 3840x2160 JPEGs, the
+/// desktop system's background under a light and under a dark look. Each is
+/// (the rootfs recipe's input, the file).
+pub const WALLPAPERS: [(&str, &str); 2] = [
+    ("wallpaper_light", "branding/wallpaper-light.jpg"),
+    ("wallpaper_dark", "branding/wallpaper-dark.jpg"),
+];
+
 /// Every rule, over the whole contract.
 pub(crate) fn validate(
     c: &ConformanceContract,
@@ -143,6 +151,9 @@ pub(crate) fn validate(
     ck.value(field, value, Some(os_id));
 
     ck.variant_file("kconfig", "kconfig");
+    for (_, file) in WALLPAPERS {
+        ck.variant_file(file, file);
+    }
     check_sources(&mut ck, c);
     ck.violations
 }
