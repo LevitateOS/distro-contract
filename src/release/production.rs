@@ -443,6 +443,10 @@ impl ProductionEntry {
         for (name, parts) in &self.parts {
             relative(name)?;
             ensure!(
+                name != AUTHORITY_FILE && !name.starts_with(&format!("{AUTHORITY_FILE}/")),
+                "transport artifact collides with release authority"
+            );
+            ensure!(
                 !parts.is_empty() && parts.len() <= MAX_PARTS,
                 "invalid transport part count"
             );
