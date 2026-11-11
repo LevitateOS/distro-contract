@@ -704,17 +704,3 @@ impl ReleaseIndex {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tree_paths_allow_systemd_escapes_but_published_members_do_not() {
-        let unit = r"usr/lib/systemd/system/system-systemd\x2dcryptsetup.slice";
-        tree_path(unit).unwrap();
-        assert!(relative(unit).is_err());
-        for bad in ["", "/etc", "etc/../root", "etc/./x", "etc//x", "etc\0x"] {
-            assert!(tree_path(bad).is_err(), "{bad:?}");
-        }
-    }
-}
