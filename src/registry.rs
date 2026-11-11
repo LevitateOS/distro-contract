@@ -201,12 +201,16 @@ impl ScenarioId {
             }
             Self::LiveBoot => "the live-boot ISO boots and takes an SSH login",
             Self::LiveTools => "the live-tools ISO has its tools and its install screen",
-            Self::Install => "the live-tools ISO installs to a disk",
+            Self::Install => {
+                "the live-tools ISO installs identical personalized A/B systems with both slots bootable"
+            }
             Self::InstalledBoot => "the installed disk boots",
             Self::AutomatedLogin => "root logs in on the installed system",
-            Self::Runtime => "the installed system has its tools",
+            Self::Runtime => {
+                "the installed tools execute a native Recipe/Ginux worker without activating system packages"
+            }
             Self::AbUpdate => {
-                "equivalent initial A/B systems, X plus a signed downloaded update, failed and healthy trials, reverse Y and measured write avoidance"
+                "equivalent initial A/B systems, signed updates preserving X, metadata and independent profiles, failed/healthy trials both ways, reverse Y and measured write avoidance with retained boot logs"
             }
             Self::DesktopBoot => {
                 "the live-desktop ISO boots into the desktop with no failed service and with its desktop apps"
