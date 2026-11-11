@@ -202,7 +202,7 @@ impl ScenarioId {
             Self::LiveBoot => "the live-boot ISO boots and takes an SSH login",
             Self::LiveTools => "the live-tools ISO has its tools and its install screen",
             Self::Install => {
-                "the live-tools ISO installs identical personalized A/B systems with both slots bootable"
+                "the selected base/desktop installer ISO populates identical personalized A/B systems with both slots bootable"
             }
             Self::InstalledBoot => "the installed disk boots",
             Self::AutomatedLogin => "root logs in on the installed system",
@@ -210,7 +210,7 @@ impl ScenarioId {
                 "the installed tools execute a native Recipe/Ginux worker without activating system packages"
             }
             Self::AbUpdate => {
-                "equivalent initial A/B systems, signed updates preserving X, metadata and independent profiles, failed/healthy trials both ways, reverse Y and measured write avoidance with retained boot logs"
+                "equivalent initial A/B systems, explicit public-origin or local-fixture updates preserving X, metadata and independent profiles, failed/healthy trials both ways, reverse Y and measured write avoidance with retained boot logs"
             }
             Self::DesktopBoot => {
                 "the live-desktop ISO boots into the desktop with no failed service and with its desktop apps"
@@ -218,6 +218,18 @@ impl ScenarioId {
         }
     }
 
+    /// Installed checks select the exact requested system flavour; live-only
+    /// scenarios retain the product whose capability they explicitly exercise.
+    pub fn input_for(self, flavour: Flavour) -> ScenarioInput {
+        if flavour == Flavour::Desktop && matches!(self, Self::Install | Self::BuildPreflight) {
+            ScenarioInput {
+                iso: Some(ProductId::LiveDesktop),
+                install_run: false,
+            }
+        } else {
+            self.input()
+        }
+    }
     pub fn input(self) -> ScenarioInput {
         let iso = |product| ScenarioInput {
             iso: Some(product),
