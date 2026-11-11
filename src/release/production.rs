@@ -388,6 +388,9 @@ impl VerifiedAuthority {
     pub fn digest(&self) -> &str {
         &self.digest
     }
+    pub fn require_current(&self, now: u64) -> Result<()> {
+        fresh(self.delegation.issued_at, self.delegation.expires_at, now)
+    }
     pub fn verify(&self, role: SigningRole, bytes: &[u8], signature: &[u8]) -> Result<Trust> {
         for key in self.delegation.keys(role) {
             if verify_signature(bytes, signature, key).is_ok() {
@@ -396,7 +399,14 @@ impl VerifiedAuthority {
         }
         anyhow::bail!("signature is not authorized for the {role:?} role")
     }
-    pub fn sign(&self, role: SigningRole, bytes: &[u8], private_key: &[u8]) -> Result<Vec<u8>> {
+    pub fn sign(
+        &self,
+        role: SigningRole,
+        bytes: &[u8],
+        private_key: &[u8],
+        now: u64,
+    ) -> Result<Vec<u8>> {
+        self.require_current(now)?;
         for key in self.delegation.keys(role) {
             if let Ok(sig) = sign(bytes, private_key, key) {
                 return Ok(sig);
@@ -531,6 +541,8 @@ impl ReleaseIndexV2 {
         policy: &ProductionPolicy,
         now: u64,
     ) -> Result<Self> {
+        // Archived proofs authenticate cached bytes, not fresh online metadata.
+        authority.require_current(now)?;
         authority.verify(SigningRole::Index, bytes, signature)?;
         let index = Self::parse(bytes, policy)?;
         ensure!(
