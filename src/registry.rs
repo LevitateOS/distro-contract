@@ -4,8 +4,8 @@
 
 use distro_profile::Flavour;
 
-/// A product: a rootfs tree plus layers, which the builder prepares and,
-/// for a release product, assembles into a bootable ISO.
+/// A product: its flavour's system tree plus an overlay, which the builder
+/// prepares and, for a release product, combines into a bootable ISO.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ProductId {
     BaseRootfs,
@@ -16,7 +16,8 @@ pub enum ProductId {
 }
 
 impl ProductId {
-    /// Every product, parents before the products built on them.
+    /// Every product. Each is its flavour's system plus an overlay; the
+    /// builder makes both as cached parts, so no product is built on another.
     pub const ALL: [ProductId; 5] = [
         ProductId::BaseRootfs,
         ProductId::LiveBoot,
@@ -57,20 +58,6 @@ impl ProductId {
         }
     }
 
-    /// The product whose rootfs this one starts from, unchanged. A product
-    /// without one builds the system of its [`flavour`](Self::flavour) from
-    /// the variant's rootfs recipe: base-rootfs the base system, live-desktop
-    /// the desktop system (the base and desktop locks in one tree, so the
-    /// desktop packages' setup runs over the whole system). A parent always
-    /// has its child's flavour.
-    pub fn parent(self) -> Option<ProductId> {
-        match self {
-            Self::BaseRootfs | Self::LiveDesktop => None,
-            Self::LiveBoot | Self::InstalledBoot => Some(Self::BaseRootfs),
-            Self::LiveTools => Some(Self::LiveBoot),
-        }
-    }
-
     /// Whether the product is built into a release ISO; installed-boot is
     /// only prepared.
     pub fn is_release(self) -> bool {
@@ -84,16 +71,6 @@ impl ProductId {
     /// The release products.
     pub fn releases() -> impl Iterator<Item = ProductId> {
         Self::ALL.into_iter().filter(|product| product.is_release())
-    }
-
-    /// This product's ancestors, oldest first, then the product itself.
-    pub fn chain(self) -> Vec<ProductId> {
-        let mut chain = vec![self];
-        while let Some(parent) = chain.last().and_then(|product| product.parent()) {
-            chain.push(parent);
-        }
-        chain.reverse();
-        chain
     }
 
     /// The scenarios whose input includes this product's ISO, in run order.

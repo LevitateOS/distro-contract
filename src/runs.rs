@@ -77,6 +77,12 @@ pub fn prepared_dir(repo_root: &Path, distro_id: &str, product: ProductId) -> Pa
         .join(product.name())
 }
 
+/// The cached parts a variant's releases are combined from:
+/// `parts/<variant>/<kind>/<key>` (the builder's `parts` module).
+pub fn parts_dir(repo_root: &Path, distro_id: &str) -> PathBuf {
+    artifacts(repo_root).join("parts").join(distro_id)
+}
+
 /// The SSH key scenario guests trust (its public half beside it, `.pub`).
 pub fn ssh_key(repo_root: &Path) -> PathBuf {
     artifacts(repo_root).join("ssh").join("id_ed25519")
