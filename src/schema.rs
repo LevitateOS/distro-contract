@@ -211,12 +211,21 @@ pub const SYSTEM_TUI_APPS: &[&str] = &["recab-tui"];
 /// the desktop system's rootfs.
 pub const DESKTOP_APPS: &[&str] = &["recipe-gui", "recab-gui", "disk-gui"];
 
-/// Where each desktop app's menu entry is, by the same order.
+/// Where each desktop app's menu entry is, by the same order. Same length as
+/// [`DESKTOP_APPS`]: a program with no menu entry is not in either list but in
+/// [`DESKTOP_HELPERS`].
 pub const DESKTOP_APP_ENTRIES: &[&str] = &[
     "usr/share/applications/org.levitateos.recipe.desktop",
     "usr/share/applications/org.levitateos.recab.desktop",
     "usr/share/applications/org.levitateos.disk.desktop",
 ];
+
+/// The programs (under `gui/`, by program name) the desktop apps run and the
+/// desktop system carries beside them, on every distro: each a program in
+/// `/usr/bin` with no menu entry and no window. `levitate-agent` stands
+/// between the apps and the agent program (`codex` or `claude`), which no
+/// image carries.
+pub const DESKTOP_HELPERS: &[&str] = &["levitate-agent"];
 
 impl ConformanceContract {
     /// The init system's units every live boot runs: sshd. (NetworkManager and

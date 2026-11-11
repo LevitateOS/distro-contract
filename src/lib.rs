@@ -23,7 +23,7 @@ pub use runs::Missing;
 pub use schema::{
     ArtifactNames, ConformanceContract, DistroIdentity,
     LiveUkis, PackageBaseContract, RootfsSourceContract,
-    SourceContract, CONTRACT_SCHEMA_VERSION, DESKTOP_APPS, DESKTOP_APP_ENTRIES, INSTALL_TOOLS,
+    SourceContract, CONTRACT_SCHEMA_VERSION, DESKTOP_APPS, DESKTOP_APP_ENTRIES, DESKTOP_HELPERS, INSTALL_TOOLS,
     SYSTEM_TUI_APPS, UPDATE_TOOLS,
 };
 pub use schema::{capabilities_text, locales, system_commands};
