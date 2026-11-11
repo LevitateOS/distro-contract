@@ -244,7 +244,8 @@ impl ReleaseManifest {
             );
             ensure!(
                 names.insert(&artifact.path)
-                    && ![MANIFEST, SIGNATURE].contains(&artifact.path.as_str()),
+                    && ![MANIFEST, SIGNATURE, production::AUTHORITY_FILE].iter().any(|name|
+                        artifact.path == *name || artifact.path.starts_with(&format!("{name}/"))),
                 "duplicate/reserved release member"
             );
         }
