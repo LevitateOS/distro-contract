@@ -11,6 +11,9 @@ use std::{
     path::{Component, Path},
 };
 
+pub mod production;
+pub use production::ProductionPolicy;
+
 pub const MANIFEST: &str = "release.json";
 pub const SIGNATURE: &str = "release.sig";
 pub const INVENTORY: &str = "system-inventory.json";
@@ -43,6 +46,9 @@ pub struct Policy {
     pub sequence: u64,
     pub source: Option<UpdateSource>,
     pub trust: Option<Trust>,
+    /// Explicitly versioned delegated authority; never reinterprets a legacy key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub production: Option<ProductionPolicy>,
 }
 impl Policy {
     pub fn validate(&self) -> Result<()> {
@@ -50,6 +56,7 @@ impl Policy {
             && self.sequence == 0
             && self.source.is_none()
             && self.trust.is_none()
+            && self.production.is_none()
         {
             return Ok(());
         }
@@ -77,7 +84,7 @@ impl Policy {
             );
             relative(&source.recipe)?;
             ensure!(
-                self.trust.is_some(),
+                self.trust.is_some() || self.production.is_some(),
                 "an online source requires a distribution release key"
             );
         }
@@ -93,6 +100,12 @@ impl Policy {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
                 "release key must use lowercase hex"
             );
+        }
+        if let Some(production) = &self.production {
+            ensure!(self.trust.is_none(), "legacy and delegated release authority cannot be combined");
+            production.validate()?;
+            let source = self.source.as_ref().context("production policy needs a discovery source")?;
+            production.metadata_url(&source.index)?;
         }
         Ok(())
     }
@@ -594,7 +607,7 @@ impl Policy {
         policy
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IndexEntry {
     pub identity: Identity,

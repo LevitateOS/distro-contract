@@ -80,6 +80,37 @@ distribution trust authority.
 
 ## Online index and recovery
 
+The approved x86_64 production design adds an explicit optional
+`release.production` policy instead of reinterpreting `release.trust`. The two
+authority modes cannot be combined. The production policy specifies schema 2,
+a root anchor (`lineage`, `version`, `key.ed25519`), candidate/stable audience,
+canonical metadata base, exact release-download prefix and bounded HTTPS
+redirect origins. The initial lineage is the SHA-256 of the raw root public key.
+Routine release/Recipe revisions and authenticated root succession retain it.
+
+`release::production` owns the public contracts. `AuthorityProof` contains exact
+root-signed `KeyDelegation` bytes and a bounded dual-signed root transition
+chain. A delegation binds distro/channel, version/root version, index epoch,
+issue/expiry times, distinct release/index key sets and revoked public-key IDs.
+Only the release role can authenticate a system manifest; an index signer
+cannot authorize system content. Root keys cannot become operational signers.
+Archived proof verification supports root-authorized renewal after expiry;
+fresh discovery still requires current authorization.
+
+`ReleaseIndexV2` binds audience, index epoch/sequence, a maximum 14-day validity
+window and metadata entries plus transport maps. Each artifact has contiguous
+parts of at most 1 GiB, at most 64 parts, with exact offsets/sizes/hashes and
+URLs under installed delivery authority. The four paths and aggregate sizes
+must match the existing version-1 system manifest. Root-authorized index epoch
+changes recover poisoned metadata counters without lowering accepted system
+release floors. Clock, authority, index and release floors have separate checks.
+
+These production contracts and builder metadata commands are implemented as
+the first P14 slice. The installed production reader/transport and publication
+workflows are still pending; the legacy reader explicitly refuses a production
+policy rather than treating an absent legacy key as unsigned trust. Checked-in
+defaults remain disabled. Existing version-1 local fixtures keep their protocol.
+
 The local publisher writes version 1 `index.json`: a positive monotonic index
 sequence, channel and at most 256 current release entries, one per
 (distro, architecture, init, libc, flavour). Each entry binds the complete release
