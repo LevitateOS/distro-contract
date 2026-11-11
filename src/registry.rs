@@ -196,15 +196,21 @@ impl ScenarioId {
     /// What the scenario checks, in a line.
     pub fn summary(self) -> &'static str {
         match self {
-            Self::BuildPreflight => "the base-rootfs ISO and the kernel match the contract, before any VM",
+            Self::BuildPreflight => {
+                "the base-rootfs ISO and the kernel match the contract, before any VM"
+            }
             Self::LiveBoot => "the live-boot ISO boots and takes an SSH login",
             Self::LiveTools => "the live-tools ISO has its tools and its install screen",
             Self::Install => "the live-tools ISO installs to a disk",
             Self::InstalledBoot => "the installed disk boots",
             Self::AutomatedLogin => "root logs in on the installed system",
             Self::Runtime => "the installed system has its tools",
-            Self::AbUpdate => "the installed system stages the release into slot B and trials, commits and rolls it back",
-            Self::DesktopBoot => "the live-desktop ISO boots into the desktop with no failed service and with its desktop apps",
+            Self::AbUpdate => {
+                "equivalent initial A/B systems, X plus a signed downloaded update, failed and healthy trials, reverse Y and measured write avoidance"
+            }
+            Self::DesktopBoot => {
+                "the live-desktop ISO boots into the desktop with no failed service and with its desktop apps"
+            }
         }
     }
 
@@ -222,9 +228,10 @@ impl ScenarioId {
                 iso: None,
                 install_run: true,
             },
-            // The release staged into the installed system's other slot.
+            // The install and an explicit --update-fixture ISO supply old/new
+            // release inputs. Never restage the same latest ISO as an update.
             Self::AbUpdate => ScenarioInput {
-                iso: Some(ProductId::LiveTools),
+                iso: None,
                 install_run: true,
             },
         }
@@ -233,7 +240,10 @@ impl ScenarioId {
     /// Whether `cargo xtask run` can boot the scenario's input for you: a
     /// scenario that only boots its input, an ISO or the installed disk.
     pub fn is_runnable(self) -> bool {
-        matches!(self, Self::LiveBoot | Self::LiveTools | Self::InstalledBoot | Self::DesktopBoot)
+        matches!(
+            self,
+            Self::LiveBoot | Self::LiveTools | Self::InstalledBoot | Self::DesktopBoot
+        )
     }
 
     /// Whether `test all` runs the scenario. desktop-boot does not: its

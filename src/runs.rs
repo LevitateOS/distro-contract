@@ -135,6 +135,9 @@ pub struct RunManifest {
     /// Install runs: the layout installed (`ab` or `mutable`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_mode: Option<String>,
+    /// Explicit signed-feed fixture ISO for install/A/B lifecycle scenarios.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_fixture: Option<PathBuf>,
 }
 
 impl RunManifest {
@@ -169,8 +172,12 @@ pub enum Missing {
 impl std::fmt::Display for Missing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ReleaseIso { distro, product } => write!(f, "{distro} has no built {product} ISO"),
-            Self::InstallRun { distro } => write!(f, "{distro} has no successful install run with its disk"),
+            Self::ReleaseIso { distro, product } => {
+                write!(f, "{distro} has no built {product} ISO")
+            }
+            Self::InstallRun { distro } => {
+                write!(f, "{distro} has no successful install run with its disk")
+            }
         }
     }
 }
@@ -204,6 +211,7 @@ impl Run {
                 fingerprint: None,
                 evidence: None,
                 install_mode: None,
+                update_fixture: None,
             },
         };
         run.save()?;
@@ -211,7 +219,11 @@ impl Run {
     }
 
     /// A release build of `product`.
-    pub fn start_release(repo_root: &Path, distro_id: &str, product: ProductId) -> io::Result<Self> {
+    pub fn start_release(
+        repo_root: &Path,
+        distro_id: &str,
+        product: ProductId,
+    ) -> io::Result<Self> {
         Self::start(
             &release_dir(repo_root, distro_id, product),
             distro_id,
@@ -221,7 +233,11 @@ impl Run {
     }
 
     /// A run of `scenario`.
-    pub fn start_scenario(repo_root: &Path, distro_id: &str, scenario: ScenarioId) -> io::Result<Self> {
+    pub fn start_scenario(
+        repo_root: &Path,
+        distro_id: &str,
+        scenario: ScenarioId,
+    ) -> io::Result<Self> {
         Self::start(
             &scenario_dir(repo_root, distro_id, scenario),
             distro_id,
@@ -264,12 +280,12 @@ pub fn read(run_dir: &Path) -> Result<RunManifest, String> {
     let bytes = match fs::read(&path) {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            return Err(format!("'{}' has no run manifest", run_dir.display()))
+            return Err(format!("'{}' has no run manifest", run_dir.display()));
         }
         Err(err) => return Err(format!("reading '{}': {err}", path.display())),
     };
-    let manifest: RunManifest =
-        serde_json::from_slice(&bytes).map_err(|err| format!("parsing '{}': {err}", path.display()))?;
+    let manifest: RunManifest = serde_json::from_slice(&bytes)
+        .map_err(|err| format!("parsing '{}': {err}", path.display()))?;
     if Some(manifest.run_id.as_str()) != run_dir.file_name().and_then(|name| name.to_str()) {
         return Err(format!(
             "'{}' records run id '{}', not its directory name",
@@ -285,7 +301,12 @@ pub fn list(parent: &Path) -> io::Result<Vec<RunEntry>> {
     let entries = match fs::read_dir(parent) {
         Ok(entries) => entries,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(context(err, format!("reading run directory '{}'", parent.display()))),
+        Err(err) => {
+            return Err(context(
+                err,
+                format!("reading run directory '{}'", parent.display()),
+            ));
+        }
     };
     let mut runs = Vec::new();
     for entry in entries {
@@ -298,7 +319,11 @@ pub fn list(parent: &Path) -> io::Result<Vec<RunEntry>> {
             continue;
         }
         let manifest = read(&dir);
-        runs.push(RunEntry { dir, run_id, manifest });
+        runs.push(RunEntry {
+            dir,
+            run_id,
+            manifest,
+        });
     }
     runs.sort_by(|a, b| id_order(&b.run_id).cmp(&id_order(&a.run_id)));
     Ok(runs)
@@ -306,15 +331,21 @@ pub fn list(parent: &Path) -> io::Result<Vec<RunEntry>> {
 
 /// The newest run under `parent` that succeeded.
 pub fn latest_success(parent: &Path) -> io::Result<Option<(PathBuf, RunManifest)>> {
-    Ok(list(parent)?.into_iter().find_map(|run| match run.manifest {
-        Ok(manifest) if manifest.status == RunStatus::Success => Some((run.dir, manifest)),
-        _ => None,
-    }))
+    Ok(list(parent)?
+        .into_iter()
+        .find_map(|run| match run.manifest {
+            Ok(manifest) if manifest.status == RunStatus::Success => Some((run.dir, manifest)),
+            _ => None,
+        }))
 }
 
 /// The ISO of the newest successful release of `product`; `None` when there
 /// is none. A successful run without its ISO is an error.
-pub fn latest_release_iso(repo_root: &Path, distro_id: &str, product: ProductId) -> io::Result<Option<PathBuf>> {
+pub fn latest_release_iso(
+    repo_root: &Path,
+    distro_id: &str,
+    product: ProductId,
+) -> io::Result<Option<PathBuf>> {
     let Some((dir, manifest)) = latest_success(&release_dir(repo_root, distro_id, product))? else {
         return Ok(None);
     };
@@ -322,7 +353,10 @@ pub fn latest_release_iso(repo_root: &Path, distro_id: &str, product: ProductId)
         Some(iso) if iso.is_file() => Ok(Some(iso)),
         _ => Err(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("the latest successful {product} release '{}' has no ISO", dir.display()),
+            format!(
+                "the latest successful {product} release '{}' has no ISO",
+                dir.display()
+            ),
         )),
     }
 }
@@ -333,12 +367,17 @@ pub fn latest_release_iso(repo_root: &Path, distro_id: &str, product: ProductId)
 /// manifest are removed like any other old run.
 pub fn prune(repo_root: &Path, distro_id: &str, parent: &Path, keep: usize) -> io::Result<()> {
     let runs = list(parent)?;
-    let newest_success = runs
-        .iter()
-        .position(|run| run.manifest.as_ref().is_ok_and(|m| m.status == RunStatus::Success));
+    let newest_success = runs.iter().position(|run| {
+        run.manifest
+            .as_ref()
+            .is_ok_and(|m| m.status == RunStatus::Success)
+    });
     let referenced = referenced_runs(repo_root, distro_id)?;
     for (index, run) in runs.iter().enumerate() {
-        let used = run.manifest.as_ref().is_ok_and(|m| referenced.contains(&m.reference()));
+        let used = run
+            .manifest
+            .as_ref()
+            .is_ok_and(|m| referenced.contains(&m.reference()));
         if index < keep || Some(index) == newest_success || used {
             continue;
         }
@@ -372,8 +411,12 @@ fn referenced_runs(repo_root: &Path, distro_id: &str) -> io::Result<Vec<RunRef>>
 /// time); `create_dir` fails on an existing name, so two processes never get
 /// the same directory.
 fn allocate(parent: &Path) -> io::Result<(String, PathBuf)> {
-    fs::create_dir_all(parent)
-        .map_err(|err| context(err, format!("creating run directory '{}'", parent.display())))?;
+    fs::create_dir_all(parent).map_err(|err| {
+        context(
+            err,
+            format!("creating run directory '{}'", parent.display()),
+        )
+    })?;
     loop {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -384,7 +427,12 @@ fn allocate(parent: &Path) -> io::Result<(String, PathBuf)> {
         match fs::create_dir(&dir) {
             Ok(()) => return Ok((run_id, dir)),
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(context(err, format!("creating run directory '{}'", dir.display()))),
+            Err(err) => {
+                return Err(context(
+                    err,
+                    format!("creating run directory '{}'", dir.display()),
+                ));
+            }
         }
     }
 }
@@ -439,7 +487,8 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::other(format!("'{}' has no parent directory", path.display())))?;
-    fs::create_dir_all(parent).map_err(|err| context(err, format!("creating '{}'", parent.display())))?;
+    fs::create_dir_all(parent)
+        .map_err(|err| context(err, format!("creating '{}'", parent.display())))?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
     let tmp = parent.join(format!(".{name}.tmp-{}", std::process::id()));
     let written = (|| {
