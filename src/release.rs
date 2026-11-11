@@ -326,7 +326,7 @@ impl SystemInventory {
         );
         for (path, e) in &self.entries {
             if !path.is_empty() {
-                relative(path)?;
+                tree_path(path)?;
             }
             ensure!(
                 inventory_path(path, &e.kind),
@@ -448,6 +448,25 @@ pub fn relative(path: &str) -> Result<()> {
                 .split('/')
                 .all(|s| !s.is_empty() && s != "." && s != ".."),
         "unsafe release member"
+    );
+    Ok(())
+}
+/// A path inside the installed tree. Unlike a published member (`relative`), it may
+/// hold a backslash: systemd escapes unit names with one
+/// (`system-systemd\x2dcryptsetup.slice`), and any byte but NUL and `/` is a Linux
+/// file name byte.
+pub fn tree_path(path: &str) -> Result<()> {
+    ensure!(
+        !path.is_empty()
+            && path.len() <= 4096
+            && !path.contains('\0')
+            && Path::new(path)
+                .components()
+                .all(|p| matches!(p, Component::Normal(_)))
+            && path
+                .split('/')
+                .all(|s| !s.is_empty() && s != "." && s != ".."),
+        "unsafe release inventory path: {path}"
     );
     Ok(())
 }
@@ -682,5 +701,20 @@ impl ReleaseIndex {
             );
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tree_paths_allow_systemd_escapes_but_published_members_do_not() {
+        let unit = r"usr/lib/systemd/system/system-systemd\x2dcryptsetup.slice";
+        tree_path(unit).unwrap();
+        assert!(relative(unit).is_err());
+        for bad in ["", "/etc", "etc/../root", "etc/./x", "etc//x", "etc\0x"] {
+            assert!(tree_path(bad).is_err(), "{bad:?}");
+        }
     }
 }
