@@ -522,6 +522,32 @@ pub fn now_rfc3339() -> String {
 
 /// Replace `path` with `bytes` atomically: a temporary file beside it,
 /// synced, renamed over it, and the directory synced.
+/// Replace `path` with `bytes` so a reader sees the old or the new content,
+/// never a mix, without making it durable: no fsync of the file or its
+/// directory. For live status files (progress, the build's current step)
+/// that are rewritten moments later and mean nothing after a crash; under a
+/// build's write load each fsync can wait seconds on the filesystem log, and
+/// these are written every second or step. Anything that must survive a
+/// crash uses [`write_atomic`].
+pub fn write_replace(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::other(format!("'{}' has no parent directory", path.display())))?;
+    fs::create_dir_all(parent)
+        .map_err(|err| context(err, format!("creating '{}'", parent.display())))?;
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = parent.join(format!(".{name}.tmp-{}", std::process::id()));
+    let written = (|| {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written.map_err(|err| context(err, format!("writing '{}'", path.display())))
+}
+
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let parent = path
         .parent()
