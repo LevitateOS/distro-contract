@@ -160,6 +160,7 @@ pub(crate) fn validate(
         }
     }
 
+    check_look(&mut ck, c);
     ck.variant_file("kconfig", "kconfig");
     for (_, file) in BRANDING {
         ck.variant_file(file, file);
@@ -170,6 +171,36 @@ pub(crate) fn validate(
     ck.violations
 }
 
+
+fn check_look(ck: &mut Check, c: &ConformanceContract) {
+    for (mode, p) in [("light", &c.look.light), ("dark", &c.look.dark)] {
+        let colours: [(&str, &String); 15] = [
+            ("surface", &p.surface),
+            ("surface_raised", &p.surface_raised),
+            ("surface_sunken", &p.surface_sunken),
+            ("text", &p.text),
+            ("text_secondary", &p.text_secondary),
+            ("text_muted", &p.text_muted),
+            ("rule", &p.rule),
+            ("hairline", &p.hairline),
+            ("accent", &p.accent),
+            ("highlight", &p.highlight),
+            ("band", &p.band),
+            ("on_band", &p.on_band),
+            ("ok", &p.ok),
+            ("warn", &p.warn),
+            ("bad", &p.bad),
+        ];
+        for (key, value) in colours {
+            let hex = value.len() == 7
+                && value.starts_with('#')
+                && value[1..].bytes().all(|b| b.is_ascii_hexdigit());
+            if !hex {
+                ck.fail(&format!("look.{mode}.{key}"), format!("must be # and six hex digits, got {value:?}"));
+            }
+        }
+    }
+}
 
 fn check_sources(ck: &mut Check, c: &ConformanceContract) {
     let (field, script) = at!(c.sources.rootfs_source.recipe_script);

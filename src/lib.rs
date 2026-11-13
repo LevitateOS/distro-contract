@@ -21,7 +21,7 @@ pub use runtime::{
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use runs::Missing;
 pub use schema::{
-    ArtifactNames, ConformanceContract, DistroIdentity,
+    ArtifactNames, ConformanceContract, DistroIdentity, LookContract, Palette,
     LiveUkis, PackageBaseContract, RootfsSourceContract,
     SourceContract, CONTRACT_SCHEMA_VERSION, DESKTOP_APPS, DESKTOP_APP_ENTRIES, DESKTOP_HELPERS, INSTALL_TOOLS,
     SYSTEM_TUI_APPS, UPDATE_TOOLS,

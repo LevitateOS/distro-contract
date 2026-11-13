@@ -6,7 +6,7 @@ use crate::registry::ProductId;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 9;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 10;
 
 /// Identity metadata for a distro contract.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -150,6 +150,36 @@ pub struct DesktopContract {
     pub apps_build_root_recipe_script: String,
 }
 
+/// One mode's colours, each `#RRGGBB`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Palette {
+    pub surface: String,
+    pub surface_raised: String,
+    pub surface_sunken: String,
+    pub text: String,
+    pub text_secondary: String,
+    pub text_muted: String,
+    pub rule: String,
+    pub hairline: String,
+    pub accent: String,
+    pub highlight: String,
+    pub band: String,
+    pub on_band: String,
+    pub ok: String,
+    pub warn: String,
+    pub bad: String,
+}
+
+/// A variant's colours in both modes; the mode it starts in is
+/// `profile.appearance`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LookContract {
+    pub light: Palette,
+    pub dark: Palette,
+}
+
 /// A variant's whole contract: the shape of its `distro.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -161,6 +191,8 @@ pub struct ConformanceContract {
     pub identity: DistroIdentity,
     /// The base facts the variant differs in.
     pub profile: Profile,
+    /// The colours in each mode.
+    pub look: LookContract,
     pub sources: SourceContract,
     pub desktop: DesktopContract,
     /// Derived from `identity` when the contract loads.
