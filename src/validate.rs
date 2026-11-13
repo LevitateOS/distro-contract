@@ -196,7 +196,7 @@ fn check_look(ck: &mut Check, c: &ConformanceContract) {
                 && value.starts_with('#')
                 && value[1..].bytes().all(|b| b.is_ascii_hexdigit());
             if !hex {
-                ck.fail(&format!("look.{mode}.{key}"), format!("must be # and six hex digits, got {value:?}"));
+                ck.fail(format!("look.{mode}.{key}"), format!("must be # and six hex digits, got {value:?}"));
             }
         }
     }
