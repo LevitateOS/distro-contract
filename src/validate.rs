@@ -214,6 +214,9 @@ fn check_sources(ck: &mut Check, c: &ConformanceContract) {
     ck.repo_file(field, preseed);
     let (field, root) = at!(c.desktop.apps_build_root_recipe_script);
     ck.repo_file(field, root);
+    if let Some(script) = &c.desktop.display_server_recipe_script {
+        ck.repo_file("desktop.display_server_recipe_script", script);
+    }
 
     let (field, base) = at!(c.sources.rootfs_source.base);
     let release = format!("{field}.release");

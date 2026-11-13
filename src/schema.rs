@@ -6,7 +6,7 @@ use crate::registry::ProductId;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 10;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 11;
 
 /// Identity metadata for a distro contract.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -148,6 +148,13 @@ pub struct DesktopContract {
     /// Makes the root the desktop apps are compiled in: the base lock's and
     /// the apps-build lock's packages as one root image.
     pub apps_build_root_recipe_script: String,
+    /// The display server the desktop system takes from source instead of
+    /// from a package: the OS recipe that compiles it in the apps-build root
+    /// and publishes its tree (`rootfs`), which the builder merges into the
+    /// desktop system. AcornOS names XLibre here (Alpine has no package for
+    /// it); absent, the display server comes from `packages`.
+    #[serde(default)]
+    pub display_server_recipe_script: Option<String>,
 }
 
 /// One mode's colours, each `#RRGGBB`.
