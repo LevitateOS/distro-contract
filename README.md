@@ -24,7 +24,7 @@ adding it to the type and the file.
   load.
 - `registry`: `ProductId` and `ScenarioId` (build-preflight, test-live-ssh,
   test-install-base, install, test-installed-boot, automated-login, runtime,
-  other-root, desktop-boot), the products and scenarios every variant has, each
+  other-root, desktop-boot, login), the products and scenarios every variant has, each
   named once with its title, parent, release flag, inputs and order. The builder, xtask and install-tests name none of their own.
 - `contract.live`, `contract.installed`: what the variant adds to the shared
   lists; `live_services()`/`live_service_units()`,

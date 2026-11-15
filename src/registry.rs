@@ -126,12 +126,13 @@ pub enum ScenarioId {
     Runtime,
     OtherRoot,
     DesktopBoot,
+    Login,
 }
 
 impl ScenarioId {
     /// Every scenario, in run order. Every variant has every scenario;
     /// `test all` runs those [`in_test_all`](Self::in_test_all).
-    pub const ALL: [ScenarioId; 9] = [
+    pub const ALL: [ScenarioId; 10] = [
         ScenarioId::BuildPreflight,
         ScenarioId::TestLiveSsh,
         ScenarioId::TestInstallBase,
@@ -141,6 +142,7 @@ impl ScenarioId {
         ScenarioId::Runtime,
         ScenarioId::OtherRoot,
         ScenarioId::DesktopBoot,
+        ScenarioId::Login,
     ];
 
     /// The name the CLIs take, and the scenario's state and output key.
@@ -155,6 +157,7 @@ impl ScenarioId {
             Self::Runtime => "runtime",
             Self::OtherRoot => "other-root",
             Self::DesktopBoot => "desktop-boot",
+            Self::Login => "login",
         }
     }
 
@@ -169,6 +172,7 @@ impl ScenarioId {
             Self::Runtime => "Runtime",
             Self::OtherRoot => "Other Root",
             Self::DesktopBoot => "Desktop Boot",
+            Self::Login => "Login",
         }
     }
 
@@ -193,6 +197,9 @@ impl ScenarioId {
             }
             Self::DesktopBoot => {
                 "the release ISO boots to the installer with the default software set it installs through Recipe"
+            }
+            Self::Login => {
+                "on a desktop install with reclogin, the login screen runs on console 7 (reclogind, the greeter as reclogin), no SDDM is left, and console 1 keeps its text login; skipped where reclogin is not installed"
             }
         }
     }
@@ -219,7 +226,11 @@ impl ScenarioId {
             Self::TestLiveSsh => iso(ProductId::TestLiveSsh),
             Self::TestInstallBase | Self::Install => iso(ProductId::TestInstallBase),
             Self::DesktopBoot => iso(ProductId::Release),
-            Self::TestInstalledBoot | Self::AutomatedLogin | Self::Runtime | Self::OtherRoot => {
+            Self::TestInstalledBoot
+            | Self::AutomatedLogin
+            | Self::Runtime
+            | Self::OtherRoot
+            | Self::Login => {
                 ScenarioInput {
                     iso: None,
                     install_run: true,
@@ -241,9 +252,12 @@ impl ScenarioId {
     /// input, the release ISO, is a build of its own (its overlay carries the
     /// default set's recipes and every package they pin) that the base loop
     /// never makes, so `test all` would always report it missing. It runs by
-    /// name: `cargo xtask test desktop-boot <distro>`.
+    /// name: `cargo xtask test desktop-boot <distro>`. login does not either:
+    /// it needs a desktop install (`--flavour desktop`), which the base loop
+    /// never makes, so it would only ever be skipped there. It runs by name:
+    /// `cargo xtask test login <distro> --flavour desktop`.
     pub fn in_test_all(self) -> bool {
-        self != Self::DesktopBoot
+        !matches!(self, Self::DesktopBoot | Self::Login)
     }
 }
 
