@@ -5,7 +5,8 @@ builder writes it as `release.json` in the part's directory; the combiner links
 it into the release run directory, verifies it and puts it on the ISO beside
 the members it names. Preflight checks a release run against it again.
 
-It names the distro, architecture, init, libc, flavour and version; the digest
+It names the distro, architecture, init, libc and version (every system part
+is the base system, so it names no flavour); the digest
 of the system sources the part was built from; the kernel release and the
 digest of its module tree in the rootfs; and the relative path, SHA-256 and
 byte length of each member:

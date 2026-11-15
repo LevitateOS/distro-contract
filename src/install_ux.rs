@@ -11,9 +11,9 @@
 //! the distro's name through the flag their manifest declares; [`APPS`] are
 //! commands for the shell beside the docs. Paths are relative to a layer's root.
 
-/// Consoles whose getty starts the install screen, on every live ISO. The
-/// desktop ISO's live session does not start its display manager, so the
-/// install screen has tty1 there too; the desktop starts once installed.
+/// Consoles whose getty starts the install screen, on every live ISO. Every
+/// live medium is the base system, with no display manager; the default set,
+/// and with it the desktop, is installed into the target.
 pub const CONSOLES: &[&str] = &["tty1", "ttyS0"];
 /// The left pane's root shell, and the login shell that takes over when the screen ends.
 pub const SHELL: &str = "/bin/bash";

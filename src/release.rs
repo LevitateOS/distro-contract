@@ -4,7 +4,7 @@
 //! SHA-256 of its rootfs image, kernel and installed initramfs). The combiner
 //! verifies the set before writing the ISO; preflight checks it again.
 use anyhow::{ensure, Result};
-use distro_profile::{Flavour, InitSystem, Libc};
+use distro_profile::{InitSystem, Libc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -14,7 +14,7 @@ use std::{
 
 pub const MANIFEST: &str = "release.json";
 pub const MAX_MANIFEST: usize = 1024 * 1024;
-const SCHEMA_VERSION: u32 = 2;
+const SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -29,7 +29,6 @@ pub struct Identity {
     pub architecture: Architecture,
     pub init: InitSystem,
     pub libc: Libc,
-    pub flavour: Flavour,
     pub version: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

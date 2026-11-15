@@ -6,7 +6,7 @@ use crate::registry::ProductId;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 11;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 12;
 
 /// Identity metadata for a distro contract.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -126,38 +126,40 @@ pub struct SourceContract {
     pub rootfs_source: RootfsSourceContract,
 }
 
-/// The graphical desktop of the desktop system, the rootfs of the
-/// `release` product (`profile.desktop` names which: Plasma or LXQt).
+/// The variant's default software set and what its group recipes are locked
+/// and built from. The system image is the base alone; the default set is
+/// installed through Recipe during the installation (recsetup's software
+/// step), from the release medium, which carries these recipes and every
+/// package they pin.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContract {
-    /// What the desktop wants from the base release, beside the base
-    /// packages. `cargo xtask base lock` locks their dependencies minus the
-    /// base lock's packages in the desktop lock.
-    pub packages: Vec<String>,
-    /// The display manager's unit (systemd) or service (OpenRC); the desktop
-    /// system enables it and boots to the graphical target.
-    pub display_manager: String,
-    /// Downloads the desktop lock's packages, which the rootfs recipe
-    /// installs over the base lock's when it builds the desktop system.
+    /// The default set: group recipes of the public catalogue (`recipes/`,
+    /// by name), installed into every target in this order by
+    /// `recipe --system --root <target> install`; their `deps` come with them.
+    pub recipes: Vec<String>,
+    /// Downloads the desktop lock: every package the group recipes' seeds
+    /// need beyond the base lock (`cargo xtask base lock` resolves them; `base
+    /// groups` shares them out into the recipes' pins). The release medium's
+    /// package cache is filled from what it downloads.
     pub preseed_recipe_script: String,
-    /// What compiling the desktop apps (`gui/`, [`DESKTOP_APPS`]) needs from
-    /// the base release beside the base packages: the compiler, CMake and
-    /// Qt's development files. `cargo xtask base lock` locks their
-    /// dependencies minus the base lock's packages in the apps-build lock,
-    /// in the same run as the desktop lock, so both name the same Qt. None of
-    /// these packages is in an image.
+    /// What compiling the desktop apps (`tools/gui/`) needs from the base
+    /// release beside the base packages: the compiler, CMake and Qt's
+    /// development files. `cargo xtask base lock` locks their dependencies
+    /// minus the base lock's packages in the apps-build lock, in the same run
+    /// as the desktop lock, so both name the same Qt. None of these packages
+    /// is in an image; the compiled apps are published as a prebuilt tree that
+    /// the `rec-apps` recipe pins.
     pub apps_build_packages: Vec<String>,
     /// Downloads the apps-build lock's packages.
     pub apps_build_preseed_recipe_script: String,
     /// Makes the root the desktop apps are compiled in: the base lock's and
     /// the apps-build lock's packages as one root image.
     pub apps_build_root_recipe_script: String,
-    /// The display server the desktop system takes from source instead of
-    /// from a package: the OS recipe that compiles it in the apps-build root
-    /// and publishes its tree (`rootfs`), which the builder merges into the
-    /// desktop system. AcornOS names XLibre here (Alpine has no package for
-    /// it); absent, the display server comes from `packages`.
+    /// A display server compiled from source instead of taken from a
+    /// package: the OS recipe that compiles it in the apps-build root, whose
+    /// tree the builder publishes as the prebuilt family `display-server`.
+    /// AcornOS names XLibre here (Alpine has no package for it).
     #[serde(default)]
     pub display_server_recipe_script: Option<String>,
 }
@@ -240,23 +242,9 @@ pub fn locales() -> impl Iterator<Item = &'static str> {
 /// recab is one: the A/B boot step puts it into an A/B target from here.
 pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchroot", "recsetup", "recab"];
 
-/// The desktop apps (under `gui/`, by program name) the desktop system
-/// carries, on every distro: each a program in `/usr/bin` with a menu entry.
-/// The builder compiles them against the distro's own Qt and puts them into
-/// the desktop system's rootfs. The recab app is not one of them: see
-/// [`AB_DESKTOP_APP_FILES`].
-pub const DESKTOP_APPS: &[&str] = &["recipe-gui", "disk-gui"];
-
-/// Where each desktop app's menu entry is, by the same order. Same length as
-/// [`DESKTOP_APPS`].
-pub const DESKTOP_APP_ENTRIES: &[&str] = &[
-    "usr/share/applications/org.levitateos.recipe.desktop",
-    "usr/share/applications/org.levitateos.disk.desktop",
-];
-
 /// Every file of the recab desktop app, as the compiled desktop apps' tree
-/// holds them. Only an A/B system has the app: the desktop live medium
-/// carries these files in recsetup's A/B-only tree (`install_tools::AB_ONLY_TREE`,
+/// holds them. Only an A/B system has the app: the release medium carries
+/// these files in recsetup's A/B-only tree (`install_tools::AB_ONLY_TREE`,
 /// at these paths below it), and the A/B boot step copies them into the
 /// target. A mutable install never has them.
 pub const AB_DESKTOP_APP_FILES: &[&str] = &[
@@ -267,9 +255,9 @@ pub const AB_DESKTOP_APP_FILES: &[&str] = &[
 ];
 
 impl ConformanceContract {
-    /// The init system's units every live boot runs: sshd. (NetworkManager and
-    /// the rest are the installed system's, which `installed-system.rhai`
-    /// enables.)
+    /// The init system's units every live boot runs: sshd. (NetworkManager
+    /// comes with the `network` group the live overlay carries, whose own
+    /// configuration enables it.)
     pub fn live_service_units(&self) -> Vec<String> {
         vec!["sshd".to_string()]
     }

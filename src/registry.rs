@@ -4,7 +4,7 @@
 
 use distro_profile::Flavour;
 
-/// A product: its flavour's system tree plus an overlay, which the builder
+/// A product: the base system tree plus an overlay, which the builder
 /// prepares and, for a release product, combines into a bootable ISO.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ProductId {
@@ -16,8 +16,8 @@ pub enum ProductId {
 }
 
 impl ProductId {
-    /// Every product. Each is its flavour's system plus an overlay; the
-    /// builder makes both as cached parts, so no product is built on another.
+    /// Every product. Each is the base system plus an overlay; the builder
+    /// makes both as cached parts, so no product is built on another.
     pub const ALL: [ProductId; 5] = [
         ProductId::TestBaseRootfs,
         ProductId::TestLiveSsh,
@@ -48,9 +48,11 @@ impl ProductId {
         }
     }
 
-    /// The system the product's rootfs is, and so what an ISO of it
-    /// installs and recab stages from it: the base system, or the base
-    /// system with the variant's desktop (`[desktop]` of its contract).
+    /// What an ISO of the product installs: the base system alone, or (the
+    /// release medium, which carries the default set) the base system with
+    /// the variant's default software set (`[desktop].recipes`), installed
+    /// through Recipe by recsetup's software step. Every product's rootfs is
+    /// the same base system.
     pub fn flavour(self) -> Flavour {
         match self {
             Self::Release => Flavour::Desktop,
@@ -190,7 +192,7 @@ impl ScenarioId {
                 "on an A/B install, a change written into the unlocked other root boots with boot-other and becomes the default after it started; copy makes the roots equal; an other root that does not finish starting falls back to the previous root"
             }
             Self::DesktopBoot => {
-                "the release ISO boots to the installer with the desktop system and apps it installs"
+                "the release ISO boots to the installer with the default software set it installs through Recipe"
             }
         }
     }
@@ -236,10 +238,10 @@ impl ScenarioId {
     }
 
     /// Whether `test all` runs the scenario. desktop-boot does not: its
-    /// input, the release ISO, is a build of its own (the desktop's
-    /// packages, a 2.6 GB tree, about 6 GiB of build memory) that the base
-    /// loop never makes, so `test all` would always report it missing. It
-    /// runs by name: `cargo xtask test desktop-boot <distro>`.
+    /// input, the release ISO, is a build of its own (its overlay carries the
+    /// default set's recipes and every package they pin) that the base loop
+    /// never makes, so `test all` would always report it missing. It runs by
+    /// name: `cargo xtask test desktop-boot <distro>`.
     pub fn in_test_all(self) -> bool {
         self != Self::DesktopBoot
     }

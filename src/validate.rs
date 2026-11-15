@@ -109,6 +109,15 @@ fn relative_path(value: &str) -> Result<(), String> {
     }
 }
 
+/// A recipe name of the public catalogue: lowercase letters, digits and '-'.
+fn recipe_name(value: &str) -> Result<(), String> {
+    only(
+        value,
+        |c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-',
+        "a recipe name (lowercase letters, digits and '-')",
+    )
+}
+
 fn os_id(value: &str) -> Result<(), String> {
     only(
         value,
@@ -117,8 +126,8 @@ fn os_id(value: &str) -> Result<(), String> {
     )
 }
 
-/// The variant's branding, beside `distro.toml`, which the desktop system
-/// shows: the wallpapers (3840x2160 JPEGs) for a light and for a dark look,
+/// The variant's branding, beside `distro.toml`, which the base system
+/// carries for the desktops it may get: the wallpapers (3840x2160 JPEGs) for a light and for a dark look,
 /// and the mark (24px, and the 16px micro mark) in ink for a light surface
 /// and in paper for a dark one. Each is (the rootfs recipe's input, the file).
 pub const BRANDING: [(&str, &str); 6] = [
@@ -166,6 +175,7 @@ pub(crate) fn validate(
         ck.variant_file(file, file);
     }
     check_sources(&mut ck, c);
+    check_default_set(&mut ck, c);
     ck.violations
 }
 
@@ -196,6 +206,17 @@ fn check_look(ck: &mut Check, c: &ConformanceContract) {
             if !hex {
                 ck.fail(format!("look.{mode}.{key}"), format!("must be # and six hex digits, got {value:?}"));
             }
+        }
+    }
+}
+
+/// The default set names group recipes the public catalogue has.
+fn check_default_set(ck: &mut Check, c: &ConformanceContract) {
+    let (field, recipes) = at!(c.desktop.recipes);
+    ck.list(field, recipes, true, Some(recipe_name));
+    for (index, name) in recipes.iter().enumerate() {
+        if recipe_name(name).is_ok() && !name.is_empty() {
+            ck.repo_file(&format!("{field}[{index}]"), &format!("recipes/{name}.rhai"));
         }
     }
 }

@@ -44,14 +44,17 @@ adding it to the type and the file.
   recipe checks;
   test-live-ssh SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
-  (`11`).
+  (`12`). `[desktop]` names the default software set (`recipes`, group recipes
+  of `recipes/` installed through Recipe during the installation) and what
+  those recipes and the desktop apps are locked and built from; no image
+  carries them.
 - `install_ux`: the live install screen, the same on every variant: a root
   shell on the left, the installation guide on the right, and the helper apps
   `disk-plan`, `base-system` and `system-setup` as commands for the shell. It
   also names the paths and names the builder, the split pane and the install
   tests share.
 - `AB_DESKTOP_APP_FILES`: the files of the recab desktop app, which only an A/B
-  install gets (the live medium carries them, `recsetup`'s A/B boot step copies
+  install gets (the release medium carries them, `recsetup`'s A/B boot step copies
   them into the target).
 
 `release` owns the release set's manifest (`release.json`): what a system
