@@ -17,7 +17,16 @@ pub struct DistroIdentity {
     /// `os_id` in capitals; derived when the contract loads (not in the file).
     #[serde(skip)]
     pub iso_label: String,
+    /// The release's version name (`1.0`, `1.1`, ...), chosen by the owner per
+    /// release; os-release `VERSION_ID` and the release manifest's `version`.
     pub os_version: String,
+    /// The release's serial: a whole number from 1 that the owner raises by
+    /// hand for every release and that never goes down. Installed systems
+    /// compare serials, never version names (docs/release-engineering.md,
+    /// section 2). The manifest's `serial`.
+    pub release_serial: u64,
+    /// The release notes' address (an https URL), the manifest's `notes`.
+    pub release_notes: String,
     /// The OS's website (os-release `HOME_URL`, and the browser's homepage);
     /// an OS without one of its own leaves it out.
     #[serde(default)]
@@ -252,6 +261,20 @@ pub const AB_DESKTOP_APP_FILES: &[&str] = &[
     "usr/share/applications/org.levitateos.recab.desktop",
     "usr/share/icons/hicolor/scalable/apps/org.levitateos.recab.svg",
     "usr/share/polkit-1/actions/org.levitateos.recab.policy",
+];
+
+/// Every file of the Updater desktop app (`tools/gui/updater`), as the
+/// compiled desktop apps' tree holds them: the mirror image of
+/// [`AB_DESKTOP_APP_FILES`]. Only a mutable system has the app (an A/B system
+/// updates through recab): the release medium carries these files in
+/// recsetup's mutable-only tree (`install_tools::MUTABLE_ONLY_TREE`, at these
+/// paths below it), and the mutable boot step copies them into the target. An
+/// A/B install never has them.
+pub const MUTABLE_DESKTOP_APP_FILES: &[&str] = &[
+    "usr/bin/updater-gui",
+    "usr/share/applications/org.levitateos.updater.desktop",
+    "usr/share/icons/hicolor/scalable/apps/org.levitateos.updater.svg",
+    "usr/share/polkit-1/actions/org.levitateos.updater.policy",
 ];
 
 impl ConformanceContract {

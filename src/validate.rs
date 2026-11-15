@@ -163,6 +163,19 @@ pub(crate) fn validate(
     }
     let (field, value) = at!(c.identity.os_id);
     ck.value(field, value, Some(os_id));
+    if c.identity.release_serial == 0 {
+        ck.fail(
+            "identity.release_serial",
+            "must be a whole number from 1; raise it by one for every release".to_string(),
+        );
+    }
+    let notes = &c.identity.release_notes;
+    if !notes.starts_with("https://") || notes.contains(char::is_whitespace) || notes.contains('"') {
+        ck.fail(
+            "identity.release_notes",
+            format!("must be the https:// URL of this release's notes, got {notes:?}"),
+        );
+    }
     if let Some(url) = &c.identity.home_url {
         if !url.starts_with("https://") || url.contains(char::is_whitespace) || url.contains('"') {
             ck.fail("identity.home_url", format!("must be an https:// URL, got {url:?}"));

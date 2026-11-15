@@ -1,7 +1,7 @@
 # The release set
 
 `release::ReleaseManifest` is the record of what a system part built. The
-builder writes it as `release.json` in the part's directory; the combiner links
+builder writes it as `release-set.json` in the part's directory; the combiner links
 it into the release run directory, verifies it and puts it on the ISO beside
 the members it names. Preflight checks a release run against it again.
 
@@ -17,6 +17,8 @@ byte length of each member:
 
 Member names cannot leave the release directory.
 
-`release.json` is only a record of what an ISO build produced. It is not an
-update format: nothing here is signed, indexed or published for installed
-systems to fetch, and there is no update source.
+`release-set.json` is only a record of what an ISO build produced. It is not
+the update manifest: that is `release.json`, which the release build writes
+next to the ISO (with `base.tar.zst`, `boot.tar.zst` and `recipes.tar.zst`)
+for `cargo xtask release publish` to sign and publish
+(docs/release-engineering.md at the repository root, sections 2, 3 and 10).

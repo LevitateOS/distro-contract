@@ -24,6 +24,7 @@ pub use schema::{
     ArtifactNames, ConformanceContract, DistroIdentity, LookContract, Palette,
     LiveUkis, PackageBaseContract, RootfsSourceContract,
     SourceContract, CONTRACT_SCHEMA_VERSION, AB_DESKTOP_APP_FILES, INSTALL_TOOLS,
+    MUTABLE_DESKTOP_APP_FILES,
 };
 pub use schema::{capabilities_text, locales, system_commands};
 pub use validate::BRANDING;

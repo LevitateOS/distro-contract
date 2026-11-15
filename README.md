@@ -56,6 +56,9 @@ adding it to the type and the file.
 - `AB_DESKTOP_APP_FILES`: the files of the recab desktop app, which only an A/B
   install gets (the release medium carries them, `recsetup`'s A/B boot step copies
   them into the target).
+- `MUTABLE_DESKTOP_APP_FILES`: the files of the Updater desktop app, which only a
+  mutable install gets (the release medium carries them, `recsetup`'s mutable boot
+  step copies them into the target).
 
-`release` owns the release set's manifest (`release.json`): what a system
+`release` owns the release set's manifest (`release-set.json`): what a system
 part built, which the combiner verifies and the ISO carries. See [the release format](docs/releases.md).

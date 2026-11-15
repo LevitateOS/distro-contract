@@ -1,5 +1,5 @@
 //! The installed-system release set a system part publishes and its ISO
-//! carries: `release.json`, naming what the build produced (the system's
+//! carries: `release-set.json`, naming what the build produced (the system's
 //! identity, the sources it was built from, its kernel, and the size and
 //! SHA-256 of its rootfs image, kernel and installed initramfs). The combiner
 //! verifies the set before writing the ISO; preflight checks it again.
@@ -12,7 +12,10 @@ use std::{
     path::{Component, Path},
 };
 
-pub const MANIFEST: &str = "release.json";
+/// Not `release.json`: that name is the update manifest the release build
+/// writes next to the ISO (docs/release-engineering.md, section 2), which
+/// `cargo xtask release publish` reads from the same run directory.
+pub const MANIFEST: &str = "release-set.json";
 pub const MAX_MANIFEST: usize = 1024 * 1024;
 const SCHEMA_VERSION: u32 = 3;
 
