@@ -243,15 +243,26 @@ pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchro
 /// The desktop apps (under `gui/`, by program name) the desktop system
 /// carries, on every distro: each a program in `/usr/bin` with a menu entry.
 /// The builder compiles them against the distro's own Qt and puts them into
-/// the desktop system's rootfs.
-pub const DESKTOP_APPS: &[&str] = &["recipe-gui", "recab-gui", "disk-gui"];
+/// the desktop system's rootfs. The recab app is not one of them: see
+/// [`AB_DESKTOP_APP_FILES`].
+pub const DESKTOP_APPS: &[&str] = &["recipe-gui", "disk-gui"];
 
 /// Where each desktop app's menu entry is, by the same order. Same length as
 /// [`DESKTOP_APPS`].
 pub const DESKTOP_APP_ENTRIES: &[&str] = &[
     "usr/share/applications/org.levitateos.recipe.desktop",
-    "usr/share/applications/org.levitateos.recab.desktop",
     "usr/share/applications/org.levitateos.disk.desktop",
+];
+
+/// Every file of the recab desktop app, as the compiled desktop apps' tree
+/// holds them. Only an A/B system has the app: the desktop live medium
+/// carries these files in recsetup's A/B-only tree (`install_tools::AB_ONLY_TREE`,
+/// at these paths below it), and the A/B boot step copies them into the
+/// target. A mutable install never has them.
+pub const AB_DESKTOP_APP_FILES: &[&str] = &[
+    "usr/bin/recab-gui",
+    "usr/share/applications/org.levitateos.recab.desktop",
+    "usr/share/polkit-1/actions/org.levitateos.recab.policy",
 ];
 
 impl ConformanceContract {
