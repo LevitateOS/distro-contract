@@ -122,7 +122,7 @@ pub enum ScenarioId {
     TestInstalledBoot,
     AutomatedLogin,
     Runtime,
-    AbUpdate,
+    OtherRoot,
     DesktopBoot,
 }
 
@@ -137,7 +137,7 @@ impl ScenarioId {
         ScenarioId::TestInstalledBoot,
         ScenarioId::AutomatedLogin,
         ScenarioId::Runtime,
-        ScenarioId::AbUpdate,
+        ScenarioId::OtherRoot,
         ScenarioId::DesktopBoot,
     ];
 
@@ -151,7 +151,7 @@ impl ScenarioId {
             Self::TestInstalledBoot => "test-installed-boot",
             Self::AutomatedLogin => "automated-login",
             Self::Runtime => "runtime",
-            Self::AbUpdate => "ab-update",
+            Self::OtherRoot => "other-root",
             Self::DesktopBoot => "desktop-boot",
         }
     }
@@ -165,7 +165,7 @@ impl ScenarioId {
             Self::TestInstalledBoot => "Test Installed Boot",
             Self::AutomatedLogin => "Automated Login",
             Self::Runtime => "Runtime",
-            Self::AbUpdate => "A/B Update",
+            Self::OtherRoot => "Other Root",
             Self::DesktopBoot => "Desktop Boot",
         }
     }
@@ -179,15 +179,15 @@ impl ScenarioId {
             Self::TestLiveSsh => "the test-live-ssh ISO boots and takes an SSH login",
             Self::TestInstallBase => "the test-install-base ISO has its tools and its install screen",
             Self::Install => {
-                "the selected base/desktop installer ISO populates identical personalized A/B systems with both slots bootable"
+                "the selected base/desktop installer ISO installs the chosen layout; an A/B install has root B a copy of root A, A the boot default and the recab-started service enabled, a mutable install has no recab"
             }
             Self::TestInstalledBoot => "the installed disk boots",
             Self::AutomatedLogin => "root logs in on the installed system",
             Self::Runtime => {
                 "the installed tools execute a native Recipe/Ginux worker without activating system packages"
             }
-            Self::AbUpdate => {
-                "equivalent initial A/B systems, explicit public-origin or local-fixture updates preserving X, metadata and independent profiles, failed/healthy trials both ways, reverse Y and measured write avoidance with retained boot logs"
+            Self::OtherRoot => {
+                "on an A/B install, a change written into the unlocked other root boots with boot-other and becomes the default after it started; copy makes the roots equal; an other root that does not finish starting falls back to the previous root"
             }
             Self::DesktopBoot => {
                 "the release ISO boots to the installer with the desktop system and apps it installs"
@@ -217,16 +217,12 @@ impl ScenarioId {
             Self::TestLiveSsh => iso(ProductId::TestLiveSsh),
             Self::TestInstallBase | Self::Install => iso(ProductId::TestInstallBase),
             Self::DesktopBoot => iso(ProductId::Release),
-            Self::TestInstalledBoot | Self::AutomatedLogin | Self::Runtime => ScenarioInput {
-                iso: None,
-                install_run: true,
-            },
-            // The install and an explicit --update-fixture ISO supply old/new
-            // release inputs. Never restage the same latest ISO as an update.
-            Self::AbUpdate => ScenarioInput {
-                iso: None,
-                install_run: true,
-            },
+            Self::TestInstalledBoot | Self::AutomatedLogin | Self::Runtime | Self::OtherRoot => {
+                ScenarioInput {
+                    iso: None,
+                    install_run: true,
+                }
+            }
         }
     }
 

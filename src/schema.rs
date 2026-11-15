@@ -196,9 +196,6 @@ pub struct LookContract {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConformanceContract {
-    /// Release ordering and optional online source/distribution trust.
-    #[serde(default)]
-    pub release: crate::release::Policy,
     pub schema_version: u32,
     pub identity: DistroIdentity,
     /// The base facts the variant differs in.
@@ -240,14 +237,8 @@ pub fn locales() -> impl Iterator<Item = &'static str> {
 }
 
 /// The install tools the live ISO adds to the installed system's commands.
-pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchroot", "recsetup"];
-
-/// The workspace tools the installed system has (A/B updates).
-pub const UPDATE_TOOLS: &[&str] = &["recab", "recstrap"];
-
-/// The TUI apps (under `tui/apps`, by `bin` name) the installed system carries as
-/// commands, on every distro; the builder compiles them into the system rootfs.
-pub const SYSTEM_TUI_APPS: &[&str] = &["recab-tui"];
+/// recab is one: the A/B boot step puts it into an A/B target from here.
+pub const INSTALL_TOOLS: &[&str] = &["recpart", "recstrap", "recfstab", "recchroot", "recsetup", "recab"];
 
 /// The desktop apps (under `gui/`, by program name) the desktop system
 /// carries, on every distro: each a program in `/usr/bin` with a menu entry.
@@ -256,20 +247,12 @@ pub const SYSTEM_TUI_APPS: &[&str] = &["recab-tui"];
 pub const DESKTOP_APPS: &[&str] = &["recipe-gui", "recab-gui", "disk-gui"];
 
 /// Where each desktop app's menu entry is, by the same order. Same length as
-/// [`DESKTOP_APPS`]: a program with no menu entry is not in either list but in
-/// [`DESKTOP_HELPERS`].
+/// [`DESKTOP_APPS`].
 pub const DESKTOP_APP_ENTRIES: &[&str] = &[
     "usr/share/applications/org.levitateos.recipe.desktop",
     "usr/share/applications/org.levitateos.recab.desktop",
     "usr/share/applications/org.levitateos.disk.desktop",
 ];
-
-/// The programs (under `gui/`, by program name) the desktop apps run and the
-/// desktop system carries beside them, on every distro: each a program in
-/// `/usr/bin` with no menu entry and no window. `levitate-agent` stands
-/// between the apps and the agent program (`codex` or `claude`), which no
-/// image carries.
-pub const DESKTOP_HELPERS: &[&str] = &["levitate-agent"];
 
 impl ConformanceContract {
     /// The init system's units every live boot runs: sshd. (NetworkManager and
@@ -279,12 +262,11 @@ impl ConformanceContract {
         vec!["sshd".to_string()]
     }
 
-    /// The commands the installed system has: its privilege tool, the update
-    /// tools, its TUI apps and every system's commands.
+    /// The commands every installed system has, A/B or mutable: its privilege
+    /// tool and every system's commands. An A/B install also has recab, which
+    /// its boot step puts there.
     pub fn installed_tools(&self) -> Vec<String> {
         std::iter::once(self.profile.privilege.as_str())
-            .chain(UPDATE_TOOLS.iter().copied())
-            .chain(SYSTEM_TUI_APPS.iter().copied())
             .chain(system_commands())
             .map(|tool| tool.to_string())
             .collect()

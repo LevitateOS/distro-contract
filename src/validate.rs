@@ -165,8 +165,6 @@ pub(crate) fn validate(
     for (_, file) in BRANDING {
         ck.variant_file(file, file);
     }
-    if let Err(error) = c.release.validate() { ck.fail("release", format!("{error:#}")); }
-    if let Some(source) = &c.release.source { ck.repo_file("release.source.recipe", &source.recipe); }
     check_sources(&mut ck, c);
     ck.violations
 }

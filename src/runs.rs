@@ -112,21 +112,6 @@ pub struct RunRef {
     pub run_id: String,
 }
 
-/// A passing run records this only after the actual public lifecycle completes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PublicUpdateEvidence {
-    pub baseline_release: String,
-    pub release_id: String,
-    pub public_index: String,
-    pub descriptor_sha256: String,
-    pub publication_sha256: String,
-    pub source_commit: String,
-    pub flavour: crate::profile::Flavour,
-    pub x86_64_lifecycle_passed: bool,
-    pub directions: Vec<String>,
-}
-
 /// The record a run leaves in its directory, `run-manifest.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunManifest {
@@ -156,17 +141,8 @@ pub struct RunManifest {
     /// Install runs: the layout installed (`ab` or `mutable`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_mode: Option<String>,
-    /// Explicit signed-feed fixture ISO for install/A/B lifecycle scenarios.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub update_fixture: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flavour: Option<crate::profile::Flavour>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub public_update: Option<PathBuf>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub public_update_binding: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub public_update_result: Option<PublicUpdateEvidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release_input: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -244,11 +220,7 @@ impl Run {
                 fingerprint: None,
                 evidence: None,
                 install_mode: None,
-                update_fixture: None,
                 flavour: None,
-                public_update: None,
-                public_update_binding: None,
-                public_update_result: None,
                 release_input: None,
                 install_input: None,
             },

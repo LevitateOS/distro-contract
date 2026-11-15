@@ -47,6 +47,5 @@ adding it to the type and the file.
   consoles, apps and docs page, and the paths and names the builder, the
   split pane and the install tests share.
 
-`release` owns the versioned installed-system manifest, intended inventory,
-compatibility checks and distribution release trust shared by builder and recab.
-See [the release format](docs/releases.md).
+`release` owns the release set's manifest (`release.json`): what a system
+part built, which the combiner verifies and the ISO carries. See [the release format](docs/releases.md).
