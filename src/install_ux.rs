@@ -3,23 +3,20 @@
 //! drive it share.
 //!
 //! On each of [`CONSOLES`], getty starts [`LAUNCHER`] in place of login. The
-//! launcher runs the split pane [`SPLIT`] with [`HUB`] on the left and [`DOCS`]
-//! at [`DOCS_PAGE`] on the right, and becomes a [`SHELL`] login shell when the
-//! screen ends. A serial console (`ttyS*`) runs the screen only when the
-//! boot-injection payload sets [`SERIAL_KEY`]`=1`. Both apps are told the
-//! distro's name (and the hub its shell) through the flags their manifests
-//! declare; [`APPS`] are commands for the shell beside the docs. Paths are
-//! relative to a layer's root.
+//! launcher runs the split pane [`SPLIT`] with a root [`SHELL`] login shell on
+//! the left and [`DOCS`] at [`DOCS_PAGE`] on the right, and becomes a [`SHELL`]
+//! login shell when the screen ends. That is the only layout: there is no menu
+//! or hub in front of the shell. A serial console (`ttyS*`) runs the screen only
+//! when the boot-injection payload sets [`SERIAL_KEY`]`=1`. The docs are told
+//! the distro's name through the flag their manifest declares; [`APPS`] are
+//! commands for the shell beside the docs. Paths are relative to a layer's root.
 
 /// Consoles whose getty starts the install screen, on every live ISO. The
 /// desktop ISO's live session does not start its display manager, so the
 /// install screen has tty1 there too; the desktop starts once installed.
 pub const CONSOLES: &[&str] = &["tty1", "ttyS0"];
-/// The shell the hub opens and the login shell that takes over when the screen ends.
+/// The left pane's root shell, and the login shell that takes over when the screen ends.
 pub const SHELL: &str = "/bin/bash";
-/// The left pane: the install steps in order, with the shell one key away (a TUI
-/// app under `tui/apps`, by its `bin` name).
-pub const HUB: &str = "install-hub";
 /// The right pane: the install guide.
 pub const DOCS: &str = "install-docs";
 /// The page the docs open at, the same slug on every distro.
@@ -27,7 +24,7 @@ pub const DOCS_PAGE: &str = "installation";
 /// Tells the docs they are the install screen's second pane: they draw their band
 /// flat and without the distro's name, so the two panes read as one screen.
 pub const DOCS_PANE: &str = "--pane";
-/// TUI apps the live ISO carries besides the hub and the docs.
+/// The helper TUI apps the live ISO carries besides the docs: commands typed in the left shell.
 pub const APPS: &[&str] = &["disk-plan", "base-system", "system-setup"];
 
 macro_rules! bin_dir {
