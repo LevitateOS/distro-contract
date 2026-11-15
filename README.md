@@ -5,8 +5,9 @@ The variant contract of LevitateOS and AcornOS: the schema of
 artifacts against it.
 
 A variant directory holds `distro.toml`, the options of its kernel line
-`kconfig` (applied after `_shared/kconfig`),
-and signing keys under `keys/`. The Rust types in
+`kconfig` (applied after `_shared/kconfig`) and, under `keys/`, the public key
+its package repository (Fedora's RPM key, Alpine's APK key) signs packages
+with. Nothing here signs anything of ours. The Rust types in
 `schema.rs` are the TOML shape (`deny_unknown_fields`): adding a field means
 adding it to the type and the file.
 
@@ -21,9 +22,10 @@ adding it to the type and the file.
   `contract.artifacts`: `<os_id>-x86_64-<product>.iso`, the live UKIs by role,
   `filesystem.erofs`, ...), so no file spells them. There is no unvalidated
   load.
-- `registry`: `ProductId` and `ScenarioId`, the products and scenarios every
-  variant has, each named once with its title, parent, release flag, inputs
-  and order. The builder, xtask and install-tests name none of their own.
+- `registry`: `ProductId` and `ScenarioId` (build-preflight, test-live-ssh,
+  test-install-base, install, test-installed-boot, automated-login, runtime,
+  other-root, desktop-boot), the products and scenarios every variant has, each
+  named once with its title, parent, release flag, inputs and order. The builder, xtask and install-tests name none of their own.
 - `contract.live`, `contract.installed`: what the variant adds to the shared
   lists; `live_services()`/`live_service_units()`,
   `live_tools()` and `installed_tools()` give the whole lists.
@@ -42,10 +44,15 @@ adding it to the type and the file.
   recipe checks;
   test-live-ssh SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
-  (`9`).
-- `install_ux`: the live install screen, the same on every variant: its
-  consoles, apps and docs page, and the paths and names the builder, the
-  split pane and the install tests share.
+  (`11`).
+- `install_ux`: the live install screen, the same on every variant: a root
+  shell on the left, the installation guide on the right, and the helper apps
+  `disk-plan`, `base-system` and `system-setup` as commands for the shell. It
+  also names the paths and names the builder, the split pane and the install
+  tests share.
+- `AB_DESKTOP_APP_FILES`: the files of the recab desktop app, which only an A/B
+  install gets (the live medium carries them, `recsetup`'s A/B boot step copies
+  them into the target).
 
 `release` owns the release set's manifest (`release.json`): what a system
 part built, which the combiner verifies and the ISO carries. See [the release format](docs/releases.md).

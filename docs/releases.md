@@ -1,4 +1,4 @@
-# The installed-system release set
+# The release set
 
 `release::ReleaseManifest` is the record of what a system part built. The
 builder writes it as `release.json` in the part's directory; the combiner links
@@ -16,6 +16,6 @@ byte length of each member:
 
 Member names cannot leave the release directory.
 
-There is no update format: nothing here is signed, indexed or published for
-installed systems to fetch. Updates will be designed on the shared
-release-engineering track.
+`release.json` is only a record of what an ISO build produced. It is not an
+update format: nothing here is signed, indexed or published for installed
+systems to fetch, and there is no update source.
