@@ -262,6 +262,7 @@ pub const DESKTOP_APP_ENTRIES: &[&str] = &[
 pub const AB_DESKTOP_APP_FILES: &[&str] = &[
     "usr/bin/recab-gui",
     "usr/share/applications/org.levitateos.recab.desktop",
+    "usr/share/icons/hicolor/scalable/apps/org.levitateos.recab.svg",
     "usr/share/polkit-1/actions/org.levitateos.recab.policy",
 ];
 
