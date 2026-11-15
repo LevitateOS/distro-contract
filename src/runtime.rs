@@ -23,9 +23,9 @@ pub struct BuildRuntimeArtifacts {
     pub kernel_modules: PathBuf,
 }
 
-/// The live-boot outputs `validate_live_boot_runtime` checks.
+/// The test-live-ssh outputs `validate_test_live_ssh_runtime` checks.
 #[derive(Debug, Clone)]
-pub struct LiveBootRuntimeArtifacts {
+pub struct TestLiveSshRuntimeArtifacts {
     pub rootfs_image: PathBuf,
     pub initramfs_live: PathBuf,
     pub overlay_image: PathBuf,
@@ -112,19 +112,19 @@ pub fn validate_build_runtime(
 /// Check the live boot's rootfs and overlay for working SSH, the live
 /// services, a UTF-8 locale and (systemd) merged /usr, as the variant's
 /// profile (init, libc) has them.
-pub fn validate_live_boot_runtime(
+pub fn validate_test_live_ssh_runtime(
     contract: &ConformanceContract,
-    artifacts: &LiveBootRuntimeArtifacts,
+    artifacts: &TestLiveSshRuntimeArtifacts,
 ) -> Vec<Violation> {
     let profile = &contract.profile;
     let mut out = Missing(Vec::new());
-    out.file(&artifacts.rootfs_image, "live-boot rootfs image");
-    out.file(&artifacts.initramfs_live, "live-boot initramfs");
-    out.file(&artifacts.overlay_image, "live-boot overlay image");
-    out.dir(&artifacts.live_overlay_dir, "live-boot overlay source directory");
+    out.file(&artifacts.rootfs_image, "test-live-ssh rootfs image");
+    out.file(&artifacts.initramfs_live, "test-live-ssh initramfs");
+    out.file(&artifacts.overlay_image, "test-live-ssh overlay image");
+    out.dir(&artifacts.live_overlay_dir, "test-live-ssh overlay source directory");
 
     let rootfs = &artifacts.rootfs_source_dir;
-    if !out.dir(rootfs, "live-boot rootfs source directory") {
+    if !out.dir(rootfs, "test-live-ssh rootfs source directory") {
         return out.0;
     }
     let overlay = &artifacts.live_overlay_dir;

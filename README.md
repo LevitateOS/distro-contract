@@ -40,7 +40,7 @@ adding it to the type and the file.
   `validate_live_boot_runtime(&ConformanceContract, &LiveBootRuntimeArtifacts)`:
   checks of built artifacts (the kernel bundle's files, whose pin the kernel
   recipe checks;
-  live-boot SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
+  test-live-ssh SSH, live services, locale and merged-/usr wiring), returning `Vec<Violation>`.
 - `schema::*`: `ConformanceContract` and its parts; `CONTRACT_SCHEMA_VERSION`
   (`9`).
 - `install_ux`: the live install screen, the same on every variant: its

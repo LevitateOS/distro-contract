@@ -15,8 +15,8 @@ pub mod variant;
 
 pub use error::{LoadError, Violation};
 pub use runtime::{
-    validate_build_runtime, validate_live_boot_runtime, BuildRuntimeArtifacts,
-    LiveBootRuntimeArtifacts,
+    validate_build_runtime, validate_test_live_ssh_runtime, BuildRuntimeArtifacts,
+    TestLiveSshRuntimeArtifacts,
 };
 pub use registry::{ProductId, ScenarioId, ScenarioInput};
 pub use runs::Missing;

@@ -1,7 +1,7 @@
 # What every system provides, live and installed, on every variant. Each
 # variant's packages provide it; the rootfs producers check it when they build
 # (the rootfs source takes this file as its `capabilities` input), the contract
-# checks the built rootfs (`validate_live_boot_runtime`) and the live-tools and
+# checks the built rootfs (`validate_live_boot_runtime`) and the test-install-base and
 # runtime scenarios run every command. One entry per line: `command <name>` is
 # on PATH, `locale <name>` is a UTF-8 locale users can pick.
 

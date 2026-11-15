@@ -8,43 +8,43 @@ use distro_profile::Flavour;
 /// prepares and, for a release product, combines into a bootable ISO.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ProductId {
-    BaseRootfs,
-    LiveBoot,
-    LiveTools,
-    LiveDesktop,
-    InstalledBoot,
+    TestBaseRootfs,
+    TestLiveSsh,
+    TestInstallBase,
+    Release,
+    TestInstalledBoot,
 }
 
 impl ProductId {
     /// Every product. Each is its flavour's system plus an overlay; the
     /// builder makes both as cached parts, so no product is built on another.
     pub const ALL: [ProductId; 5] = [
-        ProductId::BaseRootfs,
-        ProductId::LiveBoot,
-        ProductId::LiveTools,
-        ProductId::LiveDesktop,
-        ProductId::InstalledBoot,
+        ProductId::TestBaseRootfs,
+        ProductId::TestLiveSsh,
+        ProductId::TestInstallBase,
+        ProductId::Release,
+        ProductId::TestInstalledBoot,
     ];
 
     /// The name the CLIs take, and the product's release directory.
     pub fn name(self) -> &'static str {
         match self {
-            Self::BaseRootfs => "base-rootfs",
-            Self::LiveBoot => "live-boot",
-            Self::LiveTools => "live-tools",
-            Self::LiveDesktop => "live-desktop",
-            Self::InstalledBoot => "installed-boot",
+            Self::TestBaseRootfs => "test-base-rootfs",
+            Self::TestLiveSsh => "test-live-ssh",
+            Self::TestInstallBase => "test-install-base",
+            Self::Release => "release",
+            Self::TestInstalledBoot => "test-installed-boot",
         }
     }
 
     /// How the product is called in boot banners and boot menus.
     pub fn title(self) -> &'static str {
         match self {
-            Self::BaseRootfs => "Base Rootfs",
-            Self::LiveBoot => "Live Boot",
-            Self::LiveTools => "Live Tools",
-            Self::LiveDesktop => "Live Desktop",
-            Self::InstalledBoot => "Installed Boot",
+            Self::TestBaseRootfs => "Test Base Rootfs",
+            Self::TestLiveSsh => "Test Live SSH",
+            Self::TestInstallBase => "Test Install Base",
+            Self::Release => "Release",
+            Self::TestInstalledBoot => "Test Installed Boot",
         }
     }
 
@@ -53,24 +53,24 @@ impl ProductId {
     /// system with the variant's desktop (`[desktop]` of its contract).
     pub fn flavour(self) -> Flavour {
         match self {
-            Self::LiveDesktop => Flavour::Desktop,
+            Self::Release => Flavour::Desktop,
             _ => Flavour::Base,
         }
     }
 
-    /// Whether the product is built into a release ISO; installed-boot is
+    /// Whether the product is built into an ISO; test-installed-boot is
     /// only prepared.
-    pub fn is_release(self) -> bool {
-        self != Self::InstalledBoot
+    pub fn is_iso(self) -> bool {
+        self != Self::TestInstalledBoot
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|product| product.name() == name)
     }
 
-    /// The release products.
-    pub fn releases() -> impl Iterator<Item = ProductId> {
-        Self::ALL.into_iter().filter(|product| product.is_release())
+    /// The products built into an ISO.
+    pub fn iso_products() -> impl Iterator<Item = ProductId> {
+        Self::ALL.into_iter().filter(|product| product.is_iso())
     }
 
     /// The scenarios whose input includes this product's ISO, in run order.
@@ -86,7 +86,7 @@ impl ProductId {
         self.scenarios().next()
     }
 
-    /// `base-rootfs | live-boot | ...` over `products`.
+    /// `test-base-rootfs | test-live-ssh | ...` over `products`.
     pub fn list(products: impl IntoIterator<Item = ProductId>) -> String {
         products
             .into_iter()
@@ -116,10 +116,10 @@ pub struct ScenarioInput {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScenarioId {
     BuildPreflight,
-    LiveBoot,
-    LiveTools,
+    TestLiveSsh,
+    TestInstallBase,
     Install,
-    InstalledBoot,
+    TestInstalledBoot,
     AutomatedLogin,
     Runtime,
     AbUpdate,
@@ -131,10 +131,10 @@ impl ScenarioId {
     /// `test all` runs those [`in_test_all`](Self::in_test_all).
     pub const ALL: [ScenarioId; 9] = [
         ScenarioId::BuildPreflight,
-        ScenarioId::LiveBoot,
-        ScenarioId::LiveTools,
+        ScenarioId::TestLiveSsh,
+        ScenarioId::TestInstallBase,
         ScenarioId::Install,
-        ScenarioId::InstalledBoot,
+        ScenarioId::TestInstalledBoot,
         ScenarioId::AutomatedLogin,
         ScenarioId::Runtime,
         ScenarioId::AbUpdate,
@@ -145,10 +145,10 @@ impl ScenarioId {
     pub fn key(self) -> &'static str {
         match self {
             Self::BuildPreflight => "build-preflight",
-            Self::LiveBoot => "live-boot",
-            Self::LiveTools => "live-tools",
+            Self::TestLiveSsh => "test-live-ssh",
+            Self::TestInstallBase => "test-install-base",
             Self::Install => "install",
-            Self::InstalledBoot => "installed-boot",
+            Self::TestInstalledBoot => "test-installed-boot",
             Self::AutomatedLogin => "automated-login",
             Self::Runtime => "runtime",
             Self::AbUpdate => "ab-update",
@@ -159,10 +159,10 @@ impl ScenarioId {
     pub fn title(self) -> &'static str {
         match self {
             Self::BuildPreflight => "Build Preflight",
-            Self::LiveBoot => "Live Boot",
-            Self::LiveTools => "Live Tools",
+            Self::TestLiveSsh => "Test Live SSH",
+            Self::TestInstallBase => "Test Install Base",
             Self::Install => "Install",
-            Self::InstalledBoot => "Installed Boot",
+            Self::TestInstalledBoot => "Test Installed Boot",
             Self::AutomatedLogin => "Automated Login",
             Self::Runtime => "Runtime",
             Self::AbUpdate => "A/B Update",
@@ -174,14 +174,14 @@ impl ScenarioId {
     pub fn summary(self) -> &'static str {
         match self {
             Self::BuildPreflight => {
-                "the base-rootfs ISO and the kernel match the contract, before any VM"
+                "the test-base-rootfs ISO and the kernel match the contract, before any VM"
             }
-            Self::LiveBoot => "the live-boot ISO boots and takes an SSH login",
-            Self::LiveTools => "the live-tools ISO has its tools and its install screen",
+            Self::TestLiveSsh => "the test-live-ssh ISO boots and takes an SSH login",
+            Self::TestInstallBase => "the test-install-base ISO has its tools and its install screen",
             Self::Install => {
                 "the selected base/desktop installer ISO populates identical personalized A/B systems with both slots bootable"
             }
-            Self::InstalledBoot => "the installed disk boots",
+            Self::TestInstalledBoot => "the installed disk boots",
             Self::AutomatedLogin => "root logs in on the installed system",
             Self::Runtime => {
                 "the installed tools execute a native Recipe/Ginux worker without activating system packages"
@@ -190,7 +190,7 @@ impl ScenarioId {
                 "equivalent initial A/B systems, explicit public-origin or local-fixture updates preserving X, metadata and independent profiles, failed/healthy trials both ways, reverse Y and measured write avoidance with retained boot logs"
             }
             Self::DesktopBoot => {
-                "the live-desktop ISO boots into the desktop with no failed service and with its desktop apps"
+                "the release ISO boots to the installer with the desktop system and apps it installs"
             }
         }
     }
@@ -200,7 +200,7 @@ impl ScenarioId {
     pub fn input_for(self, flavour: Flavour) -> ScenarioInput {
         if flavour == Flavour::Desktop && matches!(self, Self::Install | Self::BuildPreflight) {
             ScenarioInput {
-                iso: Some(ProductId::LiveDesktop),
+                iso: Some(ProductId::Release),
                 install_run: false,
             }
         } else {
@@ -213,11 +213,11 @@ impl ScenarioId {
             install_run: false,
         };
         match self {
-            Self::BuildPreflight => iso(ProductId::BaseRootfs),
-            Self::LiveBoot => iso(ProductId::LiveBoot),
-            Self::LiveTools | Self::Install => iso(ProductId::LiveTools),
-            Self::DesktopBoot => iso(ProductId::LiveDesktop),
-            Self::InstalledBoot | Self::AutomatedLogin | Self::Runtime => ScenarioInput {
+            Self::BuildPreflight => iso(ProductId::TestBaseRootfs),
+            Self::TestLiveSsh => iso(ProductId::TestLiveSsh),
+            Self::TestInstallBase | Self::Install => iso(ProductId::TestInstallBase),
+            Self::DesktopBoot => iso(ProductId::Release),
+            Self::TestInstalledBoot | Self::AutomatedLogin | Self::Runtime => ScenarioInput {
                 iso: None,
                 install_run: true,
             },
@@ -235,12 +235,12 @@ impl ScenarioId {
     pub fn is_runnable(self) -> bool {
         matches!(
             self,
-            Self::LiveBoot | Self::LiveTools | Self::InstalledBoot | Self::DesktopBoot
+            Self::TestLiveSsh | Self::TestInstallBase | Self::TestInstalledBoot | Self::DesktopBoot
         )
     }
 
     /// Whether `test all` runs the scenario. desktop-boot does not: its
-    /// input, the live-desktop ISO, is a build of its own (the desktop's
+    /// input, the release ISO, is a build of its own (the desktop's
     /// packages, a 2.6 GB tree, about 6 GiB of build memory) that the base
     /// loop never makes, so `test all` would always report it missing. It
     /// runs by name: `cargo xtask test desktop-boot <distro>`.

@@ -76,9 +76,14 @@ impl ArtifactNames {
         }
     }
 
-    /// A release product's ISO: `<os_id>-x86_64-<product>.iso`.
+    /// An ISO product's file: the release product is
+    /// `<os_id>-x86_64.iso`, a test product `<os_id>-x86_64-<product>.iso`.
     pub fn iso(&self, product: ProductId) -> String {
-        format!("{}-{}.iso", self.iso_stem, product.name())
+        if product == ProductId::Release {
+            self.release_iso.clone()
+        } else {
+            format!("{}-{}.iso", self.iso_stem, product.name())
+        }
     }
 }
 
@@ -122,7 +127,7 @@ pub struct SourceContract {
 }
 
 /// The graphical desktop of the desktop system, the rootfs of the
-/// `live-desktop` product (`profile.desktop` names which: Plasma or LXQt).
+/// `release` product (`profile.desktop` names which: Plasma or LXQt).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContract {
@@ -285,7 +290,7 @@ impl ConformanceContract {
             .collect()
     }
 
-    /// The commands the live-tools ISO has: the install tools, then the
+    /// The commands the test-install-base ISO has: the install tools, then the
     /// installed system's.
     pub fn live_tools(&self) -> Vec<String> {
         let installed = self.installed_tools();
