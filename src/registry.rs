@@ -199,7 +199,7 @@ impl ScenarioId {
                 "the release ISO boots to the installer with the default software set it installs through Recipe"
             }
             Self::Login => {
-                "on a desktop install with reclogin, the login screen runs on console 7 (reclogind, the greeter as reclogin), no SDDM is left, and console 1 keeps its text login; skipped where reclogin is not installed"
+                "on a desktop install with reclogin, the login screen runs on console 7 (reclogind, the greeter as reclogin), no SDDM is left, and console 1 keeps its text login"
             }
         }
     }
