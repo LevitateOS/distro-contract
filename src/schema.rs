@@ -1,6 +1,6 @@
 //! The variant contract: these types are the shape of `distro/variants/<id>/distro.toml`.
 
-use distro_profile::Profile;
+use distro_profile::{Flavour, Profile};
 
 use crate::registry::ProductId;
 use serde::Deserialize;
@@ -241,6 +241,13 @@ pub fn system_commands() -> impl Iterator<Item = &'static str> {
     capabilities("command")
 }
 
+/// The commands a desktop install and the live medium have, which the base
+/// tree does not (`desktop-command` in `capabilities.txt`): the default set's
+/// groups bring them.
+pub fn desktop_commands() -> impl Iterator<Item = &'static str> {
+    capabilities("desktop-command")
+}
+
 /// The UTF-8 locales every system has (`locale` in `capabilities.txt`), as
 /// `<language>_<TERRITORY>`.
 pub fn locales() -> impl Iterator<Item = &'static str> {
@@ -286,19 +293,23 @@ impl ConformanceContract {
     }
 
     /// The commands every installed system has, A/B or mutable: its privilege
-    /// tool and every system's commands. An A/B install also has recab, which
+    /// tool and every system's commands, and with the desktop flavour the
+    /// default set's (`desktop-command`). An A/B install also has recab, which
     /// its boot step puts there.
-    pub fn installed_tools(&self) -> Vec<String> {
+    pub fn installed_tools(&self, flavour: Flavour) -> Vec<String> {
+        let desktop = (flavour == Flavour::Desktop).then(desktop_commands).into_iter().flatten();
         std::iter::once(self.profile.privilege.as_str())
             .chain(system_commands())
+            .chain(desktop)
             .map(|tool| tool.to_string())
             .collect()
     }
 
     /// The commands the test-install-base ISO has: the install tools, then the
-    /// installed system's.
+    /// installed system's. The live medium carries the `network` group, so it
+    /// has the desktop commands whatever the flavour installed later.
     pub fn live_tools(&self) -> Vec<String> {
-        let installed = self.installed_tools();
+        let installed = self.installed_tools(Flavour::Desktop);
         INSTALL_TOOLS
             .iter()
             .map(|tool| tool.to_string())

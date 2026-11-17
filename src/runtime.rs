@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::Violation;
-use crate::schema::{locales, system_commands, ConformanceContract};
+use crate::schema::{desktop_commands, locales, system_commands, ConformanceContract};
 use crate::variant::Variant;
 use distro_profile::{InitSystem, Libc, PackageBackend};
 
@@ -147,6 +147,16 @@ pub fn validate_test_live_ssh_runtime(
     out.dir(&rootfs.join("usr/share/empty.sshd"), "empty sshd directory");
     check_locale(&mut out, rootfs, profile.libc == Libc::Musl);
     check_capabilities(&mut out, rootfs, contract);
+    // The live medium also carries the `network` group, merged into the
+    // overlay: its commands (`desktop-command`) are there, not in the base.
+    for command in desktop_commands() {
+        if !on_path(overlay, command) {
+            out.push(
+                overlay.display().to_string(),
+                format!("missing the command '{command}' (capabilities.txt, the live overlay's groups)"),
+            );
+        }
+    }
 
     if profile.packages == PackageBackend::Rpm {
         for (link, target) in [
@@ -172,8 +182,8 @@ pub fn validate_test_live_ssh_runtime(
         );
         out.dir(&rootfs.join("var/empty/sshd"), "OpenSSH privilege-separation directory");
         out.symlink(
-            &rootfs.join("etc/systemd/system/multi-user.target.wants/NetworkManager.service"),
-            "NetworkManager enablement symlink",
+            &overlay.join("etc/systemd/system/multi-user.target.wants/NetworkManager.service"),
+            "NetworkManager enablement symlink (the `network` group's, in the live overlay)",
         );
         out.symlink(
             &overlay.join("etc/systemd/system/multi-user.target.wants/sshd.service"),
@@ -189,10 +199,13 @@ pub fn validate_test_live_ssh_runtime(
         }
     } else {
         out.symlink(&overlay.join("etc/runlevels/default/sshd"), "OpenRC sshd runlevel symlink");
-        out.file(&rootfs.join("etc/init.d/networkmanager"), "OpenRC NetworkManager service");
+        out.file(
+            &overlay.join("etc/init.d/networkmanager"),
+            "OpenRC NetworkManager service (the `network` group's, in the live overlay)",
+        );
         out.symlink(
-            &rootfs.join("etc/runlevels/default/networkmanager"),
-            "OpenRC NetworkManager runlevel symlink",
+            &overlay.join("etc/runlevels/default/networkmanager"),
+            "OpenRC NetworkManager runlevel symlink (the `network` group's, in the live overlay)",
         );
     }
     out.0
@@ -231,15 +244,20 @@ fn check_locale(out: &mut Missing, rootfs: &Path, musl_allowed: bool) {
     }
 }
 
-/// The rootfs has every system command and the privilege tool on PATH, and
-/// every shared locale.
+/// `command` is in one of the directories on PATH below `root`.
+fn on_path(root: &Path, command: &str) -> bool {
+    ["usr/bin", "usr/sbin", "bin", "sbin"]
+        .iter()
+        .any(|dir| fs::symlink_metadata(root.join(dir).join(command)).is_ok())
+}
+
+/// The rootfs (the base system) has every system command and the privilege
+/// tool on PATH, and every shared locale. `desktop-command`s are not asked
+/// of it: the `network` group and the rest of the default set bring them.
 fn check_capabilities(out: &mut Missing, rootfs: &Path, contract: &ConformanceContract) {
     let privilege = contract.profile.privilege.as_str();
     for command in std::iter::once(privilege).chain(system_commands()) {
-        let on_path = ["usr/bin", "usr/sbin", "bin", "sbin"]
-            .iter()
-            .any(|dir| fs::symlink_metadata(rootfs.join(dir).join(command)).is_ok());
-        if !on_path {
+        if !on_path(rootfs, command) {
             out.push(
                 rootfs.display().to_string(),
                 format!("missing the command '{command}' (capabilities.txt)"),

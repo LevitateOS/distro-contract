@@ -3,7 +3,10 @@
 # (the rootfs source takes this file as its `capabilities` input), the contract
 # checks the built rootfs (`validate_live_boot_runtime`) and the test-install-base and
 # runtime scenarios run every command. One entry per line: `command <name>` is
-# on PATH, `locale <name>` is a UTF-8 locale users can pick.
+# on PATH of the base system, `desktop-command <name>` is on PATH of a desktop
+# install and of the live medium (the default set's groups bring it; the base
+# tree does not have it, so the rootfs producers do not ask for it), `locale
+# <name>` is a UTF-8 locale users can pick.
 
 # The login shell and the userland users and scripts meet.
 command bash
@@ -33,13 +36,15 @@ command fdisk
 command sfdisk
 command mkfs.ext4
 
-# Network: NetworkManager (wired and WiFi, over wpa_supplicant) and iw.
+# Network: the base has ip, ping, curl, ssh and iw. NetworkManager (wired and
+# WiFi, over wpa_supplicant) and nmcli come with the `network` group: the live
+# medium carries it, and a desktop install gets it with the default set.
 command ip
 command ping
 command curl
 command ssh
-command nmcli
 command iw
+desktop-command nmcli
 
 # Hardware diagnostics.
 command lspci

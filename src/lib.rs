@@ -26,7 +26,7 @@ pub use schema::{
     SourceContract, CONTRACT_SCHEMA_VERSION, AB_DESKTOP_APP_FILES, INSTALL_TOOLS,
     MUTABLE_DESKTOP_APP_FILES,
 };
-pub use schema::{capabilities_text, locales, system_commands};
+pub use schema::{capabilities_text, desktop_commands, locales, system_commands};
 pub use validate::BRANDING;
 pub use variant::{distro_ids, load, Variant};
 
