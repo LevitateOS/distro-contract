@@ -160,6 +160,14 @@ pub struct DesktopContract {
     /// is in an image; the compiled apps are published as a prebuilt tree that
     /// the `rec-apps` recipe pins.
     pub apps_build_packages: Vec<String>,
+    /// Packages of the base distribution that no lock takes (RPM backend):
+    /// `cargo xtask base lock` and `base groups` resolve as if the repository
+    /// did not have them, and take a requirement on one of their names as met
+    /// by the image. For another distribution's art and look (LevitateOS:
+    /// Fedora's logos, backgrounds and Global Themes), which the variant
+    /// replaces with its own files.
+    #[serde(default)]
+    pub exclude: Vec<String>,
     /// Downloads the apps-build lock's packages.
     pub apps_build_preseed_recipe_script: String,
     /// Makes the root the desktop apps are compiled in: the base lock's and
