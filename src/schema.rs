@@ -6,7 +6,7 @@ use crate::registry::ProductId;
 use serde::Deserialize;
 
 /// The `schema_version` every `distro.toml` declares.
-pub const CONTRACT_SCHEMA_VERSION: u32 = 12;
+pub const CONTRACT_SCHEMA_VERSION: u32 = 13;
 
 /// Identity metadata for a distro contract.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -135,11 +135,23 @@ pub struct SourceContract {
     pub rootfs_source: RootfsSourceContract,
 }
 
+/// One category of the default software set: the recipes whose package-cache
+/// files make one downloadable part of the release (`parts-<name>.tar.zst`,
+/// docs/release-engineering.md, section 11).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesktopCategory {
+    /// A lowercase word (letters, digits and '-'); the part is `parts-<name>`.
+    pub name: String,
+    /// Recipes of `[desktop].recipes`.
+    pub recipes: Vec<String>,
+}
+
 /// The variant's default software set and what its group recipes are locked
 /// and built from. The system image is the base alone; the default set is
 /// installed through Recipe during the installation (recsetup's software
-/// step), from the release medium, which carries these recipes and every
-/// package they pin.
+/// step): the release medium carries these recipes, and the packages they pin
+/// come as downloadable parts, one per category.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopContract {
@@ -147,6 +159,11 @@ pub struct DesktopContract {
     /// by name), installed into every target in this order by
     /// `recipe --system --root <target> install`; their `deps` come with them.
     pub recipes: Vec<String>,
+    /// The default set cut into categories, in the order the parts are made:
+    /// every recipe of `recipes` is in exactly one category. A package-cache
+    /// file goes into the part of the first category whose recipes (with
+    /// their deps) need it.
+    pub categories: Vec<DesktopCategory>,
     /// Downloads the desktop lock: every package the group recipes' seeds
     /// need beyond the base lock (`cargo xtask base lock` resolves them; `base
     /// groups` shares them out into the recipes' pins). The release medium's

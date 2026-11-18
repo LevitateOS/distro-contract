@@ -189,6 +189,7 @@ pub(crate) fn validate(
     }
     check_sources(&mut ck, c);
     check_default_set(&mut ck, c);
+    check_categories(&mut ck, c);
     ck.violations
 }
 
@@ -231,6 +232,51 @@ fn check_default_set(ck: &mut Check, c: &ConformanceContract) {
         if recipe_name(name).is_ok() && !name.is_empty() {
             ck.repo_file(&format!("{field}[{index}]"), &format!("recipes/{name}.rhai"));
         }
+    }
+}
+
+/// Every recipe of the default set is in exactly one category, and a category
+/// names only recipes of the default set.
+fn check_categories(ck: &mut Check, c: &ConformanceContract) {
+    let categories = &c.desktop.categories;
+    if categories.is_empty() {
+        ck.fail("desktop.categories", "must list at least one category ([[desktop.categories]] with a name and recipes)");
+    }
+    let mut names = HashSet::new();
+    let mut placed: Vec<(&str, &str)> = Vec::new();
+    for (index, category) in categories.iter().enumerate() {
+        let field = format!("desktop.categories[{index}]");
+        if ck.value(&format!("{field}.name"), &category.name, Some(recipe_name))
+            && !names.insert(category.name.as_str())
+        {
+            ck.fail(format!("{field}.name"), format!("'{}' is listed twice", category.name));
+        }
+        if category.recipes.is_empty() {
+            ck.fail(format!("{field}.recipes"), "must list at least one recipe");
+        }
+        for (at, recipe) in category.recipes.iter().enumerate() {
+            let field = format!("{field}.recipes[{at}]");
+            if !c.desktop.recipes.contains(recipe) {
+                ck.fail(field, format!("'{recipe}' is not in [desktop].recipes; list it there or remove it from the category"));
+            } else if let Some((first, _)) = placed.iter().find(|(_, r)| r == recipe) {
+                ck.fail(field, format!("'{recipe}' is already in the category '{first}'; each recipe is in exactly one category"));
+            } else {
+                placed.push((category.name.as_str(), recipe.as_str()));
+            }
+        }
+    }
+    let missing: Vec<&str> = c
+        .desktop
+        .recipes
+        .iter()
+        .map(String::as_str)
+        .filter(|recipe| !placed.iter().any(|(_, r)| r == recipe))
+        .collect();
+    if !missing.is_empty() {
+        ck.fail(
+            "desktop.categories",
+            format!("{} of [desktop].recipes are in no category: {}; add each to one [[desktop.categories]]", missing.len(), missing.join(", ")),
+        );
     }
 }
 

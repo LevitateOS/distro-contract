@@ -34,6 +34,9 @@ adding it to the type and the file.
   tool, desktop and kernel line. Every live tool is built for the libc. The
   builder writes the profile into the image's `/etc/os-release` as `REC_*`
   fields for the tools on the target.
+- `contract.desktop`: the default software set (`recipes`) and its
+  `[[desktop.categories]]`, which cut it into the release's downloadable
+  package parts; every recipe is in exactly one category.
 - `Variant { id, repo_root, dir, manifest, contract }`, with
   `Variant::path(rel)` for files beside `distro.toml`.
 - `distro_ids(repo_root)`: the directories under `distro/variants` that hold a
